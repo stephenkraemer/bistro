@@ -1,19 +1,14 @@
-import itertools
 import mqc
 from typing import List
 
 
 class MethPileup:
     def __init__(self,
-                 pileup_segments_per_pos: List[mqc.PileupSegment],
-                 index_position: mqc.IndexPosition,
-                 run_mode,
-                 overlap_handling_mode):
+                 pileup_segments_per_pos: 'List[mqc.PileupSegment]',
+                 index_position: mqc.IndexPosition):
         self.pileup_segments_per_pos = pileup_segments_per_pos
         self.index_position = index_position
         self._snp_score = None
-        self._overlap_handler = mqc.OverlapHandler(run_mode=run_mode,
-                                                   overlap_handling_mode=overlap_handling_mode)
 
     @property
     def snp_score(self):
@@ -24,33 +19,20 @@ class MethPileup:
             return self._snp_score
 
     def tag_overlapping_reads(self):
-        for pileup_segments in self.pileup_segments_per_pos:
-            self._overlap_handler.tag_overlapping_read_pairs(pileup_segments)
+        """See overlap handling module for more info, currently called as module function
+        from analysis workflows"""
+        return NotImplementedError
 
-    def get_total_meth_stats(self):
+    def get_total_meth_stats(self, trimming_mode):
         """
-        for watson_base, pileup_segments_at_pos in zip(
+        for observed_watson_base, pileup_segments_at_pos in zip(
             meth_pileup.index_position.watson_motif,
             meth_pileup.pileup_segments_per_pos):
             if
         """
-        n_meth, n_unmeth = 0, 0
-        for pileup_segment in itertools.chain.from_iterable(self.pileup_segments_per_pos):
-            if not pileup_segment.is_ok:
-                continue
-
-            if pileup_segment.meth_status_str == 'methylated':
-                n_meth += 1
-            elif pileup_segment.meth_status_str == 'unmethylated':
-                n_unmeth += 1
-
-        n_total = n_meth + n_unmeth
-        try:
-            beta = n_meth / n_total
-        except ZeroDivisionError:
-            beta = None
-
-        return beta, n_meth, n_total
+        beta, n_meth, n_unmeth = mqc.methylation_calling.get_total_meth_stats_at_pileup(
+            self, trimming_mode)
+        return beta, n_meth, n_unmeth
 
     def __str__(self):
         lines = list()

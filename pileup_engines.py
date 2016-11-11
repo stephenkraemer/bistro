@@ -18,21 +18,23 @@ class PysamPileupEngine(AbstractPileupEngine):
 
     def __init__(self, index_file: mqc.IndexFile, bam_abspath: str,
                  mapq_threshold, phred_score_threshold,
-                 run_mode, overlap_handling_mode):
+                 run_mode, overlap_handling_mode, trimming_site_array,
+                 frag_conv_err_detect, max_number_of_unconv_control_cyts):
         self.index_file = index_file
         self.pysam_alignment_file = pysam.AlignmentFile(bam_abspath, 'rb')
         self.mapq_threshold = mapq_threshold
         self.phred_score_threshold = phred_score_threshold
         self.run_mode = run_mode,
         self.overlap_handling_mode = overlap_handling_mode
+        self.trimming_site_array = trimming_site_array
+        self.conv_err_detect_fun = frag_conv_err_detect
+        self.max_number_of_unconv_control_cyts = max_number_of_unconv_control_cyts
 
     def __next__(self) -> mqc.MethPileup:
         index_position = next(self.index_file)
         pysam_pileup_segments_per_pos = self._get_list_of_pileup_segments_per_pos(index_position)
         meth_pileup = mqc.MethPileup(pysam_pileup_segments_per_pos,
-                                     index_position,
-                                     run_mode=self.run_mode,
-                                     overlap_handling_mode=self.overlap_handling_mode)
+                                     index_position)
         return meth_pileup
 
     def _get_list_of_pileup_segments_per_pos(self, index_position: mqc.index.IndexPosition):
@@ -47,7 +49,11 @@ class PysamPileupEngine(AbstractPileupEngine):
                 pileup_segments = [mqc.PysamPileupSegment(
                                         x, watson_ref_base,
                                         mapq_threshold=self.mapq_threshold,
-                                        phred_score_threshold=self.phred_score_threshold)
+                                        phred_score_threshold=self.phred_score_threshold,
+                                        trimming_site_array=self.trimming_site_array,
+                                        frag_conv_err_detect_fun=self.conv_err_detect_fun,
+                                        index_position=index_position,
+                                        max_number_of_unconv_control_cyts=self.max_number_of_unconv_control_cyts,)
                                    for x in pysam_pileup_reads]
                 pileup_segments_per_pos.append(pileup_segments)
             else:

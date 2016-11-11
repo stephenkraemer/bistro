@@ -26,8 +26,16 @@ class IndexPosition:
         self.name = fields[3]
         self.score = fields[4]
         self.strand = fields[5]  # '+' or '-'
-        # TODO: read in adjacent positions with json string loading
-        self.adjacent_conversion_control_positions = fields[6]
+        # TODO: backlog -> only process these fields if required (perhaps implement through properties?)
+
+        def parse_control_pos_str(s):
+            if s == '.':
+                return []
+            else:
+                return [int(curr_pos_str) for curr_pos_str in s.split(',')]
+
+        self.watson_conv_control_cyts = parse_control_pos_str(fields[6])
+        self.crick_conv_control_cyts = parse_control_pos_str(fields[7])
 
         self.original_motif = self.name
         self.watson_motif = (self.name
