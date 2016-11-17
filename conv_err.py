@@ -4,6 +4,7 @@ import mqc
 def call_frag_conversion_error(pileup_segment: 'mqc.PileupSegment',
                                index_position: 'mqc.IndexPosition',
                                max_number_of_unconv_control_cyts):
+    """
     # are control positions also zero-based?
     if pileup_segment.aligned_segment.bs_seq_strand in ['W-BC', 'C-BC-Rv']:
         control_pos = index_position.watson_conv_control_cyts
@@ -31,6 +32,8 @@ def call_frag_conversion_error(pileup_segment: 'mqc.PileupSegment',
                             else False)
 
     return has_conversion_error
+    """
+    return False
 
 
 def test_call_no_conv_errors(pileup_segment: 'mqc.PileupSegment',

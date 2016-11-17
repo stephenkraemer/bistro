@@ -1,5 +1,6 @@
-import gzip
+""" Define mqc command line tool"""
 
+import gzip
 import mqc
 
 # Trimming site arrays will have to be defined per BS-Seq strand
@@ -29,11 +30,11 @@ def call():
                                     max_number_of_unconv_control_cyts=2
                                     )
     with gzip.open(args.output_file, 'wt') as fout:
-        c = 0
+        # c = 0
         for pileup in pileups:
-            c += 1
-            if c % 1000 == 0:
-                print(c)
+            # c += 1
+            # if c % 1000 == 0:
+            #     print(c)
             # hand over to pileup engine
             mqc.overlap_handling.add_conservative_tags_for_calling(pileup)
             beta, n_meth, n_unmeth = pileup.get_total_meth_stats(trimming_mode='adjusted')
@@ -78,4 +79,5 @@ def profile(foo_name_str):
 
 
 if __name__ == '__main__':
-    profile('call()')
+    # profile('call()')
+    call()
