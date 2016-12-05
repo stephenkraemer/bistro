@@ -1,38 +1,45 @@
 import mqc
 
-# TODO: should I exchange 'None' with 'ref' to indicate a reference match? I am already using NA to indicate non-available values due to 'N's in the read sequence
 meth_dict = {'W-BC': {'C': {'C': 'methylated',
                             'T': 'unmethylated',
                             'G': 'SNP',
-                            'A': 'SNP'},
+                            'A': 'SNP',
+                            'N': 'NA'},
                       'G': {'C': 'SNP',
                             'T': 'SNP',
-                            'G': 'None',
-                            'A': 'SNP'}},
+                            'G': 'Ref',
+                            'A': 'SNP',
+                            'N': 'NA'}},
              'W-BC-Rv': {'C': {'C': 'methylated',
                                'T': 'unmethylated',
                                'G': 'SNP',
-                               'A': 'SNP'},
+                               'A': 'SNP',
+                               'N': 'NA'},
                          'G': {'C': 'SNP',
                                'T': 'SNP',
-                               'G': 'None',
-                               'A': 'SNP'}},
+                               'G': 'Ref',
+                               'A': 'SNP',
+                               'N': 'NA'}},
              'C-BC': {'G': {'C': 'SNP',
                             'T': 'SNP',
                             'G': 'methylated',
-                            'A': 'unmethylated'},
-                      'C': {'C': 'None',
+                            'A': 'unmethylated',
+                            'N': 'NA'},
+                      'C': {'C': 'Ref',
                             'T': 'SNP',
                             'G': 'SNP',
-                            'A': 'SNP'}},
+                            'A': 'SNP',
+                            'N': 'NA'}},
              'C-BC-Rv': {'G': {'C': 'SNP',
                                'T': 'SNP',
                                'G': 'methylated',
-                               'A': 'unmethylated'},
-                         'C': {'C': 'None',
+                               'A': 'unmethylated',
+                               'N': 'NA'},
+                         'C': {'C': 'Ref',
                                'T': 'SNP',
                                'G': 'SNP',
-                               'A': 'SNP'}}
+                               'A': 'SNP',
+                               'N': 'NA'}}
              }
 
 
@@ -41,7 +48,23 @@ def call_meth_at_base(bs_seq_strand, watson_ref_base, observed_watson_base):
     return meth_status_str
 
 
-def call_meth_at_base_except_when_N_was_observed(
+def call_meth_at_pos(pileup_read, watson_ref_base):
+    direction_str = 'reverse' if pileup_read.alignment.is_reverse else 'forward'
+    mate = 1 if pileup_read.alignment.is_read1 else 2
+    bs_seq_strand = bs_strand_dict_directional_protocol[mate][direction_str]
+    pos_in_read = pileup_read.query_position
+    if not pos_in_read:
+        meth_status_str = 'NA'
+    else:
+        observed_watson_base = pileup_read.alignment.query_sequence[pos_in_read]
+        if observed_watson_base == 'N':
+            meth_status_str = 'NA'
+        else:
+            meth_status_str = mqc.methylation_calling.segment_methylation.meth_dict[
+                bs_seq_strand][watson_ref_base][observed_watson_base]
+    return meth_status_str
+
+def call_meth_at_base_except_when_N_was_observed2(
         bs_seq_strand, watson_ref_base, observed_watson_base):
     if observed_watson_base == 'N':
         meth_status_str = 'NA'

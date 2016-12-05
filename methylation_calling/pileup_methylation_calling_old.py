@@ -1,39 +1,8 @@
 import mqc
-import itertools
-
-"""
-DEF IS_NA = 16
-DEF IS_METHYLATED = 8
-DEF IS_UNMETHYLATED = 4
-DEF IS_SNP = 2
-DEF IS_REF = 1
-"""
-
-def call_meth_at_pileup(motif_pileups, index_position: 'mqc.IndexPosition'):
-    n_meth = 0
-    n_unmeth = 0
-
-    watson_motif_seq = index_position.watson_motif
-    for motif_base, pileup_reads in zip(watson_motif_seq, motif_pileups):
-        if motif_base in ['C', 'G']:
-            for read in pileup_reads:
-                meth_status_flag = read.get_meth_status_at_pileup_pos(motif_base)
-                if meth_status_flag == 8:
-                    n_meth += 1
-                elif meth_status_flag == 4:
-                    n_unmeth += 1
-
-    try:
-        beta = n_meth / (n_meth + n_unmeth)
-    except ZeroDivisionError:
-        beta = 'NA'
-
-    return beta, n_meth, n_unmeth
+import mqc.methylation_calling.segment_methylation
+from mqc.conv_err import call_frag_conversion_error
 
 
-
-
-"""
 class MotifMethylationCaller:
     def __init__(self,
                  max_number_of_unconv_cytosines,
@@ -128,4 +97,3 @@ def call_meth_from_overlapping_reads(cached_read, pileup_read, watson_ref_base, 
             pass
             # else:
             #     discard fragment
-"""

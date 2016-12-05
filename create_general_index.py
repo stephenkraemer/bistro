@@ -22,13 +22,13 @@ Exemplary output:
     1      100    102  chr1_100_102    .      +       [('+', 100), ...]
 
 Example:
-python3 create_cg_index.py \
---cpg_content 0.05 \
---gc_content 0.5 \
+python3 create_general_index.py \
+--cpg_content 0.2 \
+--gc_content 0.8 \
 --max_read_length 150 \
---out_bed /home/stephen/projects/mqc/mqc/test/data/chr11.cg.bed.gz \
+--out_bed /home/kraemers/temp/mqc/mqc/test/data/chr11.ch.bed.gz \
 --prefix chr \
-/home/stephen/projects/mqc/mqc/test/data/chr11.fa.gz
+/home/kraemers/temp/mqc/mqc/test/data/chr11.fa.head.gz
 
 # fastas must be given as absolute paths
 (or several fasta files as in: )
@@ -56,20 +56,41 @@ def main():
          ind_last_filled_row_chh_arr, ind_last_filled_cpg_arr) = get_motif_positions(
             chrom_seq, chh_pos_strand_arr, cpg_pos_arr)
 
-        with gzip.open(args.out_bed_gz, 'at') as cg_index_fobj:
-            index_smallest_chh_pos_to_consider = 0
-            for curr_cg_pos_index in range(0, ind_last_filled_cpg_arr + 1):
-                """
-                Using iteration over index values because direct iteration over numpy array may not
-                guarantee order (see nditer documentation, - didn't really check this in detail)
-                """
-                curr_cpg_pos = cpg_pos_arr[curr_cg_pos_index]
-                adjacent_chh_pos_per_strand, index_smallest_chh_pos_to_consider = \
-                    find_adjacent_chh_pos(curr_cpg_pos, chh_pos_strand_arr,
-                                          index_smallest_chh_pos_to_consider,
-                                          ind_last_filled_row_chh_arr,
-                                          args.max_read_length)
-                write_line(chrom_str, curr_cpg_pos, adjacent_chh_pos_per_strand, cg_index_fobj)
+        index_smallest_chh_pos_to_consider = 0
+        cg_lines = []
+        for curr_cg_pos_index in range(0, ind_last_filled_cpg_arr + 1):
+            """
+            Using iteration over index values because direct iteration over numpy array may not
+            guarantee order (see nditer documentation, - didn't really check this in detail)
+            """
+            curr_cpg_pos = cpg_pos_arr[curr_cg_pos_index]
+            adjacent_chh_pos_per_strand, index_smallest_chh_pos_to_consider = \
+                find_adjacent_chh_pos(curr_cpg_pos, chh_pos_strand_arr,
+                                      index_smallest_chh_pos_to_consider,
+                                      ind_last_filled_row_chh_arr,
+                                      args.max_read_length)
+            cg_lines.append(create_line_tuple(chrom_str, curr_cpg_pos, adjacent_chh_pos_per_strand))
+
+        with gzip.open(args.out_bed_gz, 'at') as index_fobj:
+            cg_lines_iter = iter(cg_lines)
+            curr_cpg_line_list = next(cg_lines_iter)
+            for chh_index in chh_pos_strand_arr[0, ind_last_filled_row_chh_arr]:
+                chh_strand, chh_pos = chh_pos_strand_arr[chh_index]
+                if curr_cpg_line_list[1] < chh_pos:
+                    index_fobj.write('\t'.join(curr_cpg_line_list))
+                    while 1:
+                        curr_cpg_line_list = next(cg_lines_iter)
+                        if curr_cpg_line_list[1] < chh_pos:
+                            index_fobj.write('\t'.join(curr_cpg_line_list))
+                        else:
+                            break
+                else:
+                    index_fobj.write('\t'.join([chrom_str, str(chh_pos), str(chh_pos + 2),
+                                                'CHH', '.', '+' if chh_strand == 1 else '-',
+                                                '.', '.']))
+
+            for curr_cpg_line_list in cg_lines_iter:
+                index_fobj.write('\t'.join(curr_cpg_line_list))
 
 
 def find_motif(curr_base, up_1, up_2):
@@ -90,7 +111,7 @@ def find_motif(curr_base, up_1, up_2):
         return None
 
 
-def write_line(chrom, curr_cpg_pos, adjacent_chh_pos_per_strand, cg_index_fobj):
+def create_line_tuple(chrom, curr_cpg_pos, adjacent_chh_pos_per_strand):
     """ Write BED6+1 line for CG position with adjacent CHH positions
 
     The CHH positions are given as list of (strand, position) tuples,
@@ -106,9 +127,8 @@ def write_line(chrom, curr_cpg_pos, adjacent_chh_pos_per_strand, cg_index_fobj):
     csv_chh_pos_minus = ','.join(adjacent_chh_pos_per_strand['-'])
     if not csv_chh_pos_minus:
         csv_chh_pos_minus = '.'
-    print(chrom, curr_cpg_pos, curr_cpg_pos + 2, name, score, strand,
-          csv_chh_pos_plus, csv_chh_pos_minus,
-          sep='\t', end='\n', file=cg_index_fobj)
+    return (chrom, curr_cpg_pos, curr_cpg_pos + 2, name, score, strand,
+            csv_chh_pos_plus, csv_chh_pos_minus)
 
 
 def get_args():
@@ -163,7 +183,7 @@ def load_fasta(curr_chrom_fasta_abspath, prefix):
     """
 
     chrom_str = (prefix +
-                 re.search('chr(.+?)\.fa\.gz$', curr_chrom_fasta_abspath).group(1))
+                 re.search('chr(.+?)\.fa.*\.gz$', curr_chrom_fasta_abspath).group(1))
     with gzip.open(curr_chrom_fasta_abspath, 'rt') as chr_fobj:
         _header = next(chr_fobj)
         """
@@ -201,8 +221,7 @@ def get_motif_positions(chrom_seq, chh_pos_strand_arr, cpg_pos_arr):
             chh_pos_strand_arr[ind_last_filled_row_chh_arr + 1, :] = (1, chrom_pos)
             ind_last_filled_row_chh_arr += 1
         elif motif == 'DDG':
-            # TODO: it is not correct to adjust the position here
-            chh_pos_strand_arr[ind_last_filled_row_chh_arr + 1, :] = (0, chrom_pos + 2)
+            chh_pos_strand_arr[ind_last_filled_row_chh_arr + 1, :] = (0, chrom_pos)
             ind_last_filled_row_chh_arr += 1
 
     return chh_pos_strand_arr, cpg_pos_arr, ind_last_filled_row_chh_arr, ind_last_filled_cpg_arr

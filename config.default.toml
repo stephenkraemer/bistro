@@ -1,0 +1,16 @@
+[conversion error calling]
+  max_number_of_unconv_cytosines: 2
+
+[basic quality filtering]
+  min_mapq: 1,
+  min_phred_score: 1
+
+[trimming]
+  [trimming.minimal]
+    W_BC: [0, 110]
+    C_BC: [0, 110]
+    W_BC_Rv: [0, 110]
+    C_BC_Rv: [0, 110]
+
+[parallelization]
+  pos_per_process = 1000
