@@ -99,7 +99,10 @@ cdef inline make_bsseq_pileup_read(bam_pileup1_t * src,
 
     dest.meth_status_flag = IS_NA
     dest.bs_seq_strand_flag = dest._alignment._delegate.core.flag & MATE_AND_DIR_BITS
+    #TODO: _qpos may have incorrect value
     dest.observed_watson_base = dest._alignment.query_sequence[dest._qpos]
+    dest.baseq_at_pos = dest.alignment.query_qualities[dest._qpos]
+    dest.overlap_flag = 0
     return dest
 
 def pileups(PileupColumn pileup_column):

@@ -1,5 +1,5 @@
 import mqc
-import itertools
+import mqc.overlap
 
 """
 DEF IS_NA = 16
@@ -9,6 +9,11 @@ DEF IS_SNP = 2
 DEF IS_REF = 1
 """
 
+HAS_OVERLAP = 1
+BETTER_MATE_IN_OVERLAP = 2
+WORSE_MATE_IN_OVERLAP = 4
+
+
 def call_meth_at_pileup(motif_pileups, index_position: 'mqc.IndexPosition'):
     n_meth = 0
     n_unmeth = 0
@@ -16,7 +21,10 @@ def call_meth_at_pileup(motif_pileups, index_position: 'mqc.IndexPosition'):
     watson_motif_seq = index_position.watson_motif
     for motif_base, pileup_reads in zip(watson_motif_seq, motif_pileups):
         if motif_base in ['C', 'G']:
+            mqc.overlap.tag_overlaps(pileup_reads)
             for read in pileup_reads:
+                if read.overlap_flag & WORSE_MATE_IN_OVERLAP:
+                    continue
                 meth_status_flag = read.get_meth_status_at_pileup_pos(motif_base)
                 if meth_status_flag == 8:
                     n_meth += 1

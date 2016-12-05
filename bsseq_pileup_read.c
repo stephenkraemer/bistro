@@ -1015,6 +1015,8 @@ struct __pyx_obj_3mqc_17bsseq_pileup_read_BSSeqPileupRead {
   uint32_t bs_seq_strand_flag;
   uint32_t meth_status_flag;
   PyObject *observed_watson_base;
+  uint32_t baseq_at_pos;
+  uint32_t overlap_flag;
 };
 
 
@@ -1618,6 +1620,9 @@ static CYTHON_INLINE int resize_smart(arrayobject *self, Py_ssize_t n) {
 }
 #endif
 
+/* CIntFromPy.proto */
+static CYTHON_INLINE uint32_t __Pyx_PyInt_As_uint32_t(PyObject *);
+
 /* CIntToPy.proto */
 static CYTHON_INLINE PyObject* __Pyx_PyInt_From_long(long value);
 
@@ -1803,11 +1808,13 @@ static const char __pyx_k_x[] = "x";
 static const char __pyx_k_main[] = "__main__";
 static const char __pyx_k_test[] = "__test__";
 static const char __pyx_k_pileups[] = "pileups";
+static const char __pyx_k_alignment[] = "alignment";
 static const char __pyx_k_ValueError[] = "ValueError";
 static const char __pyx_k_pyx_vtable[] = "__pyx_vtable__";
 static const char __pyx_k_MemoryError[] = "MemoryError";
 static const char __pyx_k_pileup_column[] = "pileup_column";
 static const char __pyx_k_query_sequence[] = "query_sequence";
+static const char __pyx_k_query_qualities[] = "query_qualities";
 static const char __pyx_k_mqc_bsseq_pileup_read[] = "mqc.bsseq_pileup_read";
 static const char __pyx_k_get_meth_status_at_pileup_pos[] = "get_meth_status_at_pileup_pos";
 static const char __pyx_k_home_kraemers_projects_mqc_mqc[] = "/home/kraemers/projects/mqc/mqc/bsseq_pileup_read.pyx";
@@ -1820,6 +1827,7 @@ static PyObject *__pyx_n_s_N;
 static PyObject *__pyx_kp_s_PileupColumn_accessed_after_iter;
 static PyObject *__pyx_n_s_T;
 static PyObject *__pyx_n_s_ValueError;
+static PyObject *__pyx_n_s_alignment;
 static PyObject *__pyx_n_s_get_meth_status_at_pileup_pos;
 static PyObject *__pyx_kp_s_home_kraemers_projects_mqc_mqc;
 static PyObject *__pyx_n_s_main;
@@ -1827,12 +1835,17 @@ static PyObject *__pyx_n_s_mqc_bsseq_pileup_read;
 static PyObject *__pyx_n_s_pileup_column;
 static PyObject *__pyx_n_s_pileups;
 static PyObject *__pyx_n_s_pyx_vtable;
+static PyObject *__pyx_n_s_query_qualities;
 static PyObject *__pyx_n_s_query_sequence;
 static PyObject *__pyx_n_s_test;
 static PyObject *__pyx_n_s_x;
 static PyObject *__pyx_pf_3mqc_17bsseq_pileup_read_15BSSeqPileupRead_get_meth_status_at_pileup_pos(struct __pyx_obj_3mqc_17bsseq_pileup_read_BSSeqPileupRead *__pyx_v_self, PyObject *__pyx_v_watson_ref_base); /* proto */
 static PyObject *__pyx_pf_3mqc_17bsseq_pileup_read_15BSSeqPileupRead_16meth_status_flag___get__(struct __pyx_obj_3mqc_17bsseq_pileup_read_BSSeqPileupRead *__pyx_v_self); /* proto */
 static PyObject *__pyx_pf_3mqc_17bsseq_pileup_read_15BSSeqPileupRead_20observed_watson_base___get__(struct __pyx_obj_3mqc_17bsseq_pileup_read_BSSeqPileupRead *__pyx_v_self); /* proto */
+static PyObject *__pyx_pf_3mqc_17bsseq_pileup_read_15BSSeqPileupRead_12baseq_at_pos___get__(struct __pyx_obj_3mqc_17bsseq_pileup_read_BSSeqPileupRead *__pyx_v_self); /* proto */
+static int __pyx_pf_3mqc_17bsseq_pileup_read_15BSSeqPileupRead_12baseq_at_pos_2__set__(struct __pyx_obj_3mqc_17bsseq_pileup_read_BSSeqPileupRead *__pyx_v_self, PyObject *__pyx_v_value); /* proto */
+static PyObject *__pyx_pf_3mqc_17bsseq_pileup_read_15BSSeqPileupRead_12overlap_flag___get__(struct __pyx_obj_3mqc_17bsseq_pileup_read_BSSeqPileupRead *__pyx_v_self); /* proto */
+static int __pyx_pf_3mqc_17bsseq_pileup_read_15BSSeqPileupRead_12overlap_flag_2__set__(struct __pyx_obj_3mqc_17bsseq_pileup_read_BSSeqPileupRead *__pyx_v_self, PyObject *__pyx_v_value); /* proto */
 static PyObject *__pyx_pf_3mqc_17bsseq_pileup_read_pileups(CYTHON_UNUSED PyObject *__pyx_self, struct __pyx_obj_5pysam_18libcalignedsegment_PileupColumn *__pyx_v_pileup_column); /* proto */
 static int __pyx_pf_7cpython_5array_5array___getbuffer__(arrayobject *__pyx_v_self, Py_buffer *__pyx_v_info, CYTHON_UNUSED int __pyx_v_flags); /* proto */
 static void __pyx_pf_7cpython_5array_5array_2__releasebuffer__(CYTHON_UNUSED arrayobject *__pyx_v_self, Py_buffer *__pyx_v_info); /* proto */
@@ -2165,7 +2178,7 @@ static PyObject *__pyx_pf_3mqc_17bsseq_pileup_read_15BSSeqPileupRead_16meth_stat
  *     cdef readonly uint32_t meth_status_flag
  *     cdef readonly str observed_watson_base             # <<<<<<<<<<<<<<
  *     cpdef get_meth_status_at_pileup_pos(self, str watson_ref_base)
- * 
+ *     # TODO: type correct?
  */
 
 /* Python wrapper */
@@ -2193,6 +2206,158 @@ static PyObject *__pyx_pf_3mqc_17bsseq_pileup_read_15BSSeqPileupRead_20observed_
   /* function exit code */
   __pyx_L0:;
   __Pyx_XGIVEREF(__pyx_r);
+  __Pyx_RefNannyFinishContext();
+  return __pyx_r;
+}
+
+/* "mqc/bsseq_pileup_read.pxd":11
+ *     cpdef get_meth_status_at_pileup_pos(self, str watson_ref_base)
+ *     # TODO: type correct?
+ *     cdef public uint32_t baseq_at_pos             # <<<<<<<<<<<<<<
+ *     cdef public uint32_t overlap_flag
+ * 
+ */
+
+/* Python wrapper */
+static PyObject *__pyx_pw_3mqc_17bsseq_pileup_read_15BSSeqPileupRead_12baseq_at_pos_1__get__(PyObject *__pyx_v_self); /*proto*/
+static PyObject *__pyx_pw_3mqc_17bsseq_pileup_read_15BSSeqPileupRead_12baseq_at_pos_1__get__(PyObject *__pyx_v_self) {
+  PyObject *__pyx_r = 0;
+  __Pyx_RefNannyDeclarations
+  __Pyx_RefNannySetupContext("__get__ (wrapper)", 0);
+  __pyx_r = __pyx_pf_3mqc_17bsseq_pileup_read_15BSSeqPileupRead_12baseq_at_pos___get__(((struct __pyx_obj_3mqc_17bsseq_pileup_read_BSSeqPileupRead *)__pyx_v_self));
+
+  /* function exit code */
+  __Pyx_RefNannyFinishContext();
+  return __pyx_r;
+}
+
+static PyObject *__pyx_pf_3mqc_17bsseq_pileup_read_15BSSeqPileupRead_12baseq_at_pos___get__(struct __pyx_obj_3mqc_17bsseq_pileup_read_BSSeqPileupRead *__pyx_v_self) {
+  PyObject *__pyx_r = NULL;
+  __Pyx_RefNannyDeclarations
+  PyObject *__pyx_t_1 = NULL;
+  __Pyx_RefNannySetupContext("__get__", 0);
+  __Pyx_XDECREF(__pyx_r);
+  __pyx_t_1 = __Pyx_PyInt_From_uint32_t(__pyx_v_self->baseq_at_pos); if (unlikely(!__pyx_t_1)) __PYX_ERR(1, 11, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_t_1);
+  __pyx_r = __pyx_t_1;
+  __pyx_t_1 = 0;
+  goto __pyx_L0;
+
+  /* function exit code */
+  __pyx_L1_error:;
+  __Pyx_XDECREF(__pyx_t_1);
+  __Pyx_AddTraceback("mqc.bsseq_pileup_read.BSSeqPileupRead.baseq_at_pos.__get__", __pyx_clineno, __pyx_lineno, __pyx_filename);
+  __pyx_r = NULL;
+  __pyx_L0:;
+  __Pyx_XGIVEREF(__pyx_r);
+  __Pyx_RefNannyFinishContext();
+  return __pyx_r;
+}
+
+/* Python wrapper */
+static int __pyx_pw_3mqc_17bsseq_pileup_read_15BSSeqPileupRead_12baseq_at_pos_3__set__(PyObject *__pyx_v_self, PyObject *__pyx_v_value); /*proto*/
+static int __pyx_pw_3mqc_17bsseq_pileup_read_15BSSeqPileupRead_12baseq_at_pos_3__set__(PyObject *__pyx_v_self, PyObject *__pyx_v_value) {
+  int __pyx_r;
+  __Pyx_RefNannyDeclarations
+  __Pyx_RefNannySetupContext("__set__ (wrapper)", 0);
+  __pyx_r = __pyx_pf_3mqc_17bsseq_pileup_read_15BSSeqPileupRead_12baseq_at_pos_2__set__(((struct __pyx_obj_3mqc_17bsseq_pileup_read_BSSeqPileupRead *)__pyx_v_self), ((PyObject *)__pyx_v_value));
+
+  /* function exit code */
+  __Pyx_RefNannyFinishContext();
+  return __pyx_r;
+}
+
+static int __pyx_pf_3mqc_17bsseq_pileup_read_15BSSeqPileupRead_12baseq_at_pos_2__set__(struct __pyx_obj_3mqc_17bsseq_pileup_read_BSSeqPileupRead *__pyx_v_self, PyObject *__pyx_v_value) {
+  int __pyx_r;
+  __Pyx_RefNannyDeclarations
+  uint32_t __pyx_t_1;
+  __Pyx_RefNannySetupContext("__set__", 0);
+  __pyx_t_1 = __Pyx_PyInt_As_uint32_t(__pyx_v_value); if (unlikely((__pyx_t_1 == (uint32_t)-1) && PyErr_Occurred())) __PYX_ERR(1, 11, __pyx_L1_error)
+  __pyx_v_self->baseq_at_pos = __pyx_t_1;
+
+  /* function exit code */
+  __pyx_r = 0;
+  goto __pyx_L0;
+  __pyx_L1_error:;
+  __Pyx_AddTraceback("mqc.bsseq_pileup_read.BSSeqPileupRead.baseq_at_pos.__set__", __pyx_clineno, __pyx_lineno, __pyx_filename);
+  __pyx_r = -1;
+  __pyx_L0:;
+  __Pyx_RefNannyFinishContext();
+  return __pyx_r;
+}
+
+/* "mqc/bsseq_pileup_read.pxd":12
+ *     # TODO: type correct?
+ *     cdef public uint32_t baseq_at_pos
+ *     cdef public uint32_t overlap_flag             # <<<<<<<<<<<<<<
+ * 
+ * 
+ */
+
+/* Python wrapper */
+static PyObject *__pyx_pw_3mqc_17bsseq_pileup_read_15BSSeqPileupRead_12overlap_flag_1__get__(PyObject *__pyx_v_self); /*proto*/
+static PyObject *__pyx_pw_3mqc_17bsseq_pileup_read_15BSSeqPileupRead_12overlap_flag_1__get__(PyObject *__pyx_v_self) {
+  PyObject *__pyx_r = 0;
+  __Pyx_RefNannyDeclarations
+  __Pyx_RefNannySetupContext("__get__ (wrapper)", 0);
+  __pyx_r = __pyx_pf_3mqc_17bsseq_pileup_read_15BSSeqPileupRead_12overlap_flag___get__(((struct __pyx_obj_3mqc_17bsseq_pileup_read_BSSeqPileupRead *)__pyx_v_self));
+
+  /* function exit code */
+  __Pyx_RefNannyFinishContext();
+  return __pyx_r;
+}
+
+static PyObject *__pyx_pf_3mqc_17bsseq_pileup_read_15BSSeqPileupRead_12overlap_flag___get__(struct __pyx_obj_3mqc_17bsseq_pileup_read_BSSeqPileupRead *__pyx_v_self) {
+  PyObject *__pyx_r = NULL;
+  __Pyx_RefNannyDeclarations
+  PyObject *__pyx_t_1 = NULL;
+  __Pyx_RefNannySetupContext("__get__", 0);
+  __Pyx_XDECREF(__pyx_r);
+  __pyx_t_1 = __Pyx_PyInt_From_uint32_t(__pyx_v_self->overlap_flag); if (unlikely(!__pyx_t_1)) __PYX_ERR(1, 12, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_t_1);
+  __pyx_r = __pyx_t_1;
+  __pyx_t_1 = 0;
+  goto __pyx_L0;
+
+  /* function exit code */
+  __pyx_L1_error:;
+  __Pyx_XDECREF(__pyx_t_1);
+  __Pyx_AddTraceback("mqc.bsseq_pileup_read.BSSeqPileupRead.overlap_flag.__get__", __pyx_clineno, __pyx_lineno, __pyx_filename);
+  __pyx_r = NULL;
+  __pyx_L0:;
+  __Pyx_XGIVEREF(__pyx_r);
+  __Pyx_RefNannyFinishContext();
+  return __pyx_r;
+}
+
+/* Python wrapper */
+static int __pyx_pw_3mqc_17bsseq_pileup_read_15BSSeqPileupRead_12overlap_flag_3__set__(PyObject *__pyx_v_self, PyObject *__pyx_v_value); /*proto*/
+static int __pyx_pw_3mqc_17bsseq_pileup_read_15BSSeqPileupRead_12overlap_flag_3__set__(PyObject *__pyx_v_self, PyObject *__pyx_v_value) {
+  int __pyx_r;
+  __Pyx_RefNannyDeclarations
+  __Pyx_RefNannySetupContext("__set__ (wrapper)", 0);
+  __pyx_r = __pyx_pf_3mqc_17bsseq_pileup_read_15BSSeqPileupRead_12overlap_flag_2__set__(((struct __pyx_obj_3mqc_17bsseq_pileup_read_BSSeqPileupRead *)__pyx_v_self), ((PyObject *)__pyx_v_value));
+
+  /* function exit code */
+  __Pyx_RefNannyFinishContext();
+  return __pyx_r;
+}
+
+static int __pyx_pf_3mqc_17bsseq_pileup_read_15BSSeqPileupRead_12overlap_flag_2__set__(struct __pyx_obj_3mqc_17bsseq_pileup_read_BSSeqPileupRead *__pyx_v_self, PyObject *__pyx_v_value) {
+  int __pyx_r;
+  __Pyx_RefNannyDeclarations
+  uint32_t __pyx_t_1;
+  __Pyx_RefNannySetupContext("__set__", 0);
+  __pyx_t_1 = __Pyx_PyInt_As_uint32_t(__pyx_v_value); if (unlikely((__pyx_t_1 == (uint32_t)-1) && PyErr_Occurred())) __PYX_ERR(1, 12, __pyx_L1_error)
+  __pyx_v_self->overlap_flag = __pyx_t_1;
+
+  /* function exit code */
+  __pyx_r = 0;
+  goto __pyx_L0;
+  __pyx_L1_error:;
+  __Pyx_AddTraceback("mqc.bsseq_pileup_read.BSSeqPileupRead.overlap_flag.__set__", __pyx_clineno, __pyx_lineno, __pyx_filename);
+  __pyx_r = -1;
+  __pyx_L0:;
   __Pyx_RefNannyFinishContext();
   return __pyx_r;
 }
@@ -2320,7 +2485,7 @@ static CYTHON_INLINE PyObject *__pyx_f_3mqc_17bsseq_pileup_read_make_bsseq_pileu
  * 
  *     dest.meth_status_flag = IS_NA             # <<<<<<<<<<<<<<
  *     dest.bs_seq_strand_flag = dest._alignment._delegate.core.flag & MATE_AND_DIR_BITS
- *     dest.observed_watson_base = dest._alignment.query_sequence[dest._qpos]
+ *     #TODO: _qpos may have incorrect value
  */
   __pyx_v_dest->meth_status_flag = 16;
 
@@ -2328,33 +2493,61 @@ static CYTHON_INLINE PyObject *__pyx_f_3mqc_17bsseq_pileup_read_make_bsseq_pileu
  * 
  *     dest.meth_status_flag = IS_NA
  *     dest.bs_seq_strand_flag = dest._alignment._delegate.core.flag & MATE_AND_DIR_BITS             # <<<<<<<<<<<<<<
+ *     #TODO: _qpos may have incorrect value
  *     dest.observed_watson_base = dest._alignment.query_sequence[dest._qpos]
- *     return dest
  */
   __pyx_v_dest->bs_seq_strand_flag = (__pyx_v_dest->__pyx_base._alignment->_delegate->core.flag & 0xF0);
 
-  /* "mqc/bsseq_pileup_read.pyx":102
- *     dest.meth_status_flag = IS_NA
+  /* "mqc/bsseq_pileup_read.pyx":103
  *     dest.bs_seq_strand_flag = dest._alignment._delegate.core.flag & MATE_AND_DIR_BITS
+ *     #TODO: _qpos may have incorrect value
  *     dest.observed_watson_base = dest._alignment.query_sequence[dest._qpos]             # <<<<<<<<<<<<<<
- *     return dest
- * 
+ *     dest.baseq_at_pos = dest.alignment.query_qualities[dest._qpos]
+ *     dest.overlap_flag = 0
  */
-  __pyx_t_1 = __Pyx_PyObject_GetAttrStr(((PyObject *)__pyx_v_dest->__pyx_base._alignment), __pyx_n_s_query_sequence); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 102, __pyx_L1_error)
+  __pyx_t_1 = __Pyx_PyObject_GetAttrStr(((PyObject *)__pyx_v_dest->__pyx_base._alignment), __pyx_n_s_query_sequence); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 103, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_1);
-  __pyx_t_5 = __Pyx_GetItemInt(__pyx_t_1, __pyx_v_dest->__pyx_base._qpos, int32_t, 1, __Pyx_PyInt_From_int32_t, 0, 1, 1); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 102, __pyx_L1_error)
+  __pyx_t_5 = __Pyx_GetItemInt(__pyx_t_1, __pyx_v_dest->__pyx_base._qpos, int32_t, 1, __Pyx_PyInt_From_int32_t, 0, 1, 1); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 103, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_5);
   __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
-  if (!(likely(PyString_CheckExact(__pyx_t_5))||((__pyx_t_5) == Py_None)||(PyErr_Format(PyExc_TypeError, "Expected %.16s, got %.200s", "str", Py_TYPE(__pyx_t_5)->tp_name), 0))) __PYX_ERR(0, 102, __pyx_L1_error)
+  if (!(likely(PyString_CheckExact(__pyx_t_5))||((__pyx_t_5) == Py_None)||(PyErr_Format(PyExc_TypeError, "Expected %.16s, got %.200s", "str", Py_TYPE(__pyx_t_5)->tp_name), 0))) __PYX_ERR(0, 103, __pyx_L1_error)
   __Pyx_GIVEREF(__pyx_t_5);
   __Pyx_GOTREF(__pyx_v_dest->observed_watson_base);
   __Pyx_DECREF(__pyx_v_dest->observed_watson_base);
   __pyx_v_dest->observed_watson_base = ((PyObject*)__pyx_t_5);
   __pyx_t_5 = 0;
 
-  /* "mqc/bsseq_pileup_read.pyx":103
- *     dest.bs_seq_strand_flag = dest._alignment._delegate.core.flag & MATE_AND_DIR_BITS
+  /* "mqc/bsseq_pileup_read.pyx":104
+ *     #TODO: _qpos may have incorrect value
  *     dest.observed_watson_base = dest._alignment.query_sequence[dest._qpos]
+ *     dest.baseq_at_pos = dest.alignment.query_qualities[dest._qpos]             # <<<<<<<<<<<<<<
+ *     dest.overlap_flag = 0
+ *     return dest
+ */
+  __pyx_t_5 = __Pyx_PyObject_GetAttrStr(((PyObject *)__pyx_v_dest), __pyx_n_s_alignment); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 104, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_t_5);
+  __pyx_t_1 = __Pyx_PyObject_GetAttrStr(__pyx_t_5, __pyx_n_s_query_qualities); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 104, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_t_1);
+  __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
+  __pyx_t_5 = __Pyx_GetItemInt(__pyx_t_1, __pyx_v_dest->__pyx_base._qpos, int32_t, 1, __Pyx_PyInt_From_int32_t, 0, 1, 1); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 104, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_t_5);
+  __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
+  __pyx_t_4 = __Pyx_PyInt_As_uint32_t(__pyx_t_5); if (unlikely((__pyx_t_4 == (uint32_t)-1) && PyErr_Occurred())) __PYX_ERR(0, 104, __pyx_L1_error)
+  __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
+  __pyx_v_dest->baseq_at_pos = __pyx_t_4;
+
+  /* "mqc/bsseq_pileup_read.pyx":105
+ *     dest.observed_watson_base = dest._alignment.query_sequence[dest._qpos]
+ *     dest.baseq_at_pos = dest.alignment.query_qualities[dest._qpos]
+ *     dest.overlap_flag = 0             # <<<<<<<<<<<<<<
+ *     return dest
+ * 
+ */
+  __pyx_v_dest->overlap_flag = 0;
+
+  /* "mqc/bsseq_pileup_read.pyx":106
+ *     dest.baseq_at_pos = dest.alignment.query_qualities[dest._qpos]
+ *     dest.overlap_flag = 0
  *     return dest             # <<<<<<<<<<<<<<
  * 
  * def pileups(PileupColumn pileup_column):
@@ -2385,7 +2578,7 @@ static CYTHON_INLINE PyObject *__pyx_f_3mqc_17bsseq_pileup_read_make_bsseq_pileu
   return __pyx_r;
 }
 
-/* "mqc/bsseq_pileup_read.pyx":105
+/* "mqc/bsseq_pileup_read.pyx":108
  *     return dest
  * 
  * def pileups(PileupColumn pileup_column):             # <<<<<<<<<<<<<<
@@ -2400,7 +2593,7 @@ static PyObject *__pyx_pw_3mqc_17bsseq_pileup_read_1pileups(PyObject *__pyx_self
   PyObject *__pyx_r = 0;
   __Pyx_RefNannyDeclarations
   __Pyx_RefNannySetupContext("pileups (wrapper)", 0);
-  if (unlikely(!__Pyx_ArgTypeTest(((PyObject *)__pyx_v_pileup_column), __pyx_ptype_5pysam_18libcalignedsegment_PileupColumn, 1, "pileup_column", 0))) __PYX_ERR(0, 105, __pyx_L1_error)
+  if (unlikely(!__Pyx_ArgTypeTest(((PyObject *)__pyx_v_pileup_column), __pyx_ptype_5pysam_18libcalignedsegment_PileupColumn, 1, "pileup_column", 0))) __PYX_ERR(0, 108, __pyx_L1_error)
   __pyx_r = __pyx_pf_3mqc_17bsseq_pileup_read_pileups(__pyx_self, ((struct __pyx_obj_5pysam_18libcalignedsegment_PileupColumn *)__pyx_v_pileup_column));
 
   /* function exit code */
@@ -2425,19 +2618,19 @@ static PyObject *__pyx_pf_3mqc_17bsseq_pileup_read_pileups(CYTHON_UNUSED PyObjec
   int __pyx_t_6;
   __Pyx_RefNannySetupContext("pileups", 0);
 
-  /* "mqc/bsseq_pileup_read.pyx":106
+  /* "mqc/bsseq_pileup_read.pyx":109
  * 
  * def pileups(PileupColumn pileup_column):
  *     pileups = []             # <<<<<<<<<<<<<<
  * 
  *     if pileup_column.plp == NULL or pileup_column.plp[0] == NULL:
  */
-  __pyx_t_1 = PyList_New(0); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 106, __pyx_L1_error)
+  __pyx_t_1 = PyList_New(0); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 109, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_1);
   __pyx_v_pileups = ((PyObject*)__pyx_t_1);
   __pyx_t_1 = 0;
 
-  /* "mqc/bsseq_pileup_read.pyx":108
+  /* "mqc/bsseq_pileup_read.pyx":111
  *     pileups = []
  * 
  *     if pileup_column.plp == NULL or pileup_column.plp[0] == NULL:             # <<<<<<<<<<<<<<
@@ -2455,20 +2648,20 @@ static PyObject *__pyx_pf_3mqc_17bsseq_pileup_read_pileups(CYTHON_UNUSED PyObjec
   __pyx_L4_bool_binop_done:;
   if (__pyx_t_2) {
 
-    /* "mqc/bsseq_pileup_read.pyx":109
+    /* "mqc/bsseq_pileup_read.pyx":112
  * 
  *     if pileup_column.plp == NULL or pileup_column.plp[0] == NULL:
  *         raise ValueError("PileupColumn accessed after iterator finished")             # <<<<<<<<<<<<<<
  * 
  *     # TODO: warning: there could be problems if pileup_column.n and self.buf are
  */
-    __pyx_t_1 = __Pyx_PyObject_Call(__pyx_builtin_ValueError, __pyx_tuple_, NULL); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 109, __pyx_L1_error)
+    __pyx_t_1 = __Pyx_PyObject_Call(__pyx_builtin_ValueError, __pyx_tuple_, NULL); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 112, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_1);
     __Pyx_Raise(__pyx_t_1, 0, 0, 0);
     __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
-    __PYX_ERR(0, 109, __pyx_L1_error)
+    __PYX_ERR(0, 112, __pyx_L1_error)
 
-    /* "mqc/bsseq_pileup_read.pyx":108
+    /* "mqc/bsseq_pileup_read.pyx":111
  *     pileups = []
  * 
  *     if pileup_column.plp == NULL or pileup_column.plp[0] == NULL:             # <<<<<<<<<<<<<<
@@ -2477,7 +2670,7 @@ static PyObject *__pyx_pf_3mqc_17bsseq_pileup_read_pileups(CYTHON_UNUSED PyObjec
  */
   }
 
-  /* "mqc/bsseq_pileup_read.pyx":114
+  /* "mqc/bsseq_pileup_read.pyx":117
  *     # out of sync.
  *     cdef int x
  *     for x from 0 <= x < pileup_column.n_pu:             # <<<<<<<<<<<<<<
@@ -2487,7 +2680,7 @@ static PyObject *__pyx_pf_3mqc_17bsseq_pileup_read_pileups(CYTHON_UNUSED PyObjec
   __pyx_t_4 = __pyx_v_pileup_column->n_pu;
   for (__pyx_v_x = 0; __pyx_v_x < __pyx_t_4; __pyx_v_x++) {
 
-    /* "mqc/bsseq_pileup_read.pyx":116
+    /* "mqc/bsseq_pileup_read.pyx":119
  *     for x from 0 <= x < pileup_column.n_pu:
  *         pileups.append(make_bsseq_pileup_read(&(pileup_column.plp[0][x]),
  *                                               pileup_column._alignment_file))             # <<<<<<<<<<<<<<
@@ -2496,21 +2689,21 @@ static PyObject *__pyx_pf_3mqc_17bsseq_pileup_read_pileups(CYTHON_UNUSED PyObjec
     __pyx_t_1 = ((PyObject *)__pyx_v_pileup_column->_alignment_file);
     __Pyx_INCREF(__pyx_t_1);
 
-    /* "mqc/bsseq_pileup_read.pyx":115
+    /* "mqc/bsseq_pileup_read.pyx":118
  *     cdef int x
  *     for x from 0 <= x < pileup_column.n_pu:
  *         pileups.append(make_bsseq_pileup_read(&(pileup_column.plp[0][x]),             # <<<<<<<<<<<<<<
  *                                               pileup_column._alignment_file))
  *     return pileups
  */
-    __pyx_t_5 = __pyx_f_3mqc_17bsseq_pileup_read_make_bsseq_pileup_read((&((__pyx_v_pileup_column->plp[0])[__pyx_v_x])), ((struct __pyx_obj_5pysam_17libcalignmentfile_AlignmentFile *)__pyx_t_1)); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 115, __pyx_L1_error)
+    __pyx_t_5 = __pyx_f_3mqc_17bsseq_pileup_read_make_bsseq_pileup_read((&((__pyx_v_pileup_column->plp[0])[__pyx_v_x])), ((struct __pyx_obj_5pysam_17libcalignmentfile_AlignmentFile *)__pyx_t_1)); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 118, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_5);
     __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
-    __pyx_t_6 = __Pyx_PyList_Append(__pyx_v_pileups, __pyx_t_5); if (unlikely(__pyx_t_6 == -1)) __PYX_ERR(0, 115, __pyx_L1_error)
+    __pyx_t_6 = __Pyx_PyList_Append(__pyx_v_pileups, __pyx_t_5); if (unlikely(__pyx_t_6 == -1)) __PYX_ERR(0, 118, __pyx_L1_error)
     __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
   }
 
-  /* "mqc/bsseq_pileup_read.pyx":117
+  /* "mqc/bsseq_pileup_read.pyx":120
  *         pileups.append(make_bsseq_pileup_read(&(pileup_column.plp[0][x]),
  *                                               pileup_column._alignment_file))
  *     return pileups             # <<<<<<<<<<<<<<
@@ -2520,7 +2713,7 @@ static PyObject *__pyx_pf_3mqc_17bsseq_pileup_read_pileups(CYTHON_UNUSED PyObjec
   __pyx_r = __pyx_v_pileups;
   goto __pyx_L0;
 
-  /* "mqc/bsseq_pileup_read.pyx":105
+  /* "mqc/bsseq_pileup_read.pyx":108
  *     return dest
  * 
  * def pileups(PileupColumn pileup_column):             # <<<<<<<<<<<<<<
@@ -3218,6 +3411,34 @@ static PyObject *__pyx_getprop_3mqc_17bsseq_pileup_read_15BSSeqPileupRead_observ
   return __pyx_pw_3mqc_17bsseq_pileup_read_15BSSeqPileupRead_20observed_watson_base_1__get__(o);
 }
 
+static PyObject *__pyx_getprop_3mqc_17bsseq_pileup_read_15BSSeqPileupRead_baseq_at_pos(PyObject *o, CYTHON_UNUSED void *x) {
+  return __pyx_pw_3mqc_17bsseq_pileup_read_15BSSeqPileupRead_12baseq_at_pos_1__get__(o);
+}
+
+static int __pyx_setprop_3mqc_17bsseq_pileup_read_15BSSeqPileupRead_baseq_at_pos(PyObject *o, PyObject *v, CYTHON_UNUSED void *x) {
+  if (v) {
+    return __pyx_pw_3mqc_17bsseq_pileup_read_15BSSeqPileupRead_12baseq_at_pos_3__set__(o, v);
+  }
+  else {
+    PyErr_SetString(PyExc_NotImplementedError, "__del__");
+    return -1;
+  }
+}
+
+static PyObject *__pyx_getprop_3mqc_17bsseq_pileup_read_15BSSeqPileupRead_overlap_flag(PyObject *o, CYTHON_UNUSED void *x) {
+  return __pyx_pw_3mqc_17bsseq_pileup_read_15BSSeqPileupRead_12overlap_flag_1__get__(o);
+}
+
+static int __pyx_setprop_3mqc_17bsseq_pileup_read_15BSSeqPileupRead_overlap_flag(PyObject *o, PyObject *v, CYTHON_UNUSED void *x) {
+  if (v) {
+    return __pyx_pw_3mqc_17bsseq_pileup_read_15BSSeqPileupRead_12overlap_flag_3__set__(o, v);
+  }
+  else {
+    PyErr_SetString(PyExc_NotImplementedError, "__del__");
+    return -1;
+  }
+}
+
 static PyMethodDef __pyx_methods_3mqc_17bsseq_pileup_read_BSSeqPileupRead[] = {
   {"get_meth_status_at_pileup_pos", (PyCFunction)__pyx_pw_3mqc_17bsseq_pileup_read_15BSSeqPileupRead_1get_meth_status_at_pileup_pos, METH_O, 0},
   {0, 0, 0, 0}
@@ -3226,6 +3447,8 @@ static PyMethodDef __pyx_methods_3mqc_17bsseq_pileup_read_BSSeqPileupRead[] = {
 static struct PyGetSetDef __pyx_getsets_3mqc_17bsseq_pileup_read_BSSeqPileupRead[] = {
   {(char *)"meth_status_flag", __pyx_getprop_3mqc_17bsseq_pileup_read_15BSSeqPileupRead_meth_status_flag, 0, (char *)0, 0},
   {(char *)"observed_watson_base", __pyx_getprop_3mqc_17bsseq_pileup_read_15BSSeqPileupRead_observed_watson_base, 0, (char *)0, 0},
+  {(char *)"baseq_at_pos", __pyx_getprop_3mqc_17bsseq_pileup_read_15BSSeqPileupRead_baseq_at_pos, __pyx_setprop_3mqc_17bsseq_pileup_read_15BSSeqPileupRead_baseq_at_pos, (char *)0, 0},
+  {(char *)"overlap_flag", __pyx_getprop_3mqc_17bsseq_pileup_read_15BSSeqPileupRead_overlap_flag, __pyx_setprop_3mqc_17bsseq_pileup_read_15BSSeqPileupRead_overlap_flag, (char *)0, 0},
   {0, 0, 0, 0, 0}
 };
 
@@ -3318,6 +3541,7 @@ static __Pyx_StringTabEntry __pyx_string_tab[] = {
   {&__pyx_kp_s_PileupColumn_accessed_after_iter, __pyx_k_PileupColumn_accessed_after_iter, sizeof(__pyx_k_PileupColumn_accessed_after_iter), 0, 0, 1, 0},
   {&__pyx_n_s_T, __pyx_k_T, sizeof(__pyx_k_T), 0, 0, 1, 1},
   {&__pyx_n_s_ValueError, __pyx_k_ValueError, sizeof(__pyx_k_ValueError), 0, 0, 1, 1},
+  {&__pyx_n_s_alignment, __pyx_k_alignment, sizeof(__pyx_k_alignment), 0, 0, 1, 1},
   {&__pyx_n_s_get_meth_status_at_pileup_pos, __pyx_k_get_meth_status_at_pileup_pos, sizeof(__pyx_k_get_meth_status_at_pileup_pos), 0, 0, 1, 1},
   {&__pyx_kp_s_home_kraemers_projects_mqc_mqc, __pyx_k_home_kraemers_projects_mqc_mqc, sizeof(__pyx_k_home_kraemers_projects_mqc_mqc), 0, 0, 1, 0},
   {&__pyx_n_s_main, __pyx_k_main, sizeof(__pyx_k_main), 0, 0, 1, 1},
@@ -3325,13 +3549,14 @@ static __Pyx_StringTabEntry __pyx_string_tab[] = {
   {&__pyx_n_s_pileup_column, __pyx_k_pileup_column, sizeof(__pyx_k_pileup_column), 0, 0, 1, 1},
   {&__pyx_n_s_pileups, __pyx_k_pileups, sizeof(__pyx_k_pileups), 0, 0, 1, 1},
   {&__pyx_n_s_pyx_vtable, __pyx_k_pyx_vtable, sizeof(__pyx_k_pyx_vtable), 0, 0, 1, 1},
+  {&__pyx_n_s_query_qualities, __pyx_k_query_qualities, sizeof(__pyx_k_query_qualities), 0, 0, 1, 1},
   {&__pyx_n_s_query_sequence, __pyx_k_query_sequence, sizeof(__pyx_k_query_sequence), 0, 0, 1, 1},
   {&__pyx_n_s_test, __pyx_k_test, sizeof(__pyx_k_test), 0, 0, 1, 1},
   {&__pyx_n_s_x, __pyx_k_x, sizeof(__pyx_k_x), 0, 0, 1, 1},
   {0, 0, 0, 0, 0, 0, 0}
 };
 static int __Pyx_InitCachedBuiltins(void) {
-  __pyx_builtin_ValueError = __Pyx_GetBuiltinName(__pyx_n_s_ValueError); if (!__pyx_builtin_ValueError) __PYX_ERR(0, 109, __pyx_L1_error)
+  __pyx_builtin_ValueError = __Pyx_GetBuiltinName(__pyx_n_s_ValueError); if (!__pyx_builtin_ValueError) __PYX_ERR(0, 112, __pyx_L1_error)
   __pyx_builtin_MemoryError = __Pyx_GetBuiltinName(__pyx_n_s_MemoryError); if (!__pyx_builtin_MemoryError) __PYX_ERR(2, 107, __pyx_L1_error)
   return 0;
   __pyx_L1_error:;
@@ -3342,28 +3567,28 @@ static int __Pyx_InitCachedConstants(void) {
   __Pyx_RefNannyDeclarations
   __Pyx_RefNannySetupContext("__Pyx_InitCachedConstants", 0);
 
-  /* "mqc/bsseq_pileup_read.pyx":109
+  /* "mqc/bsseq_pileup_read.pyx":112
  * 
  *     if pileup_column.plp == NULL or pileup_column.plp[0] == NULL:
  *         raise ValueError("PileupColumn accessed after iterator finished")             # <<<<<<<<<<<<<<
  * 
  *     # TODO: warning: there could be problems if pileup_column.n and self.buf are
  */
-  __pyx_tuple_ = PyTuple_Pack(1, __pyx_kp_s_PileupColumn_accessed_after_iter); if (unlikely(!__pyx_tuple_)) __PYX_ERR(0, 109, __pyx_L1_error)
+  __pyx_tuple_ = PyTuple_Pack(1, __pyx_kp_s_PileupColumn_accessed_after_iter); if (unlikely(!__pyx_tuple_)) __PYX_ERR(0, 112, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_tuple_);
   __Pyx_GIVEREF(__pyx_tuple_);
 
-  /* "mqc/bsseq_pileup_read.pyx":105
+  /* "mqc/bsseq_pileup_read.pyx":108
  *     return dest
  * 
  * def pileups(PileupColumn pileup_column):             # <<<<<<<<<<<<<<
  *     pileups = []
  * 
  */
-  __pyx_tuple__2 = PyTuple_Pack(3, __pyx_n_s_pileup_column, __pyx_n_s_pileups, __pyx_n_s_x); if (unlikely(!__pyx_tuple__2)) __PYX_ERR(0, 105, __pyx_L1_error)
+  __pyx_tuple__2 = PyTuple_Pack(3, __pyx_n_s_pileup_column, __pyx_n_s_pileups, __pyx_n_s_x); if (unlikely(!__pyx_tuple__2)) __PYX_ERR(0, 108, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_tuple__2);
   __Pyx_GIVEREF(__pyx_tuple__2);
-  __pyx_codeobj__3 = (PyObject*)__Pyx_PyCode_New(1, 0, 3, 0, 0, __pyx_empty_bytes, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_tuple__2, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_kp_s_home_kraemers_projects_mqc_mqc, __pyx_n_s_pileups, 105, __pyx_empty_bytes); if (unlikely(!__pyx_codeobj__3)) __PYX_ERR(0, 105, __pyx_L1_error)
+  __pyx_codeobj__3 = (PyObject*)__Pyx_PyCode_New(1, 0, 3, 0, 0, __pyx_empty_bytes, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_tuple__2, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_kp_s_home_kraemers_projects_mqc_mqc, __pyx_n_s_pileups, 108, __pyx_empty_bytes); if (unlikely(!__pyx_codeobj__3)) __PYX_ERR(0, 108, __pyx_L1_error)
   __Pyx_RefNannyFinishContext();
   return 0;
   __pyx_L1_error:;
@@ -3700,16 +3925,16 @@ PyMODINIT_FUNC PyInit_bsseq_pileup_read(void)
   __Pyx_GIVEREF(__pyx_t_2);
   __pyx_t_2 = 0;
 
-  /* "mqc/bsseq_pileup_read.pyx":105
+  /* "mqc/bsseq_pileup_read.pyx":108
  *     return dest
  * 
  * def pileups(PileupColumn pileup_column):             # <<<<<<<<<<<<<<
  *     pileups = []
  * 
  */
-  __pyx_t_2 = PyCFunction_NewEx(&__pyx_mdef_3mqc_17bsseq_pileup_read_1pileups, NULL, __pyx_n_s_mqc_bsseq_pileup_read); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 105, __pyx_L1_error)
+  __pyx_t_2 = PyCFunction_NewEx(&__pyx_mdef_3mqc_17bsseq_pileup_read_1pileups, NULL, __pyx_n_s_mqc_bsseq_pileup_read); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 108, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_2);
-  if (PyDict_SetItem(__pyx_d, __pyx_n_s_pileups, __pyx_t_2) < 0) __PYX_ERR(0, 105, __pyx_L1_error)
+  if (PyDict_SetItem(__pyx_d, __pyx_n_s_pileups, __pyx_t_2) < 0) __PYX_ERR(0, 108, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
 
   /* "mqc/bsseq_pileup_read.pyx":1
@@ -4552,6 +4777,28 @@ bad:
     }
 }
 
+/* CIntFromPyVerify */
+    #define __PYX_VERIFY_RETURN_INT(target_type, func_type, func_value)\
+    __PYX__VERIFY_RETURN_INT(target_type, func_type, func_value, 0)
+#define __PYX_VERIFY_RETURN_INT_EXC(target_type, func_type, func_value)\
+    __PYX__VERIFY_RETURN_INT(target_type, func_type, func_value, 1)
+#define __PYX__VERIFY_RETURN_INT(target_type, func_type, func_value, exc)\
+    {\
+        func_type value = func_value;\
+        if (sizeof(target_type) < sizeof(func_type)) {\
+            if (unlikely(value != (func_type) (target_type) value)) {\
+                func_type zero = 0;\
+                if (exc && unlikely(value == (func_type)-1 && PyErr_Occurred()))\
+                    return (target_type) -1;\
+                if (is_unsigned && unlikely(value < zero))\
+                    goto raise_neg_overflow;\
+                else\
+                    goto raise_overflow;\
+            }\
+        }\
+        return (target_type) value;\
+    }
+
 /* CIntToPy */
     static CYTHON_INLINE PyObject* __Pyx_PyInt_From_int32_t(int32_t value) {
     const int32_t neg_one = (int32_t) -1, const_zero = (int32_t) 0;
@@ -4577,6 +4824,191 @@ bad:
         return _PyLong_FromByteArray(bytes, sizeof(int32_t),
                                      little, !is_unsigned);
     }
+}
+
+/* CIntFromPy */
+    static CYTHON_INLINE uint32_t __Pyx_PyInt_As_uint32_t(PyObject *x) {
+    const uint32_t neg_one = (uint32_t) -1, const_zero = (uint32_t) 0;
+    const int is_unsigned = neg_one > const_zero;
+#if PY_MAJOR_VERSION < 3
+    if (likely(PyInt_Check(x))) {
+        if (sizeof(uint32_t) < sizeof(long)) {
+            __PYX_VERIFY_RETURN_INT(uint32_t, long, PyInt_AS_LONG(x))
+        } else {
+            long val = PyInt_AS_LONG(x);
+            if (is_unsigned && unlikely(val < 0)) {
+                goto raise_neg_overflow;
+            }
+            return (uint32_t) val;
+        }
+    } else
+#endif
+    if (likely(PyLong_Check(x))) {
+        if (is_unsigned) {
+#if CYTHON_USE_PYLONG_INTERNALS
+            const digit* digits = ((PyLongObject*)x)->ob_digit;
+            switch (Py_SIZE(x)) {
+                case  0: return (uint32_t) 0;
+                case  1: __PYX_VERIFY_RETURN_INT(uint32_t, digit, digits[0])
+                case 2:
+                    if (8 * sizeof(uint32_t) > 1 * PyLong_SHIFT) {
+                        if (8 * sizeof(unsigned long) > 2 * PyLong_SHIFT) {
+                            __PYX_VERIFY_RETURN_INT(uint32_t, unsigned long, (((((unsigned long)digits[1]) << PyLong_SHIFT) | (unsigned long)digits[0])))
+                        } else if (8 * sizeof(uint32_t) >= 2 * PyLong_SHIFT) {
+                            return (uint32_t) (((((uint32_t)digits[1]) << PyLong_SHIFT) | (uint32_t)digits[0]));
+                        }
+                    }
+                    break;
+                case 3:
+                    if (8 * sizeof(uint32_t) > 2 * PyLong_SHIFT) {
+                        if (8 * sizeof(unsigned long) > 3 * PyLong_SHIFT) {
+                            __PYX_VERIFY_RETURN_INT(uint32_t, unsigned long, (((((((unsigned long)digits[2]) << PyLong_SHIFT) | (unsigned long)digits[1]) << PyLong_SHIFT) | (unsigned long)digits[0])))
+                        } else if (8 * sizeof(uint32_t) >= 3 * PyLong_SHIFT) {
+                            return (uint32_t) (((((((uint32_t)digits[2]) << PyLong_SHIFT) | (uint32_t)digits[1]) << PyLong_SHIFT) | (uint32_t)digits[0]));
+                        }
+                    }
+                    break;
+                case 4:
+                    if (8 * sizeof(uint32_t) > 3 * PyLong_SHIFT) {
+                        if (8 * sizeof(unsigned long) > 4 * PyLong_SHIFT) {
+                            __PYX_VERIFY_RETURN_INT(uint32_t, unsigned long, (((((((((unsigned long)digits[3]) << PyLong_SHIFT) | (unsigned long)digits[2]) << PyLong_SHIFT) | (unsigned long)digits[1]) << PyLong_SHIFT) | (unsigned long)digits[0])))
+                        } else if (8 * sizeof(uint32_t) >= 4 * PyLong_SHIFT) {
+                            return (uint32_t) (((((((((uint32_t)digits[3]) << PyLong_SHIFT) | (uint32_t)digits[2]) << PyLong_SHIFT) | (uint32_t)digits[1]) << PyLong_SHIFT) | (uint32_t)digits[0]));
+                        }
+                    }
+                    break;
+            }
+#endif
+#if CYTHON_COMPILING_IN_CPYTHON
+            if (unlikely(Py_SIZE(x) < 0)) {
+                goto raise_neg_overflow;
+            }
+#else
+            {
+                int result = PyObject_RichCompareBool(x, Py_False, Py_LT);
+                if (unlikely(result < 0))
+                    return (uint32_t) -1;
+                if (unlikely(result == 1))
+                    goto raise_neg_overflow;
+            }
+#endif
+            if (sizeof(uint32_t) <= sizeof(unsigned long)) {
+                __PYX_VERIFY_RETURN_INT_EXC(uint32_t, unsigned long, PyLong_AsUnsignedLong(x))
+            } else if (sizeof(uint32_t) <= sizeof(unsigned PY_LONG_LONG)) {
+                __PYX_VERIFY_RETURN_INT_EXC(uint32_t, unsigned PY_LONG_LONG, PyLong_AsUnsignedLongLong(x))
+            }
+        } else {
+#if CYTHON_USE_PYLONG_INTERNALS
+            const digit* digits = ((PyLongObject*)x)->ob_digit;
+            switch (Py_SIZE(x)) {
+                case  0: return (uint32_t) 0;
+                case -1: __PYX_VERIFY_RETURN_INT(uint32_t, sdigit, (sdigit) (-(sdigit)digits[0]))
+                case  1: __PYX_VERIFY_RETURN_INT(uint32_t,  digit, +digits[0])
+                case -2:
+                    if (8 * sizeof(uint32_t) - 1 > 1 * PyLong_SHIFT) {
+                        if (8 * sizeof(unsigned long) > 2 * PyLong_SHIFT) {
+                            __PYX_VERIFY_RETURN_INT(uint32_t, long, -(long) (((((unsigned long)digits[1]) << PyLong_SHIFT) | (unsigned long)digits[0])))
+                        } else if (8 * sizeof(uint32_t) - 1 > 2 * PyLong_SHIFT) {
+                            return (uint32_t) (((uint32_t)-1)*(((((uint32_t)digits[1]) << PyLong_SHIFT) | (uint32_t)digits[0])));
+                        }
+                    }
+                    break;
+                case 2:
+                    if (8 * sizeof(uint32_t) > 1 * PyLong_SHIFT) {
+                        if (8 * sizeof(unsigned long) > 2 * PyLong_SHIFT) {
+                            __PYX_VERIFY_RETURN_INT(uint32_t, unsigned long, (((((unsigned long)digits[1]) << PyLong_SHIFT) | (unsigned long)digits[0])))
+                        } else if (8 * sizeof(uint32_t) - 1 > 2 * PyLong_SHIFT) {
+                            return (uint32_t) ((((((uint32_t)digits[1]) << PyLong_SHIFT) | (uint32_t)digits[0])));
+                        }
+                    }
+                    break;
+                case -3:
+                    if (8 * sizeof(uint32_t) - 1 > 2 * PyLong_SHIFT) {
+                        if (8 * sizeof(unsigned long) > 3 * PyLong_SHIFT) {
+                            __PYX_VERIFY_RETURN_INT(uint32_t, long, -(long) (((((((unsigned long)digits[2]) << PyLong_SHIFT) | (unsigned long)digits[1]) << PyLong_SHIFT) | (unsigned long)digits[0])))
+                        } else if (8 * sizeof(uint32_t) - 1 > 3 * PyLong_SHIFT) {
+                            return (uint32_t) (((uint32_t)-1)*(((((((uint32_t)digits[2]) << PyLong_SHIFT) | (uint32_t)digits[1]) << PyLong_SHIFT) | (uint32_t)digits[0])));
+                        }
+                    }
+                    break;
+                case 3:
+                    if (8 * sizeof(uint32_t) > 2 * PyLong_SHIFT) {
+                        if (8 * sizeof(unsigned long) > 3 * PyLong_SHIFT) {
+                            __PYX_VERIFY_RETURN_INT(uint32_t, unsigned long, (((((((unsigned long)digits[2]) << PyLong_SHIFT) | (unsigned long)digits[1]) << PyLong_SHIFT) | (unsigned long)digits[0])))
+                        } else if (8 * sizeof(uint32_t) - 1 > 3 * PyLong_SHIFT) {
+                            return (uint32_t) ((((((((uint32_t)digits[2]) << PyLong_SHIFT) | (uint32_t)digits[1]) << PyLong_SHIFT) | (uint32_t)digits[0])));
+                        }
+                    }
+                    break;
+                case -4:
+                    if (8 * sizeof(uint32_t) - 1 > 3 * PyLong_SHIFT) {
+                        if (8 * sizeof(unsigned long) > 4 * PyLong_SHIFT) {
+                            __PYX_VERIFY_RETURN_INT(uint32_t, long, -(long) (((((((((unsigned long)digits[3]) << PyLong_SHIFT) | (unsigned long)digits[2]) << PyLong_SHIFT) | (unsigned long)digits[1]) << PyLong_SHIFT) | (unsigned long)digits[0])))
+                        } else if (8 * sizeof(uint32_t) - 1 > 4 * PyLong_SHIFT) {
+                            return (uint32_t) (((uint32_t)-1)*(((((((((uint32_t)digits[3]) << PyLong_SHIFT) | (uint32_t)digits[2]) << PyLong_SHIFT) | (uint32_t)digits[1]) << PyLong_SHIFT) | (uint32_t)digits[0])));
+                        }
+                    }
+                    break;
+                case 4:
+                    if (8 * sizeof(uint32_t) > 3 * PyLong_SHIFT) {
+                        if (8 * sizeof(unsigned long) > 4 * PyLong_SHIFT) {
+                            __PYX_VERIFY_RETURN_INT(uint32_t, unsigned long, (((((((((unsigned long)digits[3]) << PyLong_SHIFT) | (unsigned long)digits[2]) << PyLong_SHIFT) | (unsigned long)digits[1]) << PyLong_SHIFT) | (unsigned long)digits[0])))
+                        } else if (8 * sizeof(uint32_t) - 1 > 4 * PyLong_SHIFT) {
+                            return (uint32_t) ((((((((((uint32_t)digits[3]) << PyLong_SHIFT) | (uint32_t)digits[2]) << PyLong_SHIFT) | (uint32_t)digits[1]) << PyLong_SHIFT) | (uint32_t)digits[0])));
+                        }
+                    }
+                    break;
+            }
+#endif
+            if (sizeof(uint32_t) <= sizeof(long)) {
+                __PYX_VERIFY_RETURN_INT_EXC(uint32_t, long, PyLong_AsLong(x))
+            } else if (sizeof(uint32_t) <= sizeof(PY_LONG_LONG)) {
+                __PYX_VERIFY_RETURN_INT_EXC(uint32_t, PY_LONG_LONG, PyLong_AsLongLong(x))
+            }
+        }
+        {
+#if CYTHON_COMPILING_IN_PYPY && !defined(_PyLong_AsByteArray)
+            PyErr_SetString(PyExc_RuntimeError,
+                            "_PyLong_AsByteArray() not available in PyPy, cannot convert large numbers");
+#else
+            uint32_t val;
+            PyObject *v = __Pyx_PyNumber_IntOrLong(x);
+ #if PY_MAJOR_VERSION < 3
+            if (likely(v) && !PyLong_Check(v)) {
+                PyObject *tmp = v;
+                v = PyNumber_Long(tmp);
+                Py_DECREF(tmp);
+            }
+ #endif
+            if (likely(v)) {
+                int one = 1; int is_little = (int)*(unsigned char *)&one;
+                unsigned char *bytes = (unsigned char *)&val;
+                int ret = _PyLong_AsByteArray((PyLongObject *)v,
+                                              bytes, sizeof(val),
+                                              is_little, !is_unsigned);
+                Py_DECREF(v);
+                if (likely(!ret))
+                    return val;
+            }
+#endif
+            return (uint32_t) -1;
+        }
+    } else {
+        uint32_t val;
+        PyObject *tmp = __Pyx_PyNumber_IntOrLong(x);
+        if (!tmp) return (uint32_t) -1;
+        val = __Pyx_PyInt_As_uint32_t(tmp);
+        Py_DECREF(tmp);
+        return val;
+    }
+raise_overflow:
+    PyErr_SetString(PyExc_OverflowError,
+        "value too large to convert to uint32_t");
+    return (uint32_t) -1;
+raise_neg_overflow:
+    PyErr_SetString(PyExc_OverflowError,
+        "can't convert negative value to uint32_t");
+    return (uint32_t) -1;
 }
 
 /* CIntToPy */
@@ -4605,28 +5037,6 @@ bad:
                                      little, !is_unsigned);
     }
 }
-
-/* CIntFromPyVerify */
-    #define __PYX_VERIFY_RETURN_INT(target_type, func_type, func_value)\
-    __PYX__VERIFY_RETURN_INT(target_type, func_type, func_value, 0)
-#define __PYX_VERIFY_RETURN_INT_EXC(target_type, func_type, func_value)\
-    __PYX__VERIFY_RETURN_INT(target_type, func_type, func_value, 1)
-#define __PYX__VERIFY_RETURN_INT(target_type, func_type, func_value, exc)\
-    {\
-        func_type value = func_value;\
-        if (sizeof(target_type) < sizeof(func_type)) {\
-            if (unlikely(value != (func_type) (target_type) value)) {\
-                func_type zero = 0;\
-                if (exc && unlikely(value == (func_type)-1 && PyErr_Occurred()))\
-                    return (target_type) -1;\
-                if (is_unsigned && unlikely(value < zero))\
-                    goto raise_neg_overflow;\
-                else\
-                    goto raise_overflow;\
-            }\
-        }\
-        return (target_type) value;\
-    }
 
 /* CIntFromPy */
     static CYTHON_INLINE long __Pyx_PyInt_As_long(PyObject *x) {
