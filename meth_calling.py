@@ -1,4 +1,5 @@
 import mqc
+import mqc.trimming
 import pysam
 import gzip
 import mqc.methylation_calling.pileup_methylation_calling as mc
@@ -21,6 +22,7 @@ def tabulate_meth_calls(bam_path, index_file_path, output_file):
                                          end=None,
                                          truncate=True)
 
+        cutting_site_array = mqc.trimming.cutting_sites_from_mbias_stats(None)
 
         curr_pileup_pos = curr_idx_pos.start - 1
         arrived_at_start = False
@@ -47,7 +49,8 @@ def tabulate_meth_calls(bam_path, index_file_path, output_file):
 
                 beta, n_meth, n_unmeth = mc.call_meth_at_pileup(
                     motif_pileups,
-                    index_position=curr_idx_pos)
+                    index_position=curr_idx_pos,
+                    cutting_site_array=cutting_site_array)
 
                 print(curr_idx_pos.chrom,
                       curr_idx_pos.start,

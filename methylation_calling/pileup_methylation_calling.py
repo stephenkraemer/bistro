@@ -1,4 +1,5 @@
 import mqc
+import mqc.trimming
 import mqc.overlap
 
 """
@@ -14,16 +15,19 @@ BETTER_MATE_IN_OVERLAP = 2
 WORSE_MATE_IN_OVERLAP = 4
 
 
-def call_meth_at_pileup(motif_pileups, index_position: 'mqc.IndexPosition'):
+def call_meth_at_pileup(motif_pileups, index_position: 'mqc.IndexPosition', cutting_site_array):
     n_meth = 0
     n_unmeth = 0
 
     watson_motif_seq = index_position.watson_motif
     for motif_base, pileup_reads in zip(watson_motif_seq, motif_pileups):
         if motif_base in ['C', 'G']:
+            mqc.trimming.set_trimming_flag(pileup_reads, cutting_site_array)
             mqc.overlap.tag_overlaps(pileup_reads)
             for read in pileup_reads:
                 if read.overlap_flag & WORSE_MATE_IN_OVERLAP:
+                    continue
+                if read.trimm_flag:
                     continue
                 meth_status_flag = read.get_meth_status_at_pileup_pos(motif_base)
                 if meth_status_flag == 8:

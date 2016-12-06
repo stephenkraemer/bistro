@@ -9,7 +9,8 @@ WORSE_MATE_IN_OVERLAP = 4
 def tag_overlaps(pileups: 'List[mqc.bsseq_pileup_read.BSSeqPileupRead]'):
     read_hash = defaultdict(list)
     for pileupread in pileups:
-        read_hash[pileupread.alignment.query_name].append(pileupread)
+        if not pileupread.trimm_flag:
+            read_hash[pileupread.alignment.query_name].append(pileupread)
     for query_name, reads in read_hash.items():
         if len(reads) == 2:
             process_overlap(reads[0], reads[1])
