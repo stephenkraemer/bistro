@@ -10,10 +10,6 @@ DEF IS_SNP = 2
 DEF IS_REF = 1
 """
 
-HAS_OVERLAP = 1
-BETTER_MATE_IN_OVERLAP = 2
-WORSE_MATE_IN_OVERLAP = 4
-
 
 def call_meth_at_pileup(motif_pileups, index_position: 'mqc.IndexPosition', cutting_site_array):
     n_meth = 0
@@ -25,7 +21,10 @@ def call_meth_at_pileup(motif_pileups, index_position: 'mqc.IndexPosition', cutt
             mqc.trimming.set_trimming_flag(pileup_reads, cutting_site_array)
             mqc.overlap.tag_overlaps(pileup_reads)
             for read in pileup_reads:
-                if read.overlap_flag & WORSE_MATE_IN_OVERLAP:
+                # read: mqc.BSSeqPileupRead
+                if read.qc_fail_flag:
+                    continue
+                if read.overlap_flag:
                     continue
                 if read.trimm_flag:
                     continue

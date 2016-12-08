@@ -1,4 +1,4 @@
-from pysam.libcalignedsegment cimport AlignedSegment, PileupRead, makeAlignedSegment, PileupColumn
+from pysam.libcalignedsegment cimport PileupColumn
 from pysam.libcalignmentfile cimport AlignmentFile
 
 DEF W_BC = 96
@@ -81,6 +81,44 @@ cdef class BSSeqPileupRead(PileupRead):
             return IS_NA
         return meth_dict[self.bs_seq_strand_flag][watson_ref_base][self.observed_watson_base]
 
+    @property
+    def baseq_at_pos(self):
+        return self._baseq_at_pos
+
+    @property
+    def overlap_flag(self):
+        return self._overlap_flag
+    @overlap_flag.setter
+    def overlap_flag(self, value):
+        self._overlap_flag = value
+
+    @property
+    def trimm_flag(self):
+        return self._trimm_flag
+    @trimm_flag.setter
+    def trimm_flag(self, value):
+        self._trimm_flag = value
+
+    @property
+    def bs_seq_strand_flag(self):
+        return  self._bs_seq_strand_flag
+
+    @property
+    def meth_status_flag(self):
+        return self._meth_status_flag
+
+    @property
+    def observed_watson_base(self):
+        return self._observed_watson_base
+
+    @property
+    def qc_fail_flag(self):
+        return self._qc_fail_flag
+
+    @qc_fail_flag.setter
+    def qc_fail_flag(self, value):
+        self._qc_fail_flag = value
+
 
 
 cdef inline make_bsseq_pileup_read(bam_pileup1_t * src,
@@ -97,13 +135,13 @@ cdef inline make_bsseq_pileup_read(bam_pileup1_t * src,
     dest._is_tail = src.is_tail
     dest._is_refskip = src.is_refskip
 
-    dest.meth_status_flag = IS_NA
-    dest.bs_seq_strand_flag = dest._alignment._delegate.core.flag & MATE_AND_DIR_BITS
+    dest._meth_status_flag = IS_NA
+    dest._bs_seq_strand_flag = dest._alignment._delegate.core.flag & MATE_AND_DIR_BITS
     #TODO: _qpos may have incorrect value
-    dest.observed_watson_base = dest._alignment.query_sequence[dest._qpos]
-    dest.baseq_at_pos = dest.alignment.query_qualities[dest._qpos]
-    dest.overlap_flag = 0
-    dest.trimm_flag = 0
+    dest._observed_watson_base = dest._alignment.query_sequence[dest._qpos]
+    dest._baseq_at_pos = dest.alignment.query_qualities[dest._qpos]
+    dest._overlap_flag = 0
+    dest._trimm_flag = 0
     return dest
 
 def pileups(PileupColumn pileup_column):
@@ -115,7 +153,7 @@ def pileups(PileupColumn pileup_column):
     # TODO: warning: there could be problems if pileup_column.n and self.buf are
     # out of sync.
     cdef int x
-    for x from 0 <= x < pileup_column.n_pu:
+    for x in range(pileup_column.n_pu):
         pileups.append(make_bsseq_pileup_read(&(pileup_column.plp[0][x]),
                                               pileup_column._alignment_file))
     return pileups

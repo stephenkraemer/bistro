@@ -1,5 +1,3 @@
-import mqc
-
 import gzip
 
 
@@ -38,11 +36,16 @@ class IndexPosition:
         self.crick_conv_control_cyts = parse_control_pos_str(fields[7])
 
         self.original_motif = self.name
+        # TODO: check this!
         self.watson_motif = (self.name
                              if self.strand == '+'
-                             else mqc.utilities.reverse_complement_seq(self.name))
+                             else reverse_complement_seq(self.name))
 
     def __str__(self):
         return '{}:{}-{}, motif: {} (on strand {})'.format(
             self.chrom, self.start, self.end,
             self.original_motif, self.strand)
+
+
+def reverse_complement_seq(seq):
+    return seq.translate(str.maketrans('CGHD', 'GCDH')).reverse()

@@ -1,9 +1,6 @@
 from collections import defaultdict
+from typing import List
 import mqc
-
-HAS_OVERLAP = 1
-BETTER_MATE_IN_OVERLAP = 2
-WORSE_MATE_IN_OVERLAP = 4
 
 
 def tag_overlaps(pileups: 'List[mqc.bsseq_pileup_read.BSSeqPileupRead]'):
@@ -16,20 +13,17 @@ def tag_overlaps(pileups: 'List[mqc.bsseq_pileup_read.BSSeqPileupRead]'):
             process_overlap(reads[0], reads[1])
 
 
-def process_overlap(read1, read2):
+def process_overlap(read1: 'mqc.BSSeqPileupRead', read2: 'mqc.BSSeqPileupRead'):
     if read1.observed_watson_base == reverse_complement_seq(read2.observed_watson_base):
-            read1.overlap_flag = HAS_OVERLAP & BETTER_MATE_IN_OVERLAP
-            read2.overlap_flag = HAS_OVERLAP & WORSE_MATE_IN_OVERLAP
+        read2.overlap_flag = 1
     else:
         if read1.baseq_at_pos > read2.baseq_at_pos:
-            read1.overlap_flag = HAS_OVERLAP & BETTER_MATE_IN_OVERLAP
-            read2.overlap_flag = HAS_OVERLAP & WORSE_MATE_IN_OVERLAP
+            read2.overlap_flag = 1
         elif read2.baseq_at_pos > read1.baseq_at_pos:
-            read1.overlap_flag = HAS_OVERLAP & WORSE_MATE_IN_OVERLAP
-            read2.overlap_flag = HAS_OVERLAP & BETTER_MATE_IN_OVERLAP
-        else: # different calls, same base qualities -> discard
-            read1.overlap_flag = HAS_OVERLAP & WORSE_MATE_IN_OVERLAP
-            read2.overlap_flag = HAS_OVERLAP & WORSE_MATE_IN_OVERLAP
+            read1.overlap_flag = 1
+        else:  # different calls, same base qualities -> discard
+            read1.qc_fail_flag = 1
+            read2.qc_fail_flag = 1
 
 
 def reverse_complement_seq(seq):

@@ -16,5 +16,11 @@ import mqc.overlap_handling
 import mqc.utilities
 import mqc.conv_err
 """
+from . import bsseq_pileup_read
 from .index import IndexFile, IndexPosition
-from .parallel_meth_calling import call_methylation_parallelized
+from . import trimming
+from . import overlap
+from .bsseq_pileup_read import BSSeqPileupRead
+from .mbias.mbias_counter import MbiasCounter
+from .pileup import motif_pileup_generator
+

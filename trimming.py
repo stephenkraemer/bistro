@@ -1,3 +1,6 @@
+from typing import List
+import mqc.bsseq_pileup_read
+
 """
 Given a numpy array, iterate over a pileup of reads and set trimming flags
 """
@@ -23,7 +26,7 @@ def cutting_sites_from_mbias_stats(mbias_stats_array):
     return res
 
 
-def set_trimming_flag(pileup_reads: 'List[pysam.PileupRead]', trimm_site_array):
+def set_trimming_flag(pileup_reads: 'List[mqc.bsseq_pileup_read.BSSeqPileupRead]', trimm_site_array):
     """ Only one flag value. The idea is to start with minimal trimming at the first pass over the
     random index positions. This will allow for the calculation of beta value dists etc. for minimal trimming. Then,
     one or more cutting site determination functions may be called. The result of every cutting site determination
@@ -58,3 +61,30 @@ def set_trimming_flag(pileup_reads: 'List[pysam.PileupRead]', trimm_site_array):
             # one could use different trimming modes and set different flag values for the trimming flag
             # currently, only the first bit is used
             read.trimm_flag = 1
+
+
+def cutting_sites_array_from_flen_relative_minimal_cutting_sites(relative_cutting_site_dict,
+                                                                 max_flen_considered_for_trimming,
+                                                                 max_read_length_bp):
+    """
+    Relative cutting site dict:
+    {
+        'W_BC': [0, 9]
+        'C_BC': [0, 9]
+        'W_BC_Rv': [9, 0]
+        'C_BC_Rv': [9, 0]
+    }
+    """
+    res = np.zeros([8, max_flen_considered_for_trimming + 1], dtype=np.int32)
+
+    for bsseq_strand_name, bsseq_strand_index in zip(['C_BC', 'C_BC_RV', 'W_BC', 'W_BC_RV'],
+                                                     [C_BC_IND, C_BC_RV_IND, W_BC_IND, W_BC_RV_IND]):
+        res[bsseq_strand_index, :] = relative_cutting_site_dict['C_BC'][0]
+        for i in range(max_flen_considered_for_trimming + 1):
+            max_allowed_pos_in_fragment = i - relative_cutting_site_dict['C_BC'][1]
+            max_allow_pos_in_read = (max_allowed_pos_in_fragment
+                                     if max_allowed_pos_in_fragment <= max_read_length_bp
+                                     else max_read_length_bp)
+            res[bsseq_strand_index + 1, i] = max_allow_pos_in_read
+
+    return res
