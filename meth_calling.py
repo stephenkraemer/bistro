@@ -9,8 +9,6 @@ def main():
     with open('./config.default.toml') as f_toml:
         config_dict = pytoml.load(f_toml)
 
-    import time
-    t0 = time.time()
     print('Working')
 
     cutting_site_array = mqc.trimming.cutting_sites_array_from_flen_relative_minimal_cutting_sites(
@@ -19,23 +17,49 @@ def main():
         max_read_length_bp=config_dict['data_properties']['max_read_length_bp']
     )
 
-    # tabulate_meth_calls(bam_path='/home/kraemers/projects/mqc/mqc/test/data/b_cells_rep1_chr11_16815793-16824254.bam',
-    #                     index_file_path='./test/data/chr11_16815793-16824254.cg.bed.gz',
-    #                     output_file='./test/results/methylation_calls_new.bed.gz',
-    #                     cutting_site_array=cutting_site_array,
-    #                     config_dict=config_dict)
+    import sys
 
-    tabulate_meth_calls(bam_path=('/icgc/dkfzlsdf/analysis/hs_ontogeny/results/wgbs'
-                                  '/results_per_pid/hsc_rep2/alignment/blood_hsc_rep2_merged.mdup.bam'),
-                        index_file_path='/home/kraemers/projects/mqc/mqc/test/data/chr11.100000.cg.bed.gz',
-                        cutting_site_array=cutting_site_array,
-                        output_file='./test/results/methylation_calls_new.bed.gz',
-                        config_dict=config_dict)
+    mode = sys.argv[1]
+    if mode == 'small':
+        tabulate_meth_calls(bam_path='/home/kraemers/projects/mqc/mqc/test/data/b_cells_rep1_chr11_16815793-16824254'
+                                     '.bam',
+                            index_file_path='./test/data/chr11_16815793-16824254.cg.bed.gz',
+                            output_file='./test/results/methylation_calls_new.bed.gz',
+                            cutting_site_array=cutting_site_array,
+                            config_dict=config_dict)
 
-    t1 = time.time()
-    total = t1 - t0
-    print('Time for 100,000 positions(s): ', total)
-    print('Projected time(h): ', total / 100000 * 30 * 10 ** 6 / 60 / 60)
+    elif mode == 'medium':
+        import time
+        t0 = time.time()
+        tabulate_meth_calls(bam_path=('/icgc/dkfzlsdf/analysis/hs_ontogeny/results/wgbs'
+                                      '/results_per_pid/hsc_rep2/alignment/blood_hsc_rep2_merged.mdup.bam'),
+                            index_file_path='/home/kraemers/projects/mqc/mqc/test/data/chr11.10000.cg.bed.gz',
+                            cutting_site_array=cutting_site_array,
+                            output_file='./test/results/methylation_calls_dec12.bed.gz',
+                            config_dict=config_dict)
+
+        t1 = time.time()
+        total = t1 - t0
+        print('Time for 10,000 positions(s): ', total)
+        print('Projected time(h): ', total / 10000 * 30 * 10 ** 6 / 60 / 60)
+
+    elif mode == 'big':
+        import time
+        t0 = time.time()
+        tabulate_meth_calls(bam_path=('/icgc/dkfzlsdf/analysis/hs_ontogeny/results/wgbs'
+                                      '/results_per_pid/hsc_rep2/alignment/blood_hsc_rep2_merged.mdup.bam'),
+                            index_file_path='/home/kraemers/projects/mqc/mqc/test/data/chr11.100000.cg.bed.gz',
+                            cutting_site_array=cutting_site_array,
+                            output_file='./test/results/methylation_calls_dec12.bed.gz',
+                            config_dict=config_dict)
+
+        t1 = time.time()
+        total = t1 - t0
+        print('Time for 100,000 positions(s): ', total)
+        print('Projected time(h): ', total / 100000 * 30 * 10 ** 6 / 60 / 60)
+
+    else:
+        print('Mode unknown')
 
 
 def tabulate_meth_calls(bam_path, index_file_path, output_file, cutting_site_array, config_dict):

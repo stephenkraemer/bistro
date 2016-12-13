@@ -47,31 +47,23 @@ class MbiasCounter:
                     pos_in_read = pileup_read.query_position
                     meth_status_flag = pileup_read.get_meth_status_at_pileup_pos(motif_base)
 
+                    if meth_status_flag == 8:
+                        row_index_selector = 0
+                    elif meth_status_flag == 4:
+                        row_index_selector = 1
+                    else:  # SNP, Ref base
+                        continue
+
                     if pileup_read.bs_seq_strand_flag == C_BC:
-                        if meth_status_flag & IS_METHYLATED:
-                            strand_and_meth_status_based_index = C_BC_IND
-                        else:
-                            strand_and_meth_status_based_index = C_BC_IND + 1
-
+                        strand_and_meth_status_based_index = C_BC_IND
                     elif pileup_read.bs_seq_strand_flag == C_BC_RV:
-                        if meth_status_flag & IS_METHYLATED:
-                            strand_and_meth_status_based_index = C_BC_RV_IND
-                        else:
-                            strand_and_meth_status_based_index = C_BC_RV_IND + 1
-
+                        strand_and_meth_status_based_index = C_BC_RV_IND
                     elif pileup_read.bs_seq_strand_flag == W_BC:
-                        if meth_status_flag & IS_METHYLATED:
-                            strand_and_meth_status_based_index = W_BC_IND
-                        else:
-                            strand_and_meth_status_based_index = W_BC_IND + 1
-
+                        strand_and_meth_status_based_index = W_BC_IND
                     elif pileup_read.bs_seq_strand_flag == W_BC_RV:
-                        if meth_status_flag & IS_METHYLATED:
-                            strand_and_meth_status_based_index = W_BC_RV_IND
-                        else:
-                            strand_and_meth_status_based_index = W_BC_RV_IND + 1
-
+                        strand_and_meth_status_based_index = W_BC_RV_IND
                     else:
                         continue
 
+                    strand_and_meth_status_based_index += row_index_selector
                     self.counter[strand_and_meth_status_based_index][tlen][pos_in_read] += 1
