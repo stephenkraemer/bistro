@@ -16,11 +16,11 @@ import mqc.overlap_handling
 import mqc.utilities
 import mqc.conv_err
 """
-from . import bsseq_pileup_read
-from .index import IndexFile, IndexPosition
-from . import trimming
-from . import overlap
-from .bsseq_pileup_read import BSSeqPileupRead
-from .mbias.mbias_counter import MbiasCounter
-from .pileup import motif_pileup_generator
+from mqc import bsseq_pileup_read
+from mqc.index import IndexFile, IndexPosition
+from mqc import trimming
+from mqc import overlap
+from mqc.bsseq_pileup_read import BSSeqPileupRead
+from mqc.pileup import motif_pileup_generator
+from mqc.mbias import MbiasCounter
 

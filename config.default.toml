@@ -7,6 +7,8 @@
 
 [trimming]
   max_flen_considered_for_trimming = 500
+  required_n_events_for_cutting_site_determination = 3000
+  max_window_size_for_smoothing = 10
 
   [trimming.relative_to_fragment_ends]
     W_BC = [0, 9]
