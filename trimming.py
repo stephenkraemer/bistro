@@ -1,29 +1,9 @@
-from typing import List
-import mqc.bsseq_pileup_read
-
-"""
-Given a numpy array, iterate over a pileup of reads and set trimming flags
-"""
-
 import numpy as np
+import mqc
+from typing import List
 
-W_BC = 96
-C_BC = 80
-W_BC_RV = 144
-C_BC_RV = 160
-
-C_BC_IND = 0
-C_BC_RV_IND = 2
-W_BC_IND = 4
-W_BC_RV_IND = 6
-
-
-def cutting_sites_from_mbias_stats(mbias_stats_array):
-    # Indexing will be done by integer TLEN - take index 0 as nonsense element into account
-    res = np.ones([8, 400], dtype=np.int32)
-    res[[0, 2, 4, 6], :] = 10
-    res[[1, 3, 5, 7], :] = 90
-    return res
+b_flags = mqc.flag_and_index_values.bsseq_strand_flags
+b_inds = mqc.flag_and_index_values.bsseq_strand_indices
 
 
 def set_trimming_flag(pileup_reads: 'List[mqc.bsseq_pileup_read.BSSeqPileupRead]', trimm_site_array):
@@ -40,19 +20,20 @@ def set_trimming_flag(pileup_reads: 'List[mqc.bsseq_pileup_read.BSSeqPileupRead]
         if not read.query_position:
             continue
         obs_tlen = abs(read.alignment.template_length)
+        # TODO: tlen should not be smaller than length of query sequence
         tlen = obs_tlen if obs_tlen <= max_tlen else max_tlen
-        if read.bs_seq_strand_flag == C_BC:
-            start_of_plateau = trimm_site_array[C_BC_IND, tlen]
-            end_of_plateau = trimm_site_array[C_BC_IND + 1, tlen]
-        elif read.bs_seq_strand_flag == C_BC_RV:
-            start_of_plateau = trimm_site_array[C_BC_RV_IND, tlen]
-            end_of_plateau = trimm_site_array[C_BC_RV_IND + 1, tlen]
-        elif read.bs_seq_strand_flag == W_BC:
-            start_of_plateau = trimm_site_array[W_BC_IND, tlen]
-            end_of_plateau = trimm_site_array[W_BC_IND + 1, tlen]
-        elif read.bs_seq_strand_flag == W_BC_RV:
-            start_of_plateau = trimm_site_array[W_BC_RV_IND, tlen]
-            end_of_plateau = trimm_site_array[W_BC_RV_IND + 1, tlen]
+        if read.bs_seq_strand_flag == b_flags.c_bc:
+            start_of_plateau = trimm_site_array[b_inds.c_bc, 0, tlen]
+            end_of_plateau = trimm_site_array[b_inds.c_bc, 1, tlen]
+        elif read.bs_seq_strand_flag == b_flags.c_bc_rv:
+            start_of_plateau = trimm_site_array[b_inds.c_bc_rv, 0, tlen]
+            end_of_plateau = trimm_site_array[b_inds.c_bc_rv, 1, tlen]
+        elif read.bs_seq_strand_flag == b_flags.w_bc:
+            start_of_plateau = trimm_site_array[b_inds.w_bc, 0, tlen]
+            end_of_plateau = trimm_site_array[b_inds.w_bc, 1, tlen]
+        elif read.bs_seq_strand_flag == b_flags.w_bc_rv:
+            start_of_plateau = trimm_site_array[b_inds.w_bc_rv, 0, tlen]
+            end_of_plateau = trimm_site_array[b_inds.w_bc_rv, 1, tlen]
         else:  # bisulfite sequencing strand undetermined, no methylation calling possible
             # TODO: make sure that ISNA flag is set for methylation status of indel, refskip and base N reads
             continue
@@ -69,22 +50,37 @@ def cutting_sites_array_from_flen_relative_minimal_cutting_sites(relative_cuttin
     """
     Relative cutting site dict:
     {
-        'W_BC': [0, 9]
-        'C_BC': [0, 9]
-        'W_BC_Rv': [9, 0]
-        'C_BC_Rv': [9, 0]
+        'w_bc': [0, 9]
+        'c_bc': [0, 9]
+        'w_bc_rv': [9, 0]
+        'c_bc_rv': [9, 0]
     }
     """
-    res = np.zeros([8, max_flen_considered_for_trimming + 1], dtype=np.int32)
 
-    for bsseq_strand_name, bsseq_strand_index in zip(['C_BC', 'C_BC_RV', 'W_BC', 'W_BC_RV'],
-                                                     [C_BC_IND, C_BC_RV_IND, W_BC_IND, W_BC_RV_IND]):
-        res[bsseq_strand_index, :] = relative_cutting_site_dict['C_BC'][0]
-        for i in range(max_flen_considered_for_trimming + 1):
-            max_allowed_pos_in_fragment = i - relative_cutting_site_dict['C_BC'][1]
+    """ Create res array
+
+    bsseq_strand      start_or_end       flen
+    'w_bc'            0                  1
+                                         2
+                                         ...
+                                         max_flen_considered_for_trimming
+                      1                  1
+                                         ...
+    'w_bc_rv'         ...                ...
+
+    """
+    res = np.zeros([4, 2, max_flen_considered_for_trimming + 1], dtype=np.int32)
+
+    for bsseq_strand_name, bsseq_strand_index in b_inds._asdict().items():
+        # Set start position
+        res[bsseq_strand_index, 0, :] = relative_cutting_site_dict[bsseq_strand_name][0]
+
+        # Set end position
+        for curr_flen in range(max_flen_considered_for_trimming + 1):
+            max_allowed_pos_in_fragment = curr_flen - relative_cutting_site_dict[bsseq_strand_name][1]
             max_allow_pos_in_read = (max_allowed_pos_in_fragment
                                      if max_allowed_pos_in_fragment <= max_read_length_bp
                                      else max_read_length_bp)
-            res[bsseq_strand_index + 1, i] = max_allow_pos_in_read
+            res[bsseq_strand_index, 1, curr_flen] = max_allow_pos_in_read
 
     return res

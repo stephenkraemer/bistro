@@ -4,30 +4,15 @@ import numpy as np
 import pytoml
 
 import matplotlib
+import mqc
 
 matplotlib.use('Agg')  # import before pyplot import!
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-# Indices
-C_BC_IND = 0
-C_BC_RV_IND = 2
-W_BC_IND = 4
-W_BC_RV_IND = 6
-
-# Methylation status flags
-IS_NA = 16
-IS_METHYLATED = 8
-IS_UNMETHYLATED = 4
-IS_SNP = 2
-IS_REF = 1
-
-# BS-Seq strand flags
-W_BC = 96
-C_BC = 80
-W_BC_RV = 144
-C_BC_RV = 160
-MATE_AND_DIR_BITS = 240
+b_flags = mqc.flag_and_index_values.bsseq_strand_flags
+b_inds = mqc.flag_and_index_values.bsseq_strand_indices
+m_flags = mqc.flag_and_index_values.methylation_status_flags
 
 
 def main():
@@ -75,12 +60,11 @@ class MbiasData:
 
     def convert_mbias_arr_info_to_df_format(self):
         rows = []
-        for bsseq_strand, bsseq_strand_ind in zip('C_BC C_BC_RV W_BC W_BC_RV'.split(),
-                                                  [C_BC_IND, C_BC_RV_IND, W_BC_IND, W_BC_RV_IND]):
+        for bsseq_strand_name, bsseq_strand_ind in b_inds._asdict().items():
             for flen in range(1, self.max_flen_considered_for_trimming + 1):
                 for pos in range(1, self.max_read_length_bp):
                     row = dict()
-                    row['bsseq_strand'] = bsseq_strand
+                    row['bsseq_strand'] = bsseq_strand_name
                     row['flen'] = flen
                     row['pos'] = pos
                     row['meth_events_per_pos'] = self.mbias_stats_array[bsseq_strand_ind, flen, pos]
@@ -158,8 +142,8 @@ class MbiasCounter:
                 for pileup_read in pileup_reads:
                     # pileup_read: mqc.bsseq_pileup_read.BSSeqPileupRead
                     if (pileup_read.qc_fail_flag
-                            or pileup_read.overlap_flag
-                            or pileup_read.trimm_flag):
+                        or pileup_read.overlap_flag
+                        or pileup_read.trimm_flag):
                         continue
 
                     # TODO: tlen should not return lower number than number of bases in read
@@ -178,14 +162,14 @@ class MbiasCounter:
                     else:  # SNP, Ref base
                         continue
 
-                    if pileup_read.bs_seq_strand_flag == C_BC:
-                        strand_and_meth_status_based_index = C_BC_IND
-                    elif pileup_read.bs_seq_strand_flag == C_BC_RV:
-                        strand_and_meth_status_based_index = C_BC_RV_IND
-                    elif pileup_read.bs_seq_strand_flag == W_BC:
-                        strand_and_meth_status_based_index = W_BC_IND
-                    elif pileup_read.bs_seq_strand_flag == W_BC_RV:
-                        strand_and_meth_status_based_index = W_BC_RV_IND
+                    if pileup_read.bs_seq_strand_flag == b_flags.c_bc:
+                        strand_and_meth_status_based_index = b_inds.c_bc
+                    elif pileup_read.bs_seq_strand_flag == b_flags.c_bc_rv:
+                        strand_and_meth_status_based_index = b_inds.c_bc_rv
+                    elif pileup_read.bs_seq_strand_flag == b_flags.w_bc:
+                        strand_and_meth_status_based_index = b_inds.w_bc
+                    elif pileup_read.bs_seq_strand_flag == b_flags.w_bc_rv:
+                        strand_and_meth_status_based_index = b_inds.w_bc_rv
                     else:
                         continue
 

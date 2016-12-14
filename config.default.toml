@@ -11,10 +11,10 @@
   max_window_size_for_smoothing = 10
 
   [trimming.relative_to_fragment_ends]
-    W_BC = [0, 9]
-    C_BC = [0, 9]
-    W_BC_Rv = [9, 0]
-    C_BC_Rv = [9, 0]
+    w_bc = [0, 9]
+    c_bc = [0, 9]
+    w_bc_rv = [9, 0]
+    c_bc_rv = [9, 0]
 
 [data_properties]
   max_read_length_bp = 101

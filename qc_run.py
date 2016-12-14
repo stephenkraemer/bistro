@@ -4,26 +4,6 @@ import mqc
 import pytoml
 import sys
 
-# Methylation status flags
-IS_NA = 16
-IS_METHYLATED = 8
-IS_UNMETHYLATED = 4
-IS_SNP = 2
-IS_REF = 1
-
-# BS-Seq strand flags
-W_BC = 96
-C_BC = 80
-W_BC_RV = 144
-C_BC_RV = 160
-MATE_AND_DIR_BITS = 240
-
-# Indices
-C_BC_IND = 0
-C_BC_RV_IND = 2
-W_BC_IND = 4
-W_BC_RV_IND = 6
-
 
 def main():
     with open('./config.default.toml') as f_toml:
