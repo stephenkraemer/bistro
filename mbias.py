@@ -1,3 +1,11 @@
+# TODO: make conversion of counter array to pandas dataframe (for adjusted cutting sites)
+#  easier by using Pandas built-in capabilities?
+# TODO: add conversion of minimal cutting array to dataframe method
+# TODO: test plot with minimal cutting site masking
+
+import warnings
+from abc import ABCMeta, abstractmethod
+
 import pandas as pd
 import numpy as np
 import mqc
@@ -15,6 +23,7 @@ m_flags = mqc.flag_and_index_values.methylation_status_flags
 
 class MbiasCounter:
     """Count M-bias stats from a stream of motif pileups and provide as np.ndarray"""
+
     def __init__(self, max_read_length, min_phred_score, max_flen_considered_for_trimming):
         self.counter = np.zeros([4, max_flen_considered_for_trimming + 1, max_read_length + 1, 2], dtype='i4')
         self.phred_score_threshold = min_phred_score
@@ -27,8 +36,8 @@ class MbiasCounter:
                 for pileup_read in pileup_reads:
                     # pileup_read: mqc.bsseq_pileup_read.BSSeqPileupRead
                     if (pileup_read.qc_fail_flag
-                        or pileup_read.overlap_flag
-                        or pileup_read.trimm_flag):
+                            or pileup_read.overlap_flag
+                            or pileup_read.trimm_flag):
                         continue
 
                     # TODO: tlen should not return lower number than number of bases in read
@@ -65,9 +74,10 @@ class MbiasData:
     """Provide basic M-bias stats in dataframe format"""
 
     def __init__(self, max_flen_considered_for_trimming, max_read_length_bp, mbias_stats_array,
-                 required_n_events_for_cutting_site_determination, max_window_size_for_smoothing):
-        self._adjusted_mask_mbias_stats_df = None
-        self._minimal_mask_mbias_stats_df = None
+                 required_n_events_for_cutting_site_determination, max_window_size_for_smoothing,
+                 minimal_cutting_sites_df=pd.DataFrame()):
+        self._adjusted_masked_mbias_stats_df = pd.DataFrame()
+        self._minimal_masked_mbias_stats_df = pd.DataFrame()
         self.max_window_size_for_smoothing = max_window_size_for_smoothing
         self.required_n_events_for_cutting_site_determination = required_n_events_for_cutting_site_determination
         self.mbias_stats_array = mbias_stats_array
@@ -76,6 +86,11 @@ class MbiasData:
         self.mbias_stats_df = self.convert_mbias_arr_info_to_df_format()
         self.add_smoothed_mbias_stats()
         self.add_beta_values()
+
+        self._minimal_cutting_sites_df = minimal_cutting_sites_df
+        self._adjusted_cutting_sites_df = pd.DataFrame()
+        self._minimal_masked_df = pd.DataFrame()
+        self._adjusted_masked_df = pd.DataFrame()
 
     def convert_mbias_arr_info_to_df_format(self) -> pd.DataFrame:
         rows = []
@@ -130,22 +145,28 @@ class MbiasData:
         self.mbias_stats_df['smoothed_beta_values'] = self.mbias_stats_df['smoothed_meth_events_per_pos'] / (
             self.mbias_stats_df['smoothed_meth_events_per_pos'] + self.mbias_stats_df['smoothed_unmeth_events_per_pos'])
 
-    def get_masked_mbias_df(self, mode, cutting_sites: 'MbiasCuttingSites'):
-        """Get M-bias counts in dataframe format, with positions in M-bias trimming zones set to NA
-        """
-        if mode == 'minimal':
-            if self._minimal_mask_mbias_stats_df is not None:
-                return self._minimal_mask_mbias_stats_df
-            else:
-                cutting_sites_df = cutting_sites.get_minimal_cutting_sites_as_df()
-        elif mode == 'adjusted':
-            if self._adjusted_mask_mbias_stats_df is not None:
-                return self._adjusted_mask_mbias_stats_df
-            else:
-                cutting_sites_df = cutting_sites.get_adjusted_cutting_sites_as_df(mbias_data=self,
-                                                                                  calling_mode='adjusted')
+    def get_masked_mbias_df(self, trimming_mode: str):
+        """Get M-bias counts in dataframe format, with positions in M-bias trimming zones set to NA"""
+
+        # Look for cached result first
+        if trimming_mode == 'minimal' and not self._minimal_masked_mbias_stats_df.empty:
+            return self._minimal_masked_mbias_stats_df
+        elif trimming_mode == 'adjusted' and not self._adjusted_masked_mbias_stats_df.empty:
+            return self._adjusted_masked_mbias_stats_df
+
+        # We have to compute the masked dataframe
+        if trimming_mode == 'minimal':
+            cutting_sites_df = self._minimal_cutting_sites_df
+        elif trimming_mode == 'adjusted':
+            cutting_sites_df = self._adjusted_cutting_sites_df
         else:
-            raise NotImplementedError('Trimming mode {} unknown'.format(mode))
+            raise NotImplementedError
+
+        if cutting_sites_df is None:
+            warnings.warn('Cutting sites dataframe for mode {} unknown. Return unmasked dataframe'.format(
+                trimming_mode
+            ))
+            return self.mbias_stats_df
 
         def mask_read_positions_in_trimming_zone(df):
             # Hierarchical index with three levels: bsseq_strand, flen, pos; get strand and flen in current group df
@@ -160,29 +181,23 @@ class MbiasData:
                      .groupby(level=['bsseq_strand', 'flen'], axis='index')
                      .apply(mask_read_positions_in_trimming_zone))
 
-        if mode == 'minimal':
-            self._minimal_mask_mbias_stats_df = masked_df
-        else:
-            self._adjusted_mask_mbias_stats_df = masked_df
-
         return masked_df
 
 
-
 class MbiasDataPlotter:
-    def __init__(self, max_flen_considered_for_trimming, mbias_data: MbiasData):
+    def __init__(self, mbias_data: MbiasData):
         self.mbias_data = mbias_data
-        self.max_flen = max_flen_considered_for_trimming
+        self.max_flen = mbias_data.max_flen_considered_for_trimming
 
-    def flen_strat_plot(self, output_path, mask_mode=None, cutting_sites=None):
-        if mask_mode:
-            if not cutting_sites:
-                print("Can't use mask dataframe, missing cutting sites information")
-                mbias_stats_df = self.mbias_data.mbias_stats_df
-            else:
-                mbias_stats_df = self.mbias_data.get_masked_mbias_df(mode=mask_mode, cutting_sites=cutting_sites)
-        else:
+    def flen_strat_plot(self, output_path, trimming_mode=None):
+
+
+        if trimming_mode is None:
             mbias_stats_df = self.mbias_data.mbias_stats_df
+        elif trimming_mode in ['minimal', 'adjusted']:  #
+            mbias_stats_df = self.mbias_data.get_masked_mbias_df(trimming_mode)
+        else:
+            raise NotImplementedError
 
         # TODO: parameter for number of fragments (or: all fragments?)
         plotting_data = (mbias_stats_df
@@ -199,37 +214,114 @@ class MbiasDataPlotter:
         g.fig.savefig(output_path)
 
 
-class MbiasCuttingSites:
+class CuttingSites(metaclass=ABCMeta):
+    @abstractmethod
+    def get_array(self):
+        pass
+
+    @abstractmethod
+    def get_df(self):
+        pass
+
+
+class MinimalCuttingSites:
     """Calculate and provide M-bias cutting sites in dataframe and array format"""
 
-    def __init__(self):
+    def __init__(self, relative_cutting_site_dict, max_flen_considered_for_trimming, max_read_length_bp):
+        self.max_read_length_bp = max_read_length_bp
+        self.max_flen_considered_for_trimming = max_flen_considered_for_trimming
+        self.relative_cutting_site_dict = relative_cutting_site_dict
+        self._minimal_cutting_sites_df = pd.DataFrame()
+        self._minimal_cutting_sites_array = np.array([])
+
+    def get_array(self):
+        """
+        Relative cutting site dict:
+        {
+            'w_bc': [0, 9]
+            'c_bc': [0, 9]
+            'w_bc_rv': [9, 0]
+            'c_bc_rv': [9, 0]
+        }
+        """
+
+        """ Create res array
+
+        bsseq_strand      start_or_end       flen
+        'w_bc'            0                  1
+                                             2
+                                             ...
+                                             max_flen_considered_for_trimming
+                          1                  1
+                                             ...
+        'w_bc_rv'         ...                ...
+
+        """
+        if not self._minimal_cutting_sites_array:
+            min_cutting_sites_array = np.zeros([4, 2, self.max_flen_considered_for_trimming + 1], dtype=np.int32)
+
+            for bsseq_strand_name, bsseq_strand_index in b_inds._asdict().items():
+                # Set start position
+                min_cutting_sites_array[bsseq_strand_index, 0, :] = self.relative_cutting_site_dict[bsseq_strand_name][
+                    0]
+
+                # Set end position
+                for curr_flen in range(self.max_flen_considered_for_trimming + 1):
+                    max_allowed_pos_in_fragment = curr_flen - self.relative_cutting_site_dict[bsseq_strand_name][1]
+                    max_allow_pos_in_read = (max_allowed_pos_in_fragment
+                                             if max_allowed_pos_in_fragment <= self.max_read_length_bp
+                                             else self.max_read_length_bp)
+                    min_cutting_sites_array[bsseq_strand_index, 1, curr_flen] = max_allow_pos_in_read
+
+            self._minimal_cutting_sites_array = min_cutting_sites_array
+            return min_cutting_sites_array
+        else:
+            return self._minimal_cutting_sites_array
+
+    def get_df(self):
+        if self._minimal_cutting_sites_df.empty:
+            raise NotImplementedError
+        else:
+            return self._minimal_cutting_sites_df
+
+
+class AdjustedMbiasCuttingSites:
+    """Calculate and provide M-bias cutting sites in dataframe and array format"""
+
+    def __init__(self, mbias_data: MbiasData, calling_mode, **kwargs):
+        self.mbias_data = mbias_data
+        self.calling_mode = calling_mode
         self.cutting_site_calling_mode_dict = {
             'standard': self.max_plateau_length_threshold_std
         }
-        self.minimal_cutting_sites = None
-        self._adjusted_cutting_sites = None
+        self._adjusted_cutting_sites_array = np.array([])
+        self._adjusted_cutting_sites_df = pd.DataFrame()
+        self.kwargs = kwargs
 
-    def get_adjusted_cutting_sites_as_array(self, mbias_data: MbiasData, calling_mode, **kwargs):
+    def get_array(self):
         """cutting site df structure
                               start    end    optional_fields
         bsseq_strand  flen
         'c_bc'        1       0        0
 
         """
-        raise NotImplementedError
+        if not self._adjusted_cutting_sites_array:
+            raise NotImplementedError
+        else:
+            return self._adjusted_cutting_sites_array
 
-    def get_adjusted_cutting_sites_as_df(self, mbias_data: MbiasData, calling_mode, **kwargs):
+    def get_df(self):
         """ Calling function takes mbias count data for one stratum (bsseq_strand, flen)
         and returns Series with start and end of plateau, as well as arbitrary other fields
         """
-        if self._adjusted_cutting_sites is None:
-            calling_function = self.cutting_site_calling_mode_dict[calling_mode]
-            cutting_site_df = (mbias_data.mbias_stats_df.groupby(axis='index', level=['bsseq_strand', 'flen'])
-                               .apply(calling_function, **kwargs))
-            self._adjusted_cutting_sites = cutting_site_df
+        if self._adjusted_cutting_sites_df.empty:
+            calling_function = self.cutting_site_calling_mode_dict[self.calling_mode]
+            cutting_site_df = (self.mbias_data.mbias_stats_df.groupby(axis='index', level=['bsseq_strand', 'flen'])
+                               .apply(calling_function, **self.kwargs))
+            self._adjusted_cutting_sites_df = cutting_site_df
             return cutting_site_df
         else:
-            return self._adjusted_cutting_sites
+            return self._adjusted_cutting_sites_df
 
     @staticmethod
     def max_plateau_length_threshold_std(group_df, min_len, max_std):
@@ -259,52 +351,6 @@ class MbiasCuttingSites:
 
         plateau_height = group_df['smoothed_beta_values'][plateau_start:plateau_end].mean()
         return pd.Series([plateau_start, plateau_end, plateau_height], index=['start', 'end', 'average_methylation'])
-
-
-    def get_minimal_cutting_sites_as_array(self, relative_cutting_site_dict,
-                                           max_flen_considered_for_trimming, max_read_length_bp):
-        """
-        Relative cutting site dict:
-        {
-            'w_bc': [0, 9]
-            'c_bc': [0, 9]
-            'w_bc_rv': [9, 0]
-            'c_bc_rv': [9, 0]
-        }
-        """
-
-        """ Create res array
-
-        bsseq_strand      start_or_end       flen
-        'w_bc'            0                  1
-                                             2
-                                             ...
-                                             max_flen_considered_for_trimming
-                          1                  1
-                                             ...
-        'w_bc_rv'         ...                ...
-
-        """
-        if not self.minimal_cutting_sites:
-            res = np.zeros([4, 2, max_flen_considered_for_trimming + 1], dtype=np.int32)
-
-            for bsseq_strand_name, bsseq_strand_index in b_inds._asdict().items():
-                # Set start position
-                res[bsseq_strand_index, 0, :] = relative_cutting_site_dict[bsseq_strand_name][0]
-
-                # Set end position
-                for curr_flen in range(max_flen_considered_for_trimming + 1):
-                    max_allowed_pos_in_fragment = curr_flen - relative_cutting_site_dict[bsseq_strand_name][1]
-                    max_allow_pos_in_read = (max_allowed_pos_in_fragment
-                                             if max_allowed_pos_in_fragment <= max_read_length_bp
-                                             else max_read_length_bp)
-                    res[bsseq_strand_index, 1, curr_flen] = max_allow_pos_in_read
-
-            self.minimal_cutting_sites = res
-            return res
-
-    def get_minimal_cutting_sites_as_df(self):
-        raise NotImplementedError
 
 
 def cutting_sites_area_plot(mbias_cutting_sites_df: pd.DataFrame, output_path):
