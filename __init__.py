@@ -20,6 +20,7 @@ from mqc import bsseq_pileup_read
 from mqc import flag_and_index_values
 from mqc import overlap
 from mqc import trimming
+from mqc import mbias
 
 from mqc.bsseq_pileup_read import BSSeqPileupRead
 from mqc.index import IndexFile, IndexPosition

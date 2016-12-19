@@ -1,11 +1,18 @@
 from pysam.libcalignedsegment cimport PileupColumn
 from pysam.libcalignmentfile cimport AlignmentFile
+from pysam.libchtslib cimport *
 
-DEF W_BC = 96
-DEF C_BC = 80
-DEF W_BC_RV = 144
-DEF C_BC_RV = 160
+DEF W_BC_FLAG = 96
+DEF C_BC_FLAG = 80
+DEF W_BC_RV_FLAG = 144
+DEF C_BC_RV_FLAG = 160
 DEF MATE_AND_DIR_BITS = 240
+
+DEF C_BC_IND = 0
+DEF C_BC_RV_IND = 1
+DEF W_BC_IND = 2
+DEF W_BC_RV_IND = 3
+DEF NA_STRAND_IND = -1
 
 DEF IS_NA = 16
 DEF IS_METHYLATED = 8
@@ -13,7 +20,7 @@ DEF IS_UNMETHYLATED = 4
 DEF IS_SNP = 2
 DEF IS_REF = 1
 
-cdef dict meth_dict = {W_BC: {'C': {'C': IS_METHYLATED,
+cdef dict meth_dict = {W_BC_IND: {'C': {'C': IS_METHYLATED,
                                           'T': IS_UNMETHYLATED,
                                           'G': IS_SNP,
                                           'A': IS_SNP,
@@ -23,7 +30,7 @@ cdef dict meth_dict = {W_BC: {'C': {'C': IS_METHYLATED,
                                           'G': IS_REF,
                                           'A': IS_SNP,
                                           'N': IS_NA}},
-                             W_BC_RV: {'C': {'C': IS_METHYLATED,
+                             W_BC_RV_IND: {'C': {'C': IS_METHYLATED,
                                              'T': IS_UNMETHYLATED,
                                              'G': IS_SNP,
                                              'A': IS_SNP,
@@ -33,7 +40,7 @@ cdef dict meth_dict = {W_BC: {'C': {'C': IS_METHYLATED,
                                              'G': IS_REF,
                                              'A': IS_SNP,
                                              'N': IS_NA}},
-                             C_BC: {'G': {'C': IS_SNP,
+                             C_BC_IND: {'G': {'C': IS_SNP,
                                           'T': IS_SNP,
                                           'G': IS_METHYLATED,
                                           'A': IS_UNMETHYLATED,
@@ -43,7 +50,7 @@ cdef dict meth_dict = {W_BC: {'C': {'C': IS_METHYLATED,
                                           'G': IS_SNP,
                                           'A': IS_SNP,
                                           'N': IS_NA}},
-                             C_BC_RV: {'G': {'C': IS_SNP,
+                             C_BC_RV_IND: {'G': {'C': IS_SNP,
                                              'T': IS_SNP,
                                              'G': IS_METHYLATED,
                                              'A': IS_UNMETHYLATED,
@@ -77,9 +84,9 @@ cdef class BSSeqPileupRead(PileupRead):
         if self.observed_watson_base == 'N':
             return IS_NA
         # E.g. if only first in pair is known, but no alignment, therefore no direct., would be 64
-        if self.bs_seq_strand_flag not in [W_BC, W_BC_RV, C_BC, C_BC_RV]:
+        if self._bsseq_strand_ind == NA_STRAND_IND:
             return IS_NA
-        return meth_dict[self.bs_seq_strand_flag][watson_ref_base][self.observed_watson_base]
+        return meth_dict[self.bsseq_strand_ind][watson_ref_base][self.observed_watson_base]
 
     @property
     def baseq_at_pos(self):
@@ -100,8 +107,8 @@ cdef class BSSeqPileupRead(PileupRead):
         self._trimm_flag = value
 
     @property
-    def bs_seq_strand_flag(self):
-        return  self._bs_seq_strand_flag
+    def bsseq_strand_ind(self):
+        return  self._bsseq_strand_ind
 
     @property
     def meth_status_flag(self):
@@ -136,13 +143,27 @@ cdef inline make_bsseq_pileup_read(bam_pileup1_t * src,
     dest._is_refskip = src.is_refskip
 
     dest._meth_status_flag = IS_NA
-    dest._bs_seq_strand_flag = dest._alignment._delegate.core.flag & MATE_AND_DIR_BITS
+    dest._bsseq_strand_ind = get_bsseq_strand_index(dest._alignment._delegate.core.flag)
     #TODO: _qpos may have incorrect value
     dest._observed_watson_base = dest._alignment.query_sequence[dest._qpos]
     dest._baseq_at_pos = dest.alignment.query_qualities[dest._qpos]
     dest._overlap_flag = 0
     dest._trimm_flag = 0
     return dest
+
+cdef inline get_bsseq_strand_index(uint32_t flag):
+    # TODO: are these flag fields always defined, or can they have arbitrary values in some situations?
+    # TODO: smarter way of doing these tests
+    if flag & C_BC_FLAG == C_BC_FLAG:
+        return C_BC_IND
+    elif flag & C_BC_RV_FLAG == C_BC_RV_FLAG:
+        return C_BC_RV_IND
+    elif flag & W_BC_FLAG == W_BC_FLAG:
+        return W_BC_IND
+    elif flag & W_BC_RV_FLAG == W_BC_RV_FLAG:
+        return W_BC_RV_IND
+    else:  # BSSeq-strand not defined
+        return -1
 
 def pileups(PileupColumn pileup_column):
     pileups = []

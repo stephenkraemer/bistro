@@ -16,8 +16,8 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-b_flags = mqc.flag_and_index_values.bsseq_strand_flags
 b_inds = mqc.flag_and_index_values.bsseq_strand_indices
+b_na_ind = mqc.flag_and_index_values.bsseq_strand_na_index
 m_flags = mqc.flag_and_index_values.methylation_status_flags
 
 
@@ -34,7 +34,7 @@ class MbiasCounter:
         for motif_base, pileup_reads in zip(watson_motif_seq, motif_pileups):
             if motif_base in ['C', 'G']:
                 for pileup_read in pileup_reads:
-                    # pileup_read: mqc.bsseq_pileup_read.BSSeqPileupRead
+                    pileup_read: mqc.bsseq_pileup_read.BSSeqPileupRead
                     if (pileup_read.qc_fail_flag
                             or pileup_read.overlap_flag
                             or pileup_read.trimm_flag):
@@ -56,18 +56,10 @@ class MbiasCounter:
                     else:  # SNP, Ref base
                         continue
 
-                    if pileup_read.bs_seq_strand_flag == b_flags.c_bc:
-                        bsseq_strand_index = b_inds.c_bc
-                    elif pileup_read.bs_seq_strand_flag == b_flags.c_bc_rv:
-                        bsseq_strand_index = b_inds.c_bc_rv
-                    elif pileup_read.bs_seq_strand_flag == b_flags.w_bc:
-                        bsseq_strand_index = b_inds.w_bc
-                    elif pileup_read.bs_seq_strand_flag == b_flags.w_bc_rv:
-                        bsseq_strand_index = b_inds.w_bc_rv
-                    else:
+                    if pileup_read.bsseq_strand_ind == b_na_ind:
                         continue
 
-                    self.counter[bsseq_strand_index][tlen][pos_in_read][meth_status_index] += 1
+                    self.counter[pileup_read.bsseq_strand_ind][tlen][pos_in_read][meth_status_index] += 1
 
 
 class MbiasData:

@@ -11,9 +11,11 @@ def main():
 
     print('Working')
 
-    cutting_site_array = mqc.trimming.cutting_sites_array_from_flen_relative_minimal_cutting_sites(
+    max_flen = config_dict['trimming']['max_flen_considered_for_trimming']
+
+    minimal_cutting_sites = mqc.mbias.MinimalCuttingSites(
         relative_cutting_site_dict=config_dict['trimming']['relative_to_fragment_ends'],
-        max_flen_considered_for_trimming=config_dict['trimming']['max_flen_considered_for_trimming'],
+        max_flen_considered_for_trimming=max_flen,
         max_read_length_bp=config_dict['data_properties']['max_read_length_bp']
     )
 
@@ -21,22 +23,21 @@ def main():
 
     mode = sys.argv[1]
     if mode == 'small':
-        tabulate_meth_calls(bam_path='/home/kraemers/projects/mqc/mqc/test/data/b_cells_rep1_chr11_16815793-16824254'
-                                     '.bam',
-                            index_file_path='./test/data/chr11_16815793-16824254.cg.bed.gz',
-                            output_file='./test/results/methylation_calls_new.bed.gz',
-                            cutting_site_array=cutting_site_array,
-                            config_dict=config_dict)
+        tabulate_meth_calls(bam_path='../test_data/alignments/b_cells_rep1_chr11_16815793-16824254.bam',
+                            index_file_path='../test_data/indices/chr11_16815793-16824254.cg.bed.gz',
+                            output_file='../test_data/results/methylation_calls_new.bed.gz',
+                            cutting_site_array=minimal_cutting_sites.get_array(),
+                            max_flen_considered_for_trimming=max_flen)
 
     elif mode == 'medium':
         import time
         t0 = time.time()
         tabulate_meth_calls(bam_path=('/icgc/dkfzlsdf/analysis/hs_ontogeny/results/wgbs'
                                       '/results_per_pid/hsc_rep2/alignment/blood_hsc_rep2_merged.mdup.bam'),
-                            index_file_path='/home/kraemers/projects/mqc/mqc/test/data/chr11.10000.cg.bed.gz',
-                            cutting_site_array=cutting_site_array,
-                            output_file='./test/results/methylation_calls_dec12.bed.gz',
-                            config_dict=config_dict)
+                            index_file_path='/home/kraemers/projects/mqc/test_data/indices/chr11.10000.cg.bed.gz',
+                            cutting_site_array=minimal_cutting_sites.get_array(),
+                            output_file='/home/kraemers/projects/mqc/test_data/results/methylation_calls.bed.gz',
+                            max_flen_considered_for_trimming=max_flen)
 
         t1 = time.time()
         total = t1 - t0
@@ -48,10 +49,10 @@ def main():
         t0 = time.time()
         tabulate_meth_calls(bam_path=('/icgc/dkfzlsdf/analysis/hs_ontogeny/results/wgbs'
                                       '/results_per_pid/hsc_rep2/alignment/blood_hsc_rep2_merged.mdup.bam'),
-                            index_file_path='/home/kraemers/projects/mqc/mqc/test/data/chr11.100000.cg.bed.gz',
-                            cutting_site_array=cutting_site_array,
-                            output_file='./test/results/methylation_calls_dec12.bed.gz',
-                            config_dict=config_dict)
+                            index_file_path='/home/kraemers/projects/mqc/test_data/indices/chr11.10000.cg.bed.gz',
+                            cutting_site_array=minimal_cutting_sites.get_array(),
+                            output_file='/home/kraemers/projects/mqc/test_data/results/methylation_calls.bed.gz',
+                            max_flen_considered_for_trimming=max_flen)
 
         t1 = time.time()
         total = t1 - t0
@@ -62,7 +63,8 @@ def main():
         print('Mode unknown')
 
 
-def tabulate_meth_calls(bam_path, index_file_path, output_file, cutting_site_array, config_dict):
+def tabulate_meth_calls(bam_path, index_file_path, output_file, cutting_site_array,
+                        max_flen_considered_for_trimming):
     motif_pileup_iter = mqc.motif_pileup_generator(bam_path, index_file_path)
 
     with gzip.open(output_file, 'wt') as fout:
@@ -70,7 +72,8 @@ def tabulate_meth_calls(bam_path, index_file_path, output_file, cutting_site_arr
             beta, n_meth, n_unmeth = mc.call_meth_at_pileup(
                 motif_pileups,
                 index_position=curr_idx_pos,
-                cutting_site_array=cutting_site_array)
+                cutting_site_array=cutting_site_array,
+                max_flen_considered_for_trimming=max_flen_considered_for_trimming)
 
             print(curr_idx_pos.chrom,
                   curr_idx_pos.start,

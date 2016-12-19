@@ -3,7 +3,7 @@ from pysam.libcalignmentfile cimport AlignmentFile, PileupColumn
 from pysam.libchtslib cimport *
 
 cdef class BSSeqPileupRead(PileupRead):
-    cdef uint32_t _bs_seq_strand_flag
+    cdef int32_t _bsseq_strand_ind
     cdef uint32_t _meth_status_flag
     cdef str _observed_watson_base
     cpdef get_meth_status_at_pileup_pos(self, str watson_ref_base)
@@ -16,3 +16,4 @@ cdef class BSSeqPileupRead(PileupRead):
 
 cdef inline make_bsseq_pileup_read(bam_pileup1_t * src, AlignmentFile alignment_file)
 
+cdef inline get_bsseq_strand_index(uint32_t flag)

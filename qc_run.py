@@ -9,18 +9,21 @@ def main():
     with open('./config.default.toml') as f_toml:
         config_dict = pytoml.load(f_toml)
 
-    cutting_site_array = mqc.trimming.cutting_sites_array_from_flen_relative_minimal_cutting_sites(
+    max_flen = config_dict['trimming']['max_flen_considered_for_trimming']
+
+    minimal_cutting_sites = mqc.mbias.MinimalCuttingSites(
         relative_cutting_site_dict=config_dict['trimming']['relative_to_fragment_ends'],
-        max_flen_considered_for_trimming=config_dict['trimming']['max_flen_considered_for_trimming'],
+        max_flen_considered_for_trimming=max_flen,
         max_read_length_bp=config_dict['data_properties']['max_read_length_bp']
     )
 
     mode = sys.argv[1]
     if mode == 'small':
-        qc_run(bam_path='/home/kraemers/projects/mqc/mqc/test/data/b_cells_rep1_chr11_16815793-16824254.bam',
-               index_file_path='./test/data/chr11_16815793-16824254.cg.bed.gz',
-               cutting_site_array=cutting_site_array,
-               config_dict=config_dict)
+        qc_run(bam_path='../test_data/alignments/b_cells_rep1_chr11_16815793-16824254.bam',
+               index_file_path='../test_data/indices/chr11_16815793-16824254.cg.bed.gz',
+               cutting_site_array=minimal_cutting_sites.get_array(),
+               config_dict=config_dict,
+               max_flen_considered_for_trimming=max_flen)
 
     elif mode == 'medium':
         import time
@@ -54,7 +57,8 @@ def main():
         print('Mode unknown')
 
 
-def qc_run(bam_path, index_file_path, cutting_site_array, config_dict):
+def qc_run(bam_path, index_file_path, cutting_site_array, config_dict,
+           max_flen_considered_for_trimming):
     mbias_counter = mqc.MbiasCounter(
         max_read_length=config_dict['data_properties']['max_read_length_bp'],
         min_phred_score=config_dict['basic_quality_filtering']['min_phred_score'],
@@ -64,20 +68,23 @@ def qc_run(bam_path, index_file_path, cutting_site_array, config_dict):
     motif_pileup_iter = mqc.motif_pileup_generator(bam_path, index_file_path)
     for motif_pileups, curr_idx_pos in motif_pileup_iter:
         annotate_pileupreads(motif_pileups=motif_pileups, index_position=curr_idx_pos,
-                             cutting_site_array=cutting_site_array)
+                             cutting_site_array=cutting_site_array,
+                             max_flen_considered_for_trimming=max_flen_considered_for_trimming)
         mbias_counter.update(motif_pileups, index_position=curr_idx_pos)
 
-    with open('./test/results/mbias_stats_array.p', 'wb') as fobj_array_dump:
+    with open('/home/kraemers/projects/mqc/test_data/results/mbias_stats_array.p', 'wb') as fobj_array_dump:
         pickle.dump(mbias_counter.counter, fobj_array_dump)
 
     print(sum(sum(mbias_counter.counter > 0)))
 
 
-def annotate_pileupreads(motif_pileups, index_position, cutting_site_array):
+def annotate_pileupreads(motif_pileups, index_position, cutting_site_array,
+                         max_flen_considered_for_trimming):
     watson_motif_seq = index_position.watson_motif
     for motif_base, pileup_reads in zip(watson_motif_seq, motif_pileups):
         if motif_base in ['C', 'G']:
-            mqc.trimming.set_trimming_flag(pileup_reads, cutting_site_array)
+            mqc.trimming.set_trimming_flag(pileup_reads, cutting_site_array,
+                                           max_flen_considered_for_trimming=max_flen_considered_for_trimming)
             mqc.overlap.tag_overlaps(pileup_reads)
 
 
