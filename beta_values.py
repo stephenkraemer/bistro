@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 import mqc
 
 from typing import List
@@ -105,15 +106,34 @@ class BetaValueCounter:
                 self._add_beta_value_to_counter(beta_value_curr_mate, mate_idx)
 
     def _add_beta_value_to_counter(self, beta_value, counter_row_idx):
-        beta_value_idx = 1000 * np.round(beta_value, 3)
+        beta_value_idx = np.int16(1000 * np.round(beta_value, 3))
         self.beta_counter[counter_row_idx, beta_value_idx] += 1
 
 
 class BetaValueData:
-    """Provide beta value statistics in dataframe format"""
+    """Provide beta value statistics in series format"""
 
     def __init__(self):
-        pass
+        self.ser = pd.DataFrame()
+
+    def add_data_from_counter(self, beta_value_counter: 'BetaValueCounter',
+                              region_str, trimming_status_str):
+        df = pd.DataFrame(beta_value_counter.beta_counter)
+
+        # TODO: avoid hard coding of strand order and number of strand categories (7 at the moment)
+        multi_idx = pd.MultiIndex.from_arrays([[region_str] * 7, [trimming_status_str] * 7,
+                                               'c_bc c_bc_rv w_bc w_bc_rv mate1 mate2 total'.split()],
+                                              names=['Region', 'Trimming status', 'BS-Seq strand'])
+        df.index = multi_idx
+
+        df.columns.name = 'Position'
+        ser = df.stack()
+        ser.name = 'Beta Value'
+
+        self.ser = ser
+
+    def __str__(self):
+        return self.ser.head().__str__()
 
 
 class BetaValuePlotter:
