@@ -4,7 +4,6 @@ from pysam.libchtslib cimport *
 
 cdef class BSSeqPileupRead(PileupRead):
     cdef int32_t _bsseq_strand_ind
-    cdef uint32_t _meth_status_flag
     cdef str _observed_watson_base
     cpdef get_meth_status_at_pileup_pos(self, str watson_ref_base)
     # TODO: type correct?

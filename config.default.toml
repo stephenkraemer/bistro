@@ -16,6 +16,9 @@
     w_bc_rv = [9, 0]
     c_bc_rv = [9, 0]
 
+[beta_value_dist_stats]
+min_cov = 10
+
 [data_properties]
   max_read_length_bp = 101
 

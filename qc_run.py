@@ -59,10 +59,15 @@ def main():
 
 def qc_run(bam_path, index_file_path, cutting_site_array, config_dict,
            max_flen_considered_for_trimming):
+
     mbias_counter = mqc.MbiasCounter(
         max_read_length=config_dict['data_properties']['max_read_length_bp'],
         min_phred_score=config_dict['basic_quality_filtering']['min_phred_score'],
         max_flen_considered_for_trimming=config_dict['trimming']['max_flen_considered_for_trimming']
+    )
+
+    beta_value_counter = mqc.beta_values.BetaValueCounter(
+        min_cov=config_dict['beta_value_dist_stats']['min_cov'],
     )
 
     motif_pileup_iter = mqc.motif_pileup_generator(bam_path, index_file_path)
@@ -71,11 +76,19 @@ def qc_run(bam_path, index_file_path, cutting_site_array, config_dict,
                              cutting_site_array=cutting_site_array,
                              max_flen_considered_for_trimming=max_flen_considered_for_trimming)
         mbias_counter.update(motif_pileups, index_position=curr_idx_pos)
+        beta_value_counter.update_and_return_total_beta_value(motif_pileups, curr_idx_pos)
 
     with open('/home/kraemers/projects/mqc/test_data/results/mbias_stats_array.p', 'wb') as fobj_array_dump:
         pickle.dump(mbias_counter.counter, fobj_array_dump)
 
-    print(sum(sum(mbias_counter.counter > 0)))
+    with open('/home/kraemers/projects/mqc/test_data/results/beta_value_dist_array.p', 'wb') as fobj:
+        pickle.dump(beta_value_counter, fobj)
+
+    # print('Mbias:\n')
+    # print(sum(sum(mbias_counter.counter > 0)))
+    # print('-----------------')
+    # print('Beta value dist:\n')
+    print(beta_value_counter.beta_counter.sum(axis=1))
 
 
 def annotate_pileupreads(motif_pileups, index_position, cutting_site_array,

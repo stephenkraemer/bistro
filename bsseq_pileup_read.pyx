@@ -78,6 +78,8 @@ switch is the same implementatio as hash table on the assembly code level
 
 
 cdef class BSSeqPileupRead(PileupRead):
+    # TODO: calculate for every read right away? or at least make property with default caching! (probably better alternative)
+    # Note that calculating the methylation status requires knowledge of the watson base!
     cpdef get_meth_status_at_pileup_pos(self, str watson_ref_base):
         if self._is_del or self._is_refskip:
             return IS_NA
@@ -142,7 +144,6 @@ cdef inline make_bsseq_pileup_read(bam_pileup1_t * src,
     dest._is_tail = src.is_tail
     dest._is_refskip = src.is_refskip
 
-    dest._meth_status_flag = IS_NA
     dest._bsseq_strand_ind = get_bsseq_strand_index(dest._alignment._delegate.core.flag)
     #TODO: _qpos may have incorrect value
     dest._observed_watson_base = dest._alignment.query_sequence[dest._qpos]
