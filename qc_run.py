@@ -82,6 +82,10 @@ def qc_run(bam_path, index_file_path, cutting_site_array, config_dict,
     beta_value_data.add_data_from_counter(beta_value_counter,
                                           region_str='global',
                                           trimming_status_str='minimal')
+    beta_value_plotter = mqc.beta_values.BetaValuePlotter(beta_value_data)
+    beta_value_plotter.beta_value_dist_plot(region_str='global',
+                                            output_path='/home/kraemers/projects/mqc/test_data/'
+                                                        'results/beta_value_dist_mate_str.png')
 
     with open('/home/kraemers/projects/mqc/test_data/results/mbias_stats_array.p', 'wb') as fobj_array_dump:
         pickle.dump(mbias_counter.counter, fobj_array_dump)
@@ -95,7 +99,7 @@ def qc_run(bam_path, index_file_path, cutting_site_array, config_dict,
     print('Beta value dist:\n')
     print(beta_value_counter.beta_counter.sum(axis=1))
     print('-----------------')
-    print('Beta value series:\n')
+    print('Beta value df:\n')
     print(beta_value_data)
 
 

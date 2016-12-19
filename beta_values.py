@@ -1,21 +1,13 @@
 import numpy as np
 import pandas as pd
 import mqc
-
 from typing import List
 
-"""
-BetaValueCounter
-- stratified by mate
-- stratified by region
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+import seaborn as sns
 
-BetaValueDistribution
-- beta value stats in dataframe format
-
-BetaValuePlotter
-
-It must be possible to add BetaValueCounters
-"""
 
 MATE1_IDX = 4
 MATE2_IDX = 5
@@ -111,10 +103,10 @@ class BetaValueCounter:
 
 
 class BetaValueData:
-    """Provide beta value statistics in series format"""
+    """Compute beta value statistics and provide in series/dataframe format"""
 
     def __init__(self):
-        self.ser = pd.DataFrame()
+        self.df = pd.DataFrame()
 
     def add_data_from_counter(self, beta_value_counter: 'BetaValueCounter',
                               region_str, trimming_status_str):
@@ -123,18 +115,42 @@ class BetaValueData:
         # TODO: avoid hard coding of strand order and number of strand categories (7 at the moment)
         multi_idx = pd.MultiIndex.from_arrays([[region_str] * 7, [trimming_status_str] * 7,
                                                'c_bc c_bc_rv w_bc w_bc_rv mate1 mate2 total'.split()],
-                                              names=['Region', 'Trimming status', 'BS-Seq strand'])
+                                              names=['region', 'trimming_status', 'bsseq_strand'])
         df.index = multi_idx
 
-        df.columns.name = 'Position'
-        ser = df.stack()
-        ser.name = 'Beta Value'
+        df.columns.name = 'position'
+        df = df.stack().to_frame('beta_value')
+        df = df.sort_index(level=1, sort_remaining=True)
+        self.df = df
 
-        self.ser = ser
+    def add_smoothed_beta_values(self):
+        raise NotImplementedError
+
+    def add_binned_beta_values(self):
+        raise NotImplementedError
 
     def __str__(self):
-        return self.ser.head().__str__()
+        return self.df.head().__str__()
 
 
 class BetaValuePlotter:
-    pass
+    def __init__(self, beta_value_data: 'BetaValueData'):
+        self.beta_value_data = beta_value_data
+
+    def beta_value_dist_plot(self, region_str, output_path):
+        """Plot total, mate- and strand-stratified beta value distribution plots in a given region"""
+        df = self.beta_value_data.df
+        idx = pd.IndexSlice
+        """
+        region trimming_status bsseq_strand Position         beta_value
+        global minimal         c_bc         0                0.0
+                                            1                0.0
+                                            2                0.0
+                                            3                0.0
+                                            4                0.0
+        """
+        plotting_data = df.loc[idx[region_str, :, ['mate1', 'mate2'], :]].reset_index()
+        g = sns.FacetGrid(data=plotting_data, col='bsseq_strand', col_wrap=2, hue='trimming_status')
+        g = g.map(plt.plot, 'position', 'beta_value')
+        g = g.add_legend()
+        g.fig.savefig(output_path)
