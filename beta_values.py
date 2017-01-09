@@ -120,8 +120,8 @@ class BetaValueData:
 
         df.columns.name = 'position'
         df = df.stack().to_frame('beta_value')
-        df = df.sort_index(level=1, sort_remaining=True)
-        self.df = df
+        self.df = pd.concat([self.df, df], axis='index')
+        self.df = self.df.sort_index(level=1, sort_remaining=True)
 
     def add_smoothed_beta_values(self):
         raise NotImplementedError
