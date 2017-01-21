@@ -1,11 +1,10 @@
 import click
-import multiprocessing as mp
+import pytoml
 
-
-# def get_config_dict(config_dict_path):
-#     with open(config_dict_path) as f:
-#         config_dict = pytoml.load(f)
-#     return config_dict
+def get_config_dict(config_dict_path):
+    with open(config_dict_path) as f:
+        config_dict = pytoml.load(f)
+    return config_dict
 #
 #
 # def set_config_file(ctx, config_option_name, config_option_value):
@@ -24,23 +23,18 @@ def cli():
 @click.help_option()
 @click.option('--index')
 @click.option('--bam', required=True)
-@click.option('--output_file', required=True)
-@click.option('--config')
-@click.option('--pos_per_process', default=1000)
+@click.option('--output_dir', required=True)
+@click.option('--config_file', required=True)
+@click.option('--sample_name')
 # @click.option('--config', required=True, is_eager=True, callback=set_config_file)
-@click.option('--n_cores', type=int, default=1)
-def call(bam, index, config, n_cores, output_file, pos_per_process):
-    lock = mp.Lock()
-    # config = get_config_dict(config)
-    from mqc import call_methylation_parallelized
-    call_methylation_parallelized(
-        bam_file_path=bam,
-        index_file_path=index,
-        n_cores=n_cores,
-        output_file=output_file,
-        pos_per_process=pos_per_process,
-        lock=lock, )
-
+def qc_run(bam, index, config_file, output_dir, sample_name):
+    from mqc.qc_run import qc_run
+    config = get_config_dict(config_file)
+    qc_run(bam_path=bam,
+           index_file_path=index,
+           config=config,
+           output_dir_abspath=output_dir,
+           sample_name=sample_name)
 
 if __name__ == '__main__':
     cli()

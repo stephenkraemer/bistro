@@ -9,8 +9,10 @@
   max_flen_considered_for_trimming = 500
   required_n_events_for_cutting_site_determination = 3000
   max_window_size_for_smoothing = 20
+  min_plateau_length = 40
+  max_std_within_plateau = 0.1
 
-  [trimming.relative_to_fragment_ends]
+  [trimming.relative_to_fragment_ends_dict]
     w_bc = [0, 9]
     c_bc = [0, 9]
     w_bc_rv = [9, 0]
@@ -21,6 +23,13 @@ min_cov = 10
 
 [data_properties]
   max_read_length_bp = 101
+  min_flen_considered_for_methylation_calling = 30
 
 [parallelization]
   pos_per_process = 1000
+
+[mbias_plots]
+    distance_between_displayed_flen = 30
+
+[coverage_analysis]
+  max_per_cpg_cov = 60

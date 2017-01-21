@@ -22,13 +22,14 @@ UNMETH_IDX = 1
 m_flags = mqc.flag_and_index_values.methylation_status_flags
 
 
-class BetaValueCounter:
+class StratifiedBetaValueCounter:
     """Extract stratified beta values from MotifPileup AND update counter"""
 
-    def __init__(self, min_cov):
+    def __init__(self, config):
         # Minimal coverage must be >= 1, because we rely on the minimal coverage condition
         # to avoid ZeroDivisionErrors
-        self.min_cov = min_cov if min_cov >= 1 else 1
+        config_min_cov = config['beta_value_dist_stats']['min_cov']
+        self.min_cov = config_min_cov if config_min_cov >= 1 else 1
         self.beta_counter = np.zeros([7, 1001])
 
     def update_and_return_total_beta_value(self, motif_pileups, index_position: 'mqc.IndexPosition'):
@@ -102,13 +103,14 @@ class BetaValueCounter:
         self.beta_counter[counter_row_idx, beta_value_idx] += 1
 
 
+
 class BetaValueData:
     """Compute beta value statistics and provide in series/dataframe format"""
 
     def __init__(self):
         self.df = pd.DataFrame()
 
-    def add_data_from_counter(self, beta_value_counter: 'BetaValueCounter',
+    def add_data_from_counter(self, beta_value_counter: 'StratifiedBetaValueCounter',
                               region_str, trimming_status_str):
         df = pd.DataFrame(beta_value_counter.beta_counter)
 
@@ -118,8 +120,9 @@ class BetaValueData:
                                               names=['region', 'trimming_status', 'bsseq_strand'])
         df.index = multi_idx
 
-        df.columns.name = 'position'
-        df = df.stack().to_frame('beta_value')
+        df.columns = df.columns.get_values() / 1000
+        df.columns.name = 'beta_value'
+        df = df.stack().to_frame('count')
         self.df = pd.concat([self.df, df], axis='index')
         self.df = self.df.sort_index(level=1, sort_remaining=True)
 
@@ -128,6 +131,20 @@ class BetaValueData:
 
     def add_binned_beta_values(self):
         raise NotImplementedError
+
+    # TODO: do this automatically
+    def compute_frequencies(self):
+        def get_frequencies_in_stratum(group_df):
+            freqs: pd.Series
+            freqs = group_df['count'] / group_df['count'].sum()
+            df = freqs.to_frame('Frequency')
+            return df
+
+        freq_df = self.df.groupby(level=['region', 'trimming_status', 'bsseq_strand']).apply(
+            get_frequencies_in_stratum
+        )
+
+        self.df['Frequency'] = freq_df['Frequency']
 
     def __str__(self):
         return self.df.head().__str__()
@@ -142,15 +159,15 @@ class BetaValuePlotter:
         df = self.beta_value_data.df
         idx = pd.IndexSlice
         """
-        region trimming_status bsseq_strand Position         beta_value
-        global minimal         c_bc         0                0.0
-                                            1                0.0
-                                            2                0.0
-                                            3                0.0
-                                            4                0.0
+        region trimming_status bsseq_strand beta_value       count    Frequency
+        global minimal         c_bc         0.000            0.0      0.33
+                                            0.001            0.0      0.33
+                                            0.002            0.0
+                                            0.003            0.0
+                                            0.004            0.0
         """
         plotting_data = df.loc[idx[region_str, :, ['mate1', 'mate2'], :]].reset_index()
         g = sns.FacetGrid(data=plotting_data, col='bsseq_strand', col_wrap=2, hue='trimming_status')
-        g = g.map(plt.plot, 'position', 'beta_value')
+        g = g.map(plt.plot, 'beta_value', 'Frequency')
         g = g.add_legend()
         g.fig.savefig(output_path)

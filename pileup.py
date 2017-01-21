@@ -39,10 +39,12 @@ def motif_pileup_generator(bam_path, index_file_path):
 
     # Fill remaining index positions with zeros
     motif_pileups = [[] for base in curr_idx_pos.watson_motif]
+    # TODO: does not yield index position
     yield motif_pileups
 
     for curr_idx_pos in index_file:
         motif_pileups = [[] for base in curr_idx_pos.watson_motif]
+        # TODO: does not yield index position
         yield motif_pileups
 
 
@@ -62,3 +64,11 @@ def all_position_pileup_generator(bam_path, ref, start):
             last_pos += 1
         last_pos = curr_pos
         yield (pileup_column, curr_pos)
+
+
+def annotate_pileupreads(motif_pileups, index_position, cutting_sites, config):
+    watson_motif_seq = index_position.watson_motif
+    for motif_base, pileup_reads in zip(watson_motif_seq, motif_pileups):
+        if motif_base in ['C', 'G']:
+            mqc.trimming.set_trimming_flag(pileup_reads, cutting_sites, config)
+            mqc.overlap.tag_overlaps(pileup_reads)

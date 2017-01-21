@@ -23,6 +23,7 @@ from mqc import trimming
 from mqc import mbias
 from mqc import beta_values
 from mqc import qc_run
+from mqc import coverage
 
 from mqc.bsseq_pileup_read import BSSeqPileupRead
 from mqc.index import IndexFile, IndexPosition
