@@ -26,14 +26,16 @@ def cli():
 @click.option('--output_dir', required=True)
 @click.option('--config_file', required=True)
 @click.option('--sample_name')
+# TODO-format: remove test option
+@click.option('--test', is_flag=True)
 # @click.option('--config', required=True, is_eager=True, callback=set_config_file)
-def qc_run(bam, index, config_file, output_dir, sample_name):
+def qc_run(bam, index, config_file, output_dir, sample_name, test):
     from mqc.qc_run import qc_run
     config = get_config_dict(config_file)
     qc_run(bam_path=bam,
            index_file_path=index,
            config=config,
-           output_dir_abspath=output_dir,
+           meth_metrics_dir_abs=output_dir,
            sample_name=sample_name)
 
 if __name__ == '__main__':

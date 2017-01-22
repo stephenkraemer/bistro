@@ -1,3 +1,4 @@
+import textwrap
 from unittest.mock import Mock
 import io
 import itertools
@@ -32,6 +33,7 @@ def mbias_stats_df():
     df = pd.read_csv(test_df_path, sep='\t', header=0, index_col=[0, 1, 2], nrows=None, usecols=None)
     return df
 
+# TODO-refactor: use this large dataframe in all tests
 @pytest.fixture()
 def mbias_stats_df_large_for_cutting_site_determin_tests(test_output_dir):
     """
@@ -63,10 +65,29 @@ def mbias_stats_df_large_for_cutting_site_determin_tests(test_output_dir):
         df.loc[(df.bsseq_strand == bsseq_strand) & (df.flen == 100), 'smoothed_beta_values'] = bad_mbias_curve
         df.loc[(df.bsseq_strand == bsseq_strand) & (df.flen == 101), 'smoothed_beta_values'] = good_mbias_curve
 
+    df['beta_values'] = df['smoothed_beta_values']
+
     df = df.set_index(['bsseq_strand', 'flen', 'pos']).sort_index()
     return df
 
+@pytest.fixture()
+def mbias_stats_df_large_cutting_sites_df():
+    # TODO-learn: textwrap.dedent
+    # TODO-snippet: textwrap.dedent
+    # TODO-document: cutting site df format
+    df_file = io.StringIO(textwrap.dedent("""\
+        bsseq_strand  flen  start  end  average_methylation
+        'c_bc'        100   40     60   0.7
+        'c_bc'        101   0      100  0.7
+        'c_bc_rv'     100   40     60   0.7
+        'c_bc_rv'     101   0      100  0.7
+        'w_bc'        100   40     60   0.7
+        'w_bc'        101   0      100  0.7
+        'w_bc_rv'     100   40     60   0.7
+        'w_bc_rv'     101   0      100  0.7"""))
 
+    cutting_site_df = pd.read_csv(df_file, sep='\s+', header=0, index_col=[0,1])
+    return cutting_site_df
 
 @pytest.fixture
 def mbias_data_with_test_df(empty_mbias_data, mbias_stats_df):
@@ -128,13 +149,28 @@ class TestMbiasData:
     def test_mbias_stats_smoothing(self, mbias_data_with_test_df: 'mqc.mbias.MbiasData'):
         mbias_data = mbias_data_with_test_df
         mbias_data.add_smoothed_mbias_stats()
-        assert np.isnan(mbias_data.mbias_stats_df.loc[('w_bc', 2, 1), 'smoothed_meth_events_per_pos'])
+
+        # Test that flens with enough coverage on their own are recognized
+        assert mbias_data.mbias_stats_df.loc[('c_bc_rv', 1, 3), 'smoothed_meth_events_per_pos'] == 4
+        assert mbias_data.mbias_stats_df.loc[('w_bc_rv', 5, 1), 'smoothed_meth_events_per_pos'] == 4
+
+        # Test that flens with too low coverage are rescued by smoothing where possible
         assert mbias_data.mbias_stats_df.loc[('w_bc', 4, 1), 'smoothed_meth_events_per_pos'] == 2
+
+        # Test that flens with insufficient coverage and possibility for smoothing are discarded
+        assert np.isnan(mbias_data.mbias_stats_df.loc[('w_bc', 2, 1), 'smoothed_meth_events_per_pos'])
 
     def test_add_beta_values(self, mbias_data_with_test_df: 'mqc.mbias.MbiasData'):
         mbias_data = mbias_data_with_test_df
         mbias_data.mbias_stats_df[['smoothed_meth_events_per_pos', 'smoothed_unmeth_events_per_pos']] = 1
-        mbias_data.add_beta_values_from_smoothed_data()
+        mbias_data.add_beta_values()
+
+        """
+        c_bc	1	1	1	1	NA	NA
+        c_bc	2	1	0	0	NA	NA
+        """
+        assert mbias_data.mbias_stats_df.loc[('c_bc', 1, 1), 'beta_values'] == 0.5
+        assert np.isnan(mbias_data.mbias_stats_df.loc[('c_bc', 2, 1), 'beta_values'])
         assert mbias_data.mbias_stats_df['smoothed_beta_values'].iloc[0] == 0.5
 
     def test_mask_df_computation(self, mbias_data_with_test_df: 'mqc.mbias.MbiasData', cutting_sites_df):
@@ -149,15 +185,46 @@ class TestMbiasData:
 
 
 class TestMbiasPlotter:
-    def test_unmasked_plot(self, mbias_data_with_test_df: 'mqc.mbias.MbiasData', test_output_dir, config):
-        mbias_data = mbias_data_with_test_df
-        mbias_data.mbias_stats_df[['smoothed_meth_events_per_pos', 'smoothed_unmeth_events_per_pos']] = 1
-        mbias_data.add_beta_values_from_smoothed_data()
+    def test_unmasked_plot(self, mbias_stats_df_large_for_cutting_site_determin_tests, test_output_dir, config):
+        mbias_data = Mock(mbias_stats_df=mbias_stats_df_large_for_cutting_site_determin_tests,
+                          min_flen_considered_for_methylation_calling = 100,
+                          max_flen_considered_for_trimming = 101,
+                          )
 
         mbias_plotter = mqc.mbias.MbiasDataPlotter(mbias_data, config)
         mbias_plotter.distance_between_displayed_flen = 1
+
         output_path = os.path.join(test_output_dir, 'unmasked_mbias_plot.png')
-        mbias_plotter.flen_strat_plot(output_path=output_path)
+        mbias_plotter.flen_strat_plot(output_path=output_path, plot_smoothed_values=False)
+
+    def test_masked_plot(self, mbias_stats_df_large_for_cutting_site_determin_tests,
+                         mbias_stats_df_large_cutting_sites_df,
+                         test_output_dir,
+                         config):
+
+        mbias_data = Mock(mbias_stats_df=None,
+                          min_flen_considered_for_methylation_calling = 100,
+                          max_flen_considered_for_trimming = 101,
+                          )
+
+        df = mbias_stats_df_large_for_cutting_site_determin_tests
+        # TODO-learn: df.eval
+        df.loc[df.eval('pos < 20 or pos > 80'), 'beta_values'] = np.nan
+        masked_mbias_stats_df = df
+        # TODO-learn: Mock().meth.return_value = 1; Mock().meth('a', 'b') -> 1
+        mbias_data.get_masked_mbias_df.return_value = masked_mbias_stats_df
+
+        # TODO-learn: Mock().attr is None -> False
+
+        mbias_plotter = mqc.mbias.MbiasDataPlotter(mbias_data, config)
+        mbias_plotter.distance_between_displayed_flen = 1
+
+        output_path = os.path.join(test_output_dir, 'masked_mbias_plot.raw.png')
+        mbias_plotter.flen_strat_plot(output_path=output_path,
+                                      cutting_sites=Mock(),
+                                      trimming_mode='adjusted',
+                                      plot_smoothed_values=False)
+
 
 class TestAdjustedMbiasCuttingSites:
     def test_get_array(self, config, cutting_sites_df):

@@ -71,6 +71,7 @@ class MbiasData:
 
         self.min_flen_considered_for_methylation_calling = (config["data_properties"]
                                                             ["min_flen_considered_for_methylation_calling"])
+        self.mbias_counter = mbias_counter
         self.mbias_stats_array = mbias_counter.counter
 
         self._adjusted_masked_mbias_stats_df = pd.DataFrame()
@@ -121,35 +122,68 @@ class MbiasData:
                                .sort_index(axis='index', level=0, sort_remaining=True))
 
     def add_smoothed_mbias_stats(self):
+        # TODO-document
+        """Smooth M-bias curves for (bsseq_strand, flen) strata with low coverage
+
+        The curves are smoothed by adding data from adjacent, lower flens for the same bsseq_strand,
+        based on the observation that lower flens generally have the same or worse M-bias problems, but
+        they are generally not less affected. Therefore, smoothing may lead to an over-estimation,
+        but not to an underestimation of M-bias.
+
+        Algorithm:
+        the ['smoothed_meth_events_per_pos', 'smoothed_unmeth_events_per_pos'] columns initially all have
+        np.nan values. where possible (enough coverage before/after smoothing), the NA values are replaced with
+        either the original beta value counts (where coverage is high enough) or with smoothed beta values (where
+        smoothing is possible according to the config parameters)
+
+
+        Returns
+        ---------------
+        The M-bias stats dataframe is modified inplace
+        """
+
         df = self.mbias_stats_df
-        win_cols = ['smoothed_meth_events_per_pos', 'smoothed_unmeth_events_per_pos']
-        flen_data_cols = ['meth_events_per_pos', 'unmeth_events_per_pos']
-        for bsseq_strand in b_inds._fields:
+        cols_to_fill = ['smoothed_meth_events_per_pos', 'smoothed_unmeth_events_per_pos']
+        # both columns are initialized to np.nan upstream
+        meth_event_cols = ['meth_events_per_pos', 'unmeth_events_per_pos']
+        for curr_bsseq_strand in b_inds._fields:
+            # State variable set to true if all following flens will have too low coverage
             minimal_flen_with_enough_coverage_reached = False
-            for flen in range(self.max_flen_considered_for_trimming,
-                              self.min_flen_considered_for_methylation_calling, -1):
+            # TODO-learn
+            for curr_flen in range(self.max_flen_considered_for_trimming,
+                                   self.min_flen_considered_for_methylation_calling - 1, -1):
                 if minimal_flen_with_enough_coverage_reached:
                     break
-                curr_flen_rows = pd.IndexSlice[bsseq_strand, flen, :]
-                curr_win_data = df.loc[curr_flen_rows, flen_data_cols].values
-                total_events = curr_win_data.sum().sum()
-                if total_events < self.required_n_events_for_cutting_site_determination:
-                    for ind in range(1, self.max_window_size_for_smoothing):
-                        next_flen = flen - ind
+                # get index pointing to all positions in the current (bsseq_strand, flen) stratum
+                idx_rows_curr_stratum = pd.IndexSlice[curr_bsseq_strand, curr_flen, :]
+                meth_events_curr_stratum_arr = df.loc[idx_rows_curr_stratum, meth_event_cols].values
+                total_events = meth_events_curr_stratum_arr.sum().sum()
+                if total_events >= self.required_n_events_for_cutting_site_determination:
+                    df.loc[idx_rows_curr_stratum, cols_to_fill] = meth_events_curr_stratum_arr
+                else:
+                    # Counts are insufficient for cutting site determination
+                    # -> Try to get 'smoothed' curve with more counts by joining adjacent flens
+                    for ind in range(1, self.max_window_size_for_smoothing + 1):
+                        next_flen = curr_flen - ind
                         if next_flen == 0:
                             minimal_flen_with_enough_coverage_reached = True
                             break
                         # noinspection PyTypeChecker
-                        curr_win_data += df.loc[(bsseq_strand, next_flen, slice(None)), flen_data_cols].values
-                        total_events = curr_win_data.sum().sum()
+                        meth_events_curr_stratum_arr += df.loc[(curr_bsseq_strand, next_flen, slice(None)), meth_event_cols].values
+                        total_events = meth_events_curr_stratum_arr.sum().sum()
                         if total_events >= self.required_n_events_for_cutting_site_determination:
-                            df.loc[curr_flen_rows, win_cols] = curr_win_data
+                            df.loc[idx_rows_curr_stratum, cols_to_fill] = meth_events_curr_stratum_arr
                             break
 
 
-    def add_beta_values_from_smoothed_data(self):
-        self.mbias_stats_df['smoothed_beta_values'] = self.mbias_stats_df['smoothed_meth_events_per_pos'] / (
-            self.mbias_stats_df['smoothed_meth_events_per_pos'] + self.mbias_stats_df['smoothed_unmeth_events_per_pos'])
+    def add_beta_values(self):
+        """Add beta values from smoothed and raw data"""
+        df = self.mbias_stats_df
+
+        df['beta_values'] = df['meth_events_per_pos'] / ( df['meth_events_per_pos'] + df['unmeth_events_per_pos'] )
+
+        df['smoothed_beta_values'] = (df['smoothed_meth_events_per_pos'] /
+                                     ( df['smoothed_meth_events_per_pos'] + df['smoothed_unmeth_events_per_pos'] ))
 
     def get_masked_mbias_df(self, trimming_mode: str, cutting_sites: 'mqc.mbias.CuttingSites'):
         """Get M-bias counts in dataframe format, with positions in M-bias trimming zones set to NA"""
@@ -195,10 +229,16 @@ class MbiasData:
 class MbiasDataPlotter:
     def __init__(self, mbias_data: MbiasData, config):
         self.mbias_data = mbias_data
+        # TODO-refactor: bad way of getting config vars!
+        self.max_read_length = config['data_properties']['max_read_length_bp']
         self.distance_between_displayed_flen = config["mbias_plots"]["distance_between_displayed_flen"]
 
-    def flen_strat_plot(self, output_path, cutting_sites=None, trimming_mode=None):
+    def flen_strat_plot(self, output_path, cutting_sites=None, trimming_mode=None, plot_smoothed_values=True):
 
+        if plot_smoothed_values:
+            beta_value_column_name = 'smoothed_beta_values'
+        else:
+            beta_value_column_name = 'beta_values'
         if cutting_sites is None:
             mbias_stats_df = self.mbias_data.mbias_stats_df
         elif trimming_mode in ['minimal', 'adjusted']:  #
@@ -211,15 +251,16 @@ class MbiasDataPlotter:
         plotting_data = (mbias_stats_df
                          .loc[pd.IndexSlice[:, range(self.mbias_data.min_flen_considered_for_methylation_calling,
                                                      self.mbias_data.max_flen_considered_for_trimming + 1,
-                                                     self.distance_between_displayed_flen), :], 'smoothed_beta_values']
+                                                     self.distance_between_displayed_flen), :], beta_value_column_name]
                          .reset_index())
 
         plotting_data = plotting_data.dropna(axis='index', how='any')
         g = (sns.FacetGrid(data=plotting_data, col='bsseq_strand',
                            col_order='w_bc w_bc_rv c_bc c_bc_rv'.split(),
                            col_wrap=2,
-                           hue='flen')
-             .map(plt.plot, 'pos', 'smoothed_beta_values')
+                           hue='flen',
+                           xlim=[0, self.max_read_length])
+             .map(plt.plot, 'pos', beta_value_column_name)
              .add_legend())
         g.fig.savefig(output_path)
 
@@ -349,7 +390,7 @@ class AdjustedMbiasCuttingSites:
                             .loc[:, ['bsseq_strand', 'start_or_end', 'flen', 'absolute_cutting_position']]
                             )
             df_formatted.bsseq_strand.replace(b_inds._fields, b_inds, inplace=True)
-            df_formatted.start_or_end.replace(['start', 'end'], [0,1], inplace=True)
+            df_formatted.start_or_end.replace(['start', 'end'], [0, 1], inplace=True)
             arr = np.zeros([4, 2, self.max_flen_considered_for_trimming + 1])
             # +1 so that indices correspond to 1-based fragment lengths
             df_formatted: pd.DataFrame

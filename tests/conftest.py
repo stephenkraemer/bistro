@@ -36,6 +36,7 @@ def test_output_dir():
     timestamp = time.strftime('%d_%H')
     outdir = os.path.join('/home/kraemers/temp', 'mqc_test_' + timestamp + '/')
     os.makedirs(outdir, exist_ok=True)
+    print(f'Saving objects created during testing in {outdir}')
     return outdir
 
 

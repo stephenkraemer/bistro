@@ -4,10 +4,10 @@ import mqc
 from typing import List
 
 import matplotlib
+
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import seaborn as sns
-
 
 MATE1_IDX = 4
 MATE2_IDX = 5
@@ -34,7 +34,7 @@ class StratifiedBetaValueCounter:
 
     def update_and_return_total_beta_value(self, motif_pileups, index_position: 'mqc.IndexPosition'):
         total_counts, event_counter = self._get_stratified_meth_event_counts_for_motif_position(
-            motif_pileups, index_position)
+                motif_pileups, index_position)
 
         total_beta = self._update_total_beta_value_counts_and_return_beta_value(total_counts)
 
@@ -45,8 +45,27 @@ class StratifiedBetaValueCounter:
 
     @staticmethod
     def _get_stratified_meth_event_counts_for_motif_position(motif_pileups, index_position: 'mqc.IndexPosition'):
-        total_counts = np.zeros([2])
-        events_counter = np.zeros([4, 2])
+        # TODO-unidir: overlapping reads are counted in stratified meth events counter
+        #              this is compatiable with mate-stratified beta value plots for the directional protocol
+        #              is this also true for the undirectional protocol?
+        """
+
+        Parameters
+        ----------
+        motif_pileups
+        index_position
+
+        Returns
+        -------
+        total_counts: np.ndarray(int32)
+            Total number of methylated and unmethylated reads, overlapping reads are discarded
+        events_counter: np.ndarray(int32)
+            Total number of meth. and unmeth. reads, stratified by BS-Seq strand. Overlapping reads are kept(!).
+
+
+        """
+        total_counts = np.zeros([2], dtype='int32')
+        events_counter = np.zeros([4, 2], dtype='int32')
         # fill BSSeq-strand stratified events counter
         for watson_base, pileup_reads in zip(index_position.watson_motif, motif_pileups):
             # pileup_reads: List[mqc.BSSeqPileupRead]
@@ -70,14 +89,29 @@ class StratifiedBetaValueCounter:
         return total_counts, events_counter
 
     def _update_total_beta_value_counts_and_return_beta_value(self, total_counts):
-        # Global beta value is returned for methylation calling
-        # Therefore, it is always computed, even if the coverage is below the threshold for
-        # consideration in the beta value distribution
+        """ Calculate the total beta value and update counter if coverage sufficient
+
+        The global beta value is returned for use in methylation calling. Therefore, it is always computed, even if the
+         coverage is below the threshold for consideration in the beta value distribution.
+
+        Parameters
+        ----------
+        total_counts: np.ndarray
+            [meth_counts, unmeth_counts]
+
+        Returns
+        -------
+        total_beta: np.float
+
+        """
+
         num_events_total = total_counts.sum()
-        try:
-            total_beta = total_counts[METH_IDX] / num_events_total
-        except ZeroDivisionError:
+        if num_events_total == 0:
+            # Checking num_events_total==0 is cleaner than catching division by zero error
+            # due to the way numpy handles division by infinitesimal numbers
             total_beta = np.nan
+        else:
+            total_beta = total_counts[METH_IDX] / num_events_total
 
         if num_events_total > self.min_cov:
             self._add_beta_value_to_counter(total_beta, TOTAL_IDX)
@@ -85,16 +119,25 @@ class StratifiedBetaValueCounter:
         return total_beta
 
     def _update_stratified_beta_value_counts(self, events_counter):
+        """ Calculate beta values stratified by BS-Seq strand and by mate
+
+        Parameters
+        ----------
+        events_counter: np.ndarray
+        """
+
+        # Division by zero cannot occur, because beta values are only computed if self.min_cov is met
+        # by definition, self.min_cov > 0, as enforced during class initialisation
         for curr_strand_idx in range(4):
             num_events_curr_strand = events_counter[curr_strand_idx, :].sum()
-            if num_events_curr_strand > self.min_cov:
+            if num_events_curr_strand >= self.min_cov:
                 beta_value_curr_strand = events_counter[curr_strand_idx, METH_IDX] / num_events_curr_strand
                 self._add_beta_value_to_counter(beta_value_curr_strand, curr_strand_idx)
 
         # calculate mate stratified beta values
         for mate_idx, mate_strand_idxs in [(MATE1_IDX, MATE1_STRAND_IDXS), (MATE2_IDX, MATE2_STRAND_IDXS)]:
             num_events_curr_mate = events_counter[mate_strand_idxs, :].sum().sum()
-            if num_events_curr_mate > self.min_cov:
+            if num_events_curr_mate >= self.min_cov:
                 beta_value_curr_mate = events_counter[mate_strand_idxs, METH_IDX].sum() / num_events_curr_mate
                 self._add_beta_value_to_counter(beta_value_curr_mate, mate_idx)
 
@@ -103,15 +146,18 @@ class StratifiedBetaValueCounter:
         self.beta_counter[counter_row_idx, beta_value_idx] += 1
 
 
-
 class BetaValueData:
     """Compute beta value statistics and provide in series/dataframe format"""
 
     def __init__(self):
         self.df = pd.DataFrame()
+        self.counters: List['mqc.beta_values.StratifiedBetaValueCounter'] = []
 
     def add_data_from_counter(self, beta_value_counter: 'StratifiedBetaValueCounter',
                               region_str, trimming_status_str):
+
+        self.counters.append(beta_value_counter)
+
         df = pd.DataFrame(beta_value_counter.beta_counter)
 
         # TODO: avoid hard coding of strand order and number of strand categories (7 at the moment)
@@ -141,7 +187,7 @@ class BetaValueData:
             return df
 
         freq_df = self.df.groupby(level=['region', 'trimming_status', 'bsseq_strand']).apply(
-            get_frequencies_in_stratum
+                get_frequencies_in_stratum
         )
 
         self.df['Frequency'] = freq_df['Frequency']

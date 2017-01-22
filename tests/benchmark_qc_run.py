@@ -43,7 +43,9 @@ for idx_file, n_pos_in_index, walltime in index_files:
         output_dir_job_results = os.path.join(run_folder, 'qc_run', job_name)
         os.makedirs(output_dir_job_results, exist_ok=True)
 
-        script_path = os.path.join(output_dir_job_results, 'cluster_commands.sh')
+        # TODO-bug: the output directory is cleaned when a new run is done
+        #           thereby deleting the script
+        script_path = os.path.join(run_folder, 'cluster_commands.sh')
         with open(script_path, 'wt') as f:
             bash_code = textwrap.dedent(f'''\
             module load python/3.6.0
@@ -63,8 +65,7 @@ for idx_file, n_pos_in_index, walltime in index_files:
             f.write(bash_code)
 
         out_log_file = os.path.join(run_folder, 'qc_run', job_name + '.o.log')
-        err_log_file = os.path.join(run_folder, 'qc_run', job_name + '.e.log')
-        command_list = ['qsub', '-N', job_name ,'-o', out_log_file,
-                        '-e', err_log_file, '-l', f'walltime={walltime},nodes=1:ppn=1',
+        command_list = ['qsub', '-N', job_name, '-o', out_log_file,
+                        '-j', 'oe', '-l', f'walltime={walltime},nodes=1:ppn=1',
                         script_path]
         subprocess.check_call(command_list)

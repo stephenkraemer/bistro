@@ -14,11 +14,12 @@ config['trimming']['min_flen_considered_for_methylation_calling'] = 100
 config['trimming']['max_flen_considered_for_trimming'] = 110
 config['trimming']['max_window_size_for_smoothing'] = 2
 config['trimming']['required_n_events_for_cutting_site_determination'] = 1
+config['mbias_plots']['distance_between_displayed_flen '] = 1
 
 mqc.qc_run.qc_run(
     bam_path=bam_path,
     index_file_path=index_file_path,
     config=config,
-    output_dir_abspath=test_output_dir,
+    meth_metrics_dir_abs=test_output_dir,
     sample_name=sample_name
 )
