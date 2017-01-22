@@ -26,6 +26,19 @@ class MbiasCounter:
     """Count M-bias stats from a stream of motif pileups and provide as np.ndarray"""
 
     def __init__(self, config):
+        """
+
+        Parameters
+        ----------
+        config: dict
+
+
+        Attributes
+        ----------
+        counter: np.ndarray
+            The 4 dimensions in order: BS-Seq strands(4), flen (max_flen param), read_pos (max_read_length param), methylation status (2)
+            The Fragment length and read length dimensions include the length 0, so that they can be indexed by 1-based length values
+        """
         self.phred_score_threshold = config["basic_quality_filtering"]["min_phred_score"]
         self.max_flen_considered_for_trimming = config["trimming"]["max_flen_considered_for_trimming"]
         self.max_read_length = config["data_properties"]["max_read_length_bp"]
@@ -100,11 +113,13 @@ class MbiasData:
                           smoothed_meth_events_per_pos smoothed_unmeth_events_per_pos
                           NA                           NA
                           NA                           NA
+
+        Flen and pos are 1-based labels
         """
         rows = []
         for bsseq_strand_name, bsseq_strand_ind in b_inds._asdict().items():
             for flen in range(1, self.max_flen_considered_for_trimming + 1):
-                for pos in range(1, self.max_read_length_bp):
+                for pos in range(1, self.max_read_length_bp + 1):
                     row = dict()
                     row['bsseq_strand'] = bsseq_strand_name
                     row['flen'] = flen
@@ -205,6 +220,8 @@ class MbiasData:
 
         def mask_read_positions_in_trimming_zone(df):
             # Hierarchical index with three levels: bsseq_strand, flen, pos; get strand and flen in current group df
+            # The cutting site df start and end positions are the start and end of the good plateau -> they are still ok
+            # only the adjacent positions have to be merged
             labels = df.index.unique()[0][0:2]
             start, end = cutting_sites_df.loc[labels, ['start', 'end']]
             idx = pd.IndexSlice
@@ -287,6 +304,7 @@ class MinimalCuttingSites:
         self._minimal_cutting_sites_array = np.array([])
 
     def get_array(self):
+        # TODO-algorithm: make sure that the computed absolute cutting sites provide the start and end of the plateau
         """
         Given minimal cutting sites (defined relative to the fragment ends),
         define an multidimensional array of absolute cutting sites (at the beginning and end
@@ -362,38 +380,50 @@ class AdjustedMbiasCuttingSites:
 
         The result should be a multidimensional array, which in table format would look like this
 
-        bsseq_strand      where       flen         absolute position
-        'w_bc'            'start'     1            10
-                                      2            10
+        bsseq_strand      where       flen         absolute_cutting_position
+        'w_bc'            'start'     0            0
+                                      1            10
                                       ...
                                       max_flen
-                          end'        1            90
+                          'end'       0            0
+                          'end'       1            90
                                       ...
         'w_bc_rv'         ...         ...
 
+        The index along the flen dimension corresponds to the flen, therefore, a flen of zero
+        is included, but will not be filled.
+
         The array also contains fragment lengths which are below the threshold for consideration
         in methylation calling. For these fragment lengths, the cutting sites for start and end
-        will always be (0,0), which is equivalent to fully discarding these fragments.
-
-        For performance reasons, this part of the array is not used directly, it is merely included
+        will always be (0,0), which is equivalent to fully discarding these fragments. For performance reasons, this part of the array is not used directly, it is merely included
         so that the indices can correspond directly to the fragment lengths
         """
-        if self._adjusted_cutting_sites_array.size == 0:
-            if self._adjusted_cutting_sites_df.empty:
-                df = self.get_df()
-            else:
-                df = self._adjusted_cutting_sites_df
+        if not self._adjusted_cutting_sites_array.size == 0:
+            # we have already computed and cached the array
+            return self._adjusted_cutting_sites_array
+        else:
+            df = self.get_df()  # cutting sites dataframe
+
+            """Note that the cutting sites dataframe will always have a 'start' and 'end' column
+            by specification, while additional columns are optional, but may be present.
+            Therefore, all other columns must be discarded before reformatting the dataframe!"""
+            df = df[['start', 'end']]
             df.columns.name = 'start_or_end'
+
             df_formatted = (df.stack()
                             .to_frame('absolute_cutting_position')
                             .reset_index()
+                            # change column order
                             .loc[:, ['bsseq_strand', 'start_or_end', 'flen', 'absolute_cutting_position']]
                             )
+
+            # Replace string dimension labels with integers
             df_formatted.bsseq_strand.replace(b_inds._fields, b_inds, inplace=True)
             df_formatted.start_or_end.replace(['start', 'end'], [0, 1], inplace=True)
+
             arr = np.zeros([4, 2, self.max_flen_considered_for_trimming + 1])
             # +1 so that indices correspond to 1-based fragment lengths
-            df_formatted: pd.DataFrame
+
             for row in df_formatted.itertuples():
                 # row is a named tuple, first element is the index
                 bsseqstrand_startend_flen_tuple = row[1:4]
@@ -401,8 +431,6 @@ class AdjustedMbiasCuttingSites:
                 arr[bsseqstrand_startend_flen_tuple] = cutting_pos
             self._adjusted_cutting_sites_array = arr
             return arr
-        else:
-            return self._adjusted_cutting_sites_array
 
     def get_df(self) -> pd.DataFrame:
         """ Compute M-bias cutting sites from smoothed M-bias stats (where available)
@@ -413,7 +441,7 @@ class AdjustedMbiasCuttingSites:
 
         All calling functions take a dataframe for a given stratum and return a Series with start and end of the plateau, the average height of the plateau as well as arbitrary other fields
 
-        The returned dataframe looks like this:
+        The returned dataframe looks like this (start and end columsn always included, others optional):
 
                               start    end   average_methylation
         bsseq_strand  flen
@@ -453,14 +481,17 @@ class AdjustedMbiasCuttingSites:
         def get_plateau_start_and_end(beta_values: pd.Series) -> Tuple[int, int]:
             """Get plateau position for a single (bsseq_strand, flen) stratum"""
 
+            # TODO-doublecheck: is the isnull call robust against nullness, i.e. values which are not np.nan but recognized as such?
+            #                   perhaps add check that the Series really has numeric values
             # Either all values for a given flen stratum are NAN, or none are NAN
-            if np.isnan(beta_values.iloc[0]):
+            if beta_values.isnull().all():
                 return 0,0
 
             min_len = config["trimming"]["min_plateau_length"]
             max_std = config["trimming"]["max_std_within_plateau"]
             read_length = len(beta_values)
 
+            # TODO-doublecheck: what happens if there is a NA value in the middle of the curve and std returns np.nan?
             for max_start_pos, plateau_length in enumerate(range(read_length, min_len - 1, -1)):
                 std_to_beat = max_std
                 best_start = None

@@ -104,31 +104,32 @@ def mbias_data_with_test_df(empty_mbias_data, mbias_stats_df):
 
 @pytest.fixture()
 def cutting_sites_df():
-    test_df = io.StringIO("""\
-bsseq_strand	flen	start	end
-c_bc	1	2	3
-c_bc	2	2	3
-c_bc	3	2	3
-c_bc	4	2	3
-c_bc	5	2	3
-c_bc_rv	1	2	3
-c_bc_rv	2	2	3
-c_bc_rv	3	2	3
-c_bc_rv	4	2	3
-c_bc_rv	5	2	3
-w_bc	1	1	2
-w_bc	2	1	2
-w_bc	3	1	2
-w_bc	4	1	2
-w_bc	5	1	2
-w_bc_rv	1	1	2
-w_bc_rv	2	1	2
-w_bc_rv	3	1	2
-w_bc_rv	4	1	2
-w_bc_rv	5	1	2
-""")
+    # TODO-algorithm: are start and end positions zero-based, right-open?
+    #                 I think it would good to see them as 1-based labels
+    test_df = io.StringIO(textwrap.dedent("""\
+        bsseq_strand  flen  start  end  average_methylation
+        c_bc          1     2      3    0.7
+        c_bc          2     2      3    0.7
+        c_bc          3     2      3    0.7
+        c_bc          4     2      3    0.7
+        c_bc          5     2      3    0.7
+        c_bc_rv       1     2      3    0.7
+        c_bc_rv       2     2      3    0.7
+        c_bc_rv       3     2      3    0.7
+        c_bc_rv       4     2      3    0.7
+        c_bc_rv       5     2      3    0.7
+        w_bc          1     1      2    0.7
+        w_bc          2     1      2    0.7
+        w_bc          3     1      2    0.7
+        w_bc          4     1      2    0.7
+        w_bc          5     1      2    0.7
+        w_bc_rv       1     1      2    0.7
+        w_bc_rv       2     1      2    0.7
+        w_bc_rv       3     1      2    0.7
+        w_bc_rv       4     1      2    0.7
+        w_bc_rv       5     1      2    0.7"""))
 
-    cutting_sites_df = pd.read_csv(test_df, sep='\t', header=0, index_col=[0, 1])
+    cutting_sites_df = pd.read_csv(test_df, sep='\s+', header=0, index_col=[0, 1])
     return cutting_sites_df
 
 
