@@ -5,7 +5,6 @@
 
 import warnings
 from abc import ABCMeta, abstractmethod
-from typing import Tuple
 
 import pandas as pd
 import numpy as np
@@ -35,14 +34,16 @@ class MbiasCounter:
 
         Attributes
         ----------
-        counter: np.ndarray
+        self.counter: np.ndarray
             The 4 dimensions in order: BS-Seq strands(4), flen (max_flen param), read_pos (max_read_length param), methylation status (2)
-            The Fragment length and read length dimensions include the length 0, so that they can be indexed by 1-based length values
+            The Fragment length dimension includes the length 0, so that it can be indexed by 1-based values
+
+            the read position indexes are zero-based
         """
         self.phred_score_threshold = config["basic_quality_filtering"]["min_phred_score"]
         self.max_flen_considered_for_trimming = config["trimming"]["max_flen_considered_for_trimming"]
         self.max_read_length = config["data_properties"]["max_read_length_bp"]
-        self.counter = np.zeros([4, self.max_flen_considered_for_trimming + 1, self.max_read_length + 1, 2], dtype='i4')
+        self.counter = np.zeros([4, self.max_flen_considered_for_trimming + 1, self.max_read_length, 2], dtype='i4')
 
     def update(self, motif_pileups, index_position):
         watson_motif_seq = index_position.watson_motif
@@ -61,7 +62,8 @@ class MbiasCounter:
                     if tlen > self.max_flen_considered_for_trimming:
                         tlen = self.max_flen_considered_for_trimming
 
-                    pos_in_read = pileup_read.query_position
+                    pileup_read: mqc.bsseq_pileup_read.BSSeqPileupRead
+                    pos_in_read = pileup_read.pos_in_read
                     meth_status_flag = pileup_read.get_meth_status_at_pileup_pos(motif_base)
 
                     if meth_status_flag == 8:
@@ -74,11 +76,19 @@ class MbiasCounter:
                     if pileup_read.bsseq_strand_ind == b_na_ind:
                         continue
 
-                    self.counter[pileup_read.bsseq_strand_ind][tlen][pos_in_read][meth_status_index] += 1
+                    self.counter[pileup_read.bsseq_strand_ind][tlen - 1][pos_in_read][meth_status_index] += 1
 
 
 class MbiasData:
-    """Provide basic M-bias stats in dataframe format"""
+    """Provide basic M-bias stats in dataframe format
+
+    Attributes
+    ----------
+    mbias_stats_df: pd.DataFrame
+        index levels: bsseq_strand flen pos
+        column labels: n_meth n_unmeth beta_values
+                       n_meth_smoothed, n_unmeth_smoothed, beta_values_smoothed
+    """
 
     def __init__(self, mbias_counter, config):
 
@@ -105,12 +115,12 @@ class MbiasData:
 
         Output:
 
-                               meth_events_per_pos  unmeth_events_per_pos   \
+                               n_meth  n_unmeth   \
         bsseq_strand flen pos
         c_bc         1    1                    1.0                    1.0
                           2                    1.0                    1.0
 
-                          smoothed_meth_events_per_pos smoothed_unmeth_events_per_pos
+                          n_meth_smoothed n_unmeth_smoothed
                           NA                           NA
                           NA                           NA
 
@@ -118,21 +128,27 @@ class MbiasData:
         """
         rows = []
         for bsseq_strand_name, bsseq_strand_ind in b_inds._asdict().items():
-            for flen in range(1, self.max_flen_considered_for_trimming + 1):
-                for pos in range(1, self.max_read_length_bp + 1):
+            for flen in range(0, self.max_flen_considered_for_trimming):
+                for pos in range(0, self.max_read_length_bp):
                     row = dict()
                     row['bsseq_strand'] = bsseq_strand_name
-                    row['flen'] = flen
-                    row['pos'] = pos
-                    row['meth_events_per_pos'] = self.mbias_stats_array[bsseq_strand_ind, flen, pos, 0]
-                    row['unmeth_events_per_pos'] = self.mbias_stats_array[bsseq_strand_ind, flen, pos, 1]
+                    row['flen'] = flen + 1
+                    row['pos'] = pos + 1
+                    row['n_meth'] = self.mbias_stats_array[bsseq_strand_ind, flen, pos, 0]
+                    row['n_unmeth'] = self.mbias_stats_array[bsseq_strand_ind, flen, pos, 1]
                     rows.append(row)
 
         df = (pd.DataFrame(rows)
               .set_index(['bsseq_strand', 'flen', 'pos'])
               .sort_index(axis='index', level=0, sort_remaining=True))
-        df.loc[:, 'smoothed_meth_events_per_pos'] = np.nan
-        df.loc[:, 'smoothed_unmeth_events_per_pos'] = np.nan
+
+        df['beta_values'] = df['n_meth'] / ( df['n_meth'] + df['n_unmeth'] )
+        df['n_total'] = df['n_meth'] + df['n_unmeth']
+
+        df['n_meth_smoothed'] = np.nan
+        df['n_unmeth_smoothed'] = np.nan
+        df['beta_values_smoothed'] = np.nan
+
         self.mbias_stats_df = (df.astype(dtype=np.float64, copy=True)
                                .sort_index(axis='index', level=0, sort_remaining=True))
 
@@ -146,7 +162,7 @@ class MbiasData:
         but not to an underestimation of M-bias.
 
         Algorithm:
-        the ['smoothed_meth_events_per_pos', 'smoothed_unmeth_events_per_pos'] columns initially all have
+        the ['n_meth_smoothed', 'n_unmeth_smoothed'] columns initially all have
         np.nan values. where possible (enough coverage before/after smoothing), the NA values are replaced with
         either the original beta value counts (where coverage is high enough) or with smoothed beta values (where
         smoothing is possible according to the config parameters)
@@ -158,9 +174,9 @@ class MbiasData:
         """
 
         df = self.mbias_stats_df
-        cols_to_fill = ['smoothed_meth_events_per_pos', 'smoothed_unmeth_events_per_pos']
+        cols_to_fill = ['n_meth_smoothed', 'n_unmeth_smoothed']
         # both columns are initialized to np.nan upstream
-        meth_event_cols = ['meth_events_per_pos', 'unmeth_events_per_pos']
+        meth_event_cols = ['n_meth', 'n_unmeth']
         for curr_bsseq_strand in b_inds._fields:
             # State variable set to true if all following flens will have too low coverage
             minimal_flen_with_enough_coverage_reached = False
@@ -191,14 +207,11 @@ class MbiasData:
                             break
 
 
-    def add_beta_values(self):
-        """Add beta values from smoothed and raw data"""
-        df = self.mbias_stats_df
+        df['beta_values_smoothed'] = (
+            df['n_meth_smoothed'] / (df['n_meth_smoothed'] + df['n_unmeth_smoothed']))
 
-        df['beta_values'] = df['meth_events_per_pos'] / ( df['meth_events_per_pos'] + df['unmeth_events_per_pos'] )
+        df['n_total_smoothed'] = df['n_meth_smoothed'] + df['n_unmeth_smoothed']
 
-        df['smoothed_beta_values'] = (df['smoothed_meth_events_per_pos'] /
-                                     ( df['smoothed_meth_events_per_pos'] + df['smoothed_unmeth_events_per_pos'] ))
 
     def get_masked_mbias_df(self, trimming_mode: str, cutting_sites: 'mqc.mbias.CuttingSites'):
         """Get M-bias counts in dataframe format, with positions in M-bias trimming zones set to NA"""
@@ -223,10 +236,14 @@ class MbiasData:
             # The cutting site df start and end positions are the start and end of the good plateau -> they are still ok
             # only the adjacent positions have to be merged
             labels = df.index.unique()[0][0:2]
-            start, end = cutting_sites_df.loc[labels, ['start', 'end']]
+
+            start_slice_idx, end_slice_idx = cutting_sites_df.loc[labels, ['start', 'end']]
+            plateau_start_label = start_slice_idx + 1
+            plateau_end_label = end_slice_idx
+
             idx = pd.IndexSlice
-            df.loc[idx[:, :, 1:(start - 1)], :] = np.nan
-            df.loc[idx[:, :, (end + 1):], :] = np.nan
+            df.loc[idx[:, :, 1:(plateau_start_label-1)], :] = np.nan
+            df.loc[idx[:, :, (plateau_end_label + 1):], :] = np.nan
             return df
 
         masked_df = (self.mbias_stats_df
@@ -249,30 +266,80 @@ class MbiasDataPlotter:
         # TODO-refactor: bad way of getting config vars!
         self.max_read_length = config['data_properties']['max_read_length_bp']
         self.distance_between_displayed_flen = config["mbias_plots"]["distance_between_displayed_flen"]
+        self.sample_name = config['sample']['name']
+        self.max_read_length = config['data_properties']['max_read_length_bp']
+        self.flens_to_show = config['trimming']['flens_to_show_in_plots']
 
-    def flen_strat_plot(self, output_path, cutting_sites=None, trimming_mode=None, plot_smoothed_values=True):
+
+        self.min_mean_raw_data = 20
+
+    def total_plot(self, output_path, adjusted_cutting_sites=None):
+
+        if adjusted_cutting_sites:
+            df = self.mbias_data.get_masked_mbias_df(
+                    'adjusted', cutting_sites=adjusted_cutting_sites)
+        else:
+            df = self.mbias_data.mbias_stats_df
+
+        df_total_counts = (
+            df.loc[:, ['n_meth', 'n_unmeth']]
+            .groupby(level=['bsseq_strand', 'pos'])
+            .agg(np.sum)
+            .reset_index()
+            .assign(beta_value=lambda x: x.n_meth /
+                         (x.n_meth + x.n_unmeth)
+                    )
+        )
+
+
+        g = (sns.FacetGrid(data=df_total_counts,
+                           col='bsseq_strand', col_wrap=2,
+                           sharex=True, sharey=True,
+                           size=cm_to_inch(8), aspect=2,
+                           margin_titles=True)
+                .map(plt.plot, 'pos', 'beta_value', linewidth=1, alpha=0.4)
+                .set_axis_labels('Position in read', 'Average methylation')
+                .set(xlim=[1, self.max_read_length],
+                     ylim=[0,1])
+        )
+
+        g.set_titles(col_template = '{col_name}',
+                     row_template = '{row_name}')
+        g.fig.subplots_adjust(top=0.9)
+        g.fig.suptitle(self.sample_name, fontsize=12)
+
+        g.savefig(output_path)
+
+    def flen_strat_plot(self, output_path, cutting_sites=None,
+                        plot_smoothed_values=True):
+
 
         if plot_smoothed_values:
-            beta_value_column_name = 'smoothed_beta_values'
+            beta_value_column_name = 'beta_values_smoothed'
         else:
             beta_value_column_name = 'beta_values'
+
+        # TODO-reformat: trimming mode argument is unnecessary for masked df
+        #                computation
         if cutting_sites is None:
             mbias_stats_df = self.mbias_data.mbias_stats_df
-        elif trimming_mode in ['minimal', 'adjusted']:  #
-            mbias_stats_df = self.mbias_data.get_masked_mbias_df(trimming_mode,
-                                                                 cutting_sites=cutting_sites)
         else:
-            raise NotImplementedError('Trimming mode unknown')
+            mbias_stats_df = self.mbias_data.get_masked_mbias_df(
+                    trimming_mode='adjusted', cutting_sites=cutting_sites)
 
-        # TODO: parameter for number of fragments (or: all fragments?)
-        plotting_data = (mbias_stats_df
-                         .loc[pd.IndexSlice[:, range(self.mbias_data.min_flen_considered_for_methylation_calling,
-                                                     self.mbias_data.max_flen_considered_for_trimming + 1,
-                                                     self.distance_between_displayed_flen), :], beta_value_column_name]
-                         .reset_index())
+        df = (mbias_stats_df.loc[pd.IndexSlice[:, self.flens_to_show, :], :])
 
-        plotting_data = plotting_data.dropna(axis='index', how='any')
-        g = (sns.FacetGrid(data=plotting_data, col='bsseq_strand',
+        if not plot_smoothed_values:
+            # TODO-check: mean of NA?
+            # discard (bsseq_strand, flen) strata with too low coverage
+            # since smoothing was not applied
+            df = (df.groupby(level=['bsseq_strand', 'flen'])
+                    .filter(lambda df: df['n_total'].mean() >=
+                                       self.min_mean_raw_data))
+
+        df = df.loc[:, beta_value_column_name].dropna()
+
+        g = (sns.FacetGrid(data=df.reset_index(), col='bsseq_strand',
                            col_order='w_bc w_bc_rv c_bc c_bc_rv'.split(),
                            col_wrap=2,
                            hue='flen',
@@ -298,19 +365,25 @@ class MinimalCuttingSites:
 
     def __init__(self, config):
         self.max_read_length_bp = config["data_properties"]["max_read_length_bp"]
-        self.max_flen_considered_for_trimming = config["trimming"]["max_flen_considered_for_trimming"]
-        self.relative_cutting_site_dict = config["trimming"]["relative_to_fragment_ends_dict"]
+        self.max_flen = config["trimming"]["max_flen_considered_for_trimming"]
+        self.n_bp_to_discard_at_frag_ends = config["trimming"]["relative_to_fragment_ends_dict"]
         self._minimal_cutting_sites_df = pd.DataFrame()
         self._minimal_cutting_sites_array = np.array([])
 
     def get_array(self):
         # TODO-algorithm: make sure that the computed absolute cutting sites provide the start and end of the plateau
+        # TODO-doublecheck
         """
-        Given minimal cutting sites (defined relative to the fragment ends),
-        define an multidimensional array of absolute cutting sites (at the beginning and end
-        of the fragment) for every allowed fragment length on every BS-Seq sequencing strand
+        Given the number of bp to be removed from the 5' and 3' fragment ends,
+        define cutting sites expressed as zero-based positions in the read.
 
-        The (input) relative cutting sites may look like this:
+        The cutting sites are given as plateau start and end, i.e. as the first
+        and last acceptable position in the read.
+
+        Cutting sites are given for every (bsseq_strand, flen) stratum with
+        flen \in [0, max_flen]
+
+        The (input) 'relative cutting sites' may look like this:
         {
             'w_bc': [0, 9]
             'c_bc': [0, 9]
@@ -319,7 +392,7 @@ class MinimalCuttingSites:
         }
 
         The, the result should be a multidimensional array, which in table format would look like this
-        bsseq_strand      where       flen         absolute position
+        bsseq_strand      where       flen         pos_in_read
         'w_bc'            'start'     1            10
                                       2            10
                                       ...
@@ -327,30 +400,38 @@ class MinimalCuttingSites:
                           end'        1            90
                                       ...
         'w_bc_rv'         ...         ...
-
-
-        The array contains values for all fragment lengths between 0 and the max. flen, and
-        flen below min flen are not set to discard via (0,0)
         """
+
         if not self._minimal_cutting_sites_array.size:
-            min_cutting_sites_array = np.zeros([4, 2, self.max_flen_considered_for_trimming + 1], dtype=np.int32)
+            min_trimmsite_arr = np.zeros([
+                4, 2, self.max_flen], dtype=np.int32)
 
             for bsseq_strand_name, bsseq_strand_index in b_inds._asdict().items():
+
                 # Set start position
-                min_cutting_sites_array[bsseq_strand_index, 0, :] = self.relative_cutting_site_dict[bsseq_strand_name][
-                    0]
+                # Start position is the zero-based plateau start in the read
+                # the relative_cutting_site_dict gives the number of bases
+                # to be removed from the start of the read
+                min_trimmsite_arr[bsseq_strand_index, 0, :] = (
+                    self.n_bp_to_discard_at_frag_ends[bsseq_strand_name][0])
 
                 # Set end position
-                for curr_flen in range(self.max_flen_considered_for_trimming + 1):
-                    max_allowed_pos_in_fragment = curr_flen - self.relative_cutting_site_dict[bsseq_strand_name][1]
+                # all positions are zero-based
+                # TODO-format: use min_flen parameter?
+                for curr_flen in range(0, self.max_flen):
+                    max_allowed_pos_in_fragment = (
+                        curr_flen - self.n_bp_to_discard_at_frag_ends[bsseq_strand_name][1] + 1)
                     max_allow_pos_in_read = (max_allowed_pos_in_fragment
                                              if max_allowed_pos_in_fragment <= self.max_read_length_bp
                                              else self.max_read_length_bp)
-                    min_cutting_sites_array[bsseq_strand_index, 1, curr_flen] = max_allow_pos_in_read
+                    min_trimmsite_arr[bsseq_strand_index, 1, curr_flen] = max_allow_pos_in_read
 
-            self._minimal_cutting_sites_array = min_cutting_sites_array
-            return min_cutting_sites_array
+            # cache
+            self._minimal_cutting_sites_array = min_trimmsite_arr
+            return min_trimmsite_arr
+
         else:
+            # return cached value
             return self._minimal_cutting_sites_array
 
     def get_df(self):
@@ -361,7 +442,13 @@ class MinimalCuttingSites:
 
 
 class AdjustedMbiasCuttingSites:
-    """Calculate and provide M-bias cutting sites in dataframe and array format"""
+    """Calculate and provide M-bias cutting sites in dataframe and array format
+
+    Attributes
+    ----------
+
+
+    """
 
     def __init__(self, mbias_data: MbiasData, calling_mode, config):
         self.mbias_data = mbias_data
@@ -478,40 +565,48 @@ class AdjustedMbiasCuttingSites:
         7. If not: go to step 4
         """
 
-        def get_plateau_start_and_end(beta_values: pd.Series) -> Tuple[int, int]:
-            """Get plateau position for a single (bsseq_strand, flen) stratum"""
+        beta_values = group_df['beta_values_smoothed']
 
-            # TODO-doublecheck: is the isnull call robust against nullness, i.e. values which are not np.nan but recognized as such?
-            #                   perhaps add check that the Series really has numeric values
-            # Either all values for a given flen stratum are NAN, or none are NAN
-            if beta_values.isnull().all():
-                return 0,0
+        # TODO-doublecheck: is the isnull call robust against nullness, i.e. values which are not np.nan but recognized as such?
+        #                   perhaps add check that the Series really has numeric values
+        # Either all values for a given flen stratum are NAN, or none are NAN
+        if beta_values.isnull().all():
+            return pd.Series([0, 0, np.nan],
+                             index=['start', 'end', 'average_methylation'])
 
-            min_len = config["trimming"]["min_plateau_length"]
-            max_std = config["trimming"]["max_std_within_plateau"]
-            read_length = len(beta_values)
+        min_len = config["trimming"]["min_plateau_length"]
+        max_std = config["trimming"]["max_std_within_plateau"]
+        max_read_length = config['data_properties']['max_read_length_bp']
 
-            # TODO-doublecheck: what happens if there is a NA value in the middle of the curve and std returns np.nan?
-            for max_start_pos, plateau_length in enumerate(range(read_length, min_len - 1, -1)):
-                std_to_beat = max_std
-                best_start = None
-                for start_pos in range(0, max_start_pos + 1):
-                    end_pos = start_pos + plateau_length
-                    curr_std = beta_values[start_pos:end_pos].std()
-                    if curr_std < std_to_beat:
-                        std_to_beat = curr_std
-                        best_start = start_pos
-                if best_start is not None:
-                    return best_start, best_start + plateau_length
-
-            return 0,0
+        flen = group_df.index.get_level_values('flen')[0]
+        # TODO-doublecheck
+        effective_read_length = (max_read_length if flen >= max_read_length
+                                 else flen)
 
 
-        plateau_start, plateau_end = get_plateau_start_and_end(group_df['smoothed_beta_values'])
+        plateau_start = 0
+        plateau_end = 0
+        # TODO-doublecheck: what happens if there is a NA value in the middle of the curve and std returns np.nan?
+        for max_start_pos, plateau_length in enumerate(range(effective_read_length, min_len - 1, -1), 1):
+            std_to_beat = max_std
+            best_start = None
+            for start_pos in range(0, max_start_pos):
+                end_pos = start_pos + plateau_length
+                # TODO-doublecheck
+                curr_std = beta_values.iloc[start_pos:end_pos].std()
+                if curr_std < std_to_beat:
+                    std_to_beat = curr_std
+                    best_start = start_pos
+            if best_start is not None:
+                plateau_start = best_start
+                plateau_end = best_start + plateau_length
+                break
 
-        # TODO: is this integer indexing or label indexing?
-        plateau_height = group_df['smoothed_beta_values'][plateau_start:plateau_end].mean()
-        return pd.Series([plateau_start, plateau_end, plateau_height], index=['start', 'end', 'average_methylation'])
+        # TODO-doublecheck
+        plateau_height = beta_values.iloc[plateau_start:plateau_end].mean()
+
+        return pd.Series([plateau_start, plateau_end, plateau_height],
+                         index=['start', 'end', 'average_methylation'])
 
     @staticmethod
     def max_plateau_length_threshold_std(group_df, config):
@@ -542,13 +637,23 @@ class AdjustedMbiasCuttingSites:
                             best_interval_length = curr_interval_length
             return best_interval
 
-        plateau_start, plateau_end = get_plateau_start_and_end(group_df['smoothed_beta_values'])
+        plateau_start, plateau_end = get_plateau_start_and_end(group_df['beta_values_smoothed'])
 
-        plateau_height = group_df['smoothed_beta_values'][plateau_start:plateau_end].mean()
+        plateau_height = group_df['beta_values_smoothed'][plateau_start:plateau_end].mean()
         return pd.Series([plateau_start, plateau_end, plateau_height], index=['start', 'end', 'average_methylation'])
 
+
 def cutting_sites_area_plot(mbias_cutting_sites: 'AdjustedMbiasCuttingSites', output_path):
+    """
+                              start    end   average_methylation
+        bsseq_strand  flen
+    """
     plot_df = mbias_cutting_sites.get_df().reset_index()
+    # TODO-snippet: FacetGrid
     g = sns.FacetGrid(data=plot_df, col='bsseq_strand', col_wrap=2, col_order='w_bc w_bc_rv c_bc c_bc_rv'.split())
     g = g.map(plt.fill_between, 'flen', 'start', 'end')
     g.fig.savefig(output_path)
+
+
+def cm_to_inch(cm):
+    return cm / 2.54

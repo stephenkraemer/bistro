@@ -128,6 +128,20 @@ cdef class BSSeqPileupRead(PileupRead):
     def qc_fail_flag(self, value):
         self._qc_fail_flag = value
 
+    @property
+    def pos_in_read(self):
+        """Zero-based position in read
+
+        Currently this value is determined assuming that an aligner such as
+        bwa-mem is used, which will write the Watson sequence for all alignments.
+        This means that queries corresponding to the Crick strand (C-BC, W-BC-RV)
+        are represented by the reverse-complement of their actual sequence.
+
+        Then, the query position returned by htslib is the position in the
+        sequence given in the alignment, not the position in the read.
+        """
+
+        return self._pos_in_read
 
 
 cdef inline make_bsseq_pileup_read(bam_pileup1_t * src,
@@ -136,20 +150,40 @@ cdef inline make_bsseq_pileup_read(bam_pileup1_t * src,
     cdef BSSeqPileupRead dest = BSSeqPileupRead.__new__(BSSeqPileupRead)
 
     dest._alignment = makeAlignedSegment(src.b, alignment_file)
-    dest._qpos = src.qpos
     dest._indel = src.indel
     dest._level = src.level
     dest._is_del = src.is_del
     dest._is_head = src.is_head
     dest._is_tail = src.is_tail
     dest._is_refskip = src.is_refskip
-
-    dest._bsseq_strand_ind = get_bsseq_strand_index(dest._alignment._delegate.core.flag)
-    #TODO: _qpos may have incorrect value
-    dest._observed_watson_base = dest._alignment.query_sequence[dest._qpos]
-    dest._baseq_at_pos = dest.alignment.query_qualities[dest._qpos]
     dest._overlap_flag = 0
     dest._trimm_flag = 0
+
+    dest._qpos = src.qpos
+    # TODO-fixme: what happens if no sequence is given? Then query_length == 0, what about
+    #             query sequence?
+    dest._observed_watson_base = dest._alignment.query_sequence[dest._qpos]
+    dest._baseq_at_pos = dest.alignment.query_qualities[dest._qpos]
+
+    dest._bsseq_strand_ind = get_bsseq_strand_index(dest._alignment._delegate.core.flag)
+
+    # TODO-doublecheck: _pos_in_read computation
+    # TODO-document: aligner must write all query sequences as Watson sequences
+    """ Set position in read
+    This assumes that the aligner always prints the query sequence along the watson strand
+    In the consequence, the strands which actually map to the crick strand are written out
+    reverse complemented.
+    Then, the actual position in the read is not given by the position in the query sequence
+    for the C-BC and W-BC-RV strands. Instead, one must substract the query position from the
+    read length to get the actual read position in these cases
+    """
+    # baml1_t.core.l_qseq is 0 if no sequence was given
+    query_length = dest._alignment._delegate.core.l_qseq
+    if dest._bsseq_strand_ind == C_BC_IND or dest._bsseq_strand_ind == W_BC_RV_IND:
+        dest._pos_in_read = query_length - (dest._qpos + 1)
+    else:
+        dest._pos_in_read = dest._qpos
+
     return dest
 
 cdef inline get_bsseq_strand_index(uint32_t flag):

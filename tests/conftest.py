@@ -16,6 +16,9 @@ def config():
     config_file = os.path.join(test_dir, '../config.default.toml')
     with open(config_file) as f_toml:
         config_dict = pytoml.load(f_toml)
+    config_dict['sample'] = {'name': 'b_cells_rep1',
+                             'population': 'b_cells',
+                             'replicate': 'rep1'}
     return config_dict
 
 

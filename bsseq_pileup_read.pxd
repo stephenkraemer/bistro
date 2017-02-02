@@ -11,6 +11,7 @@ cdef class BSSeqPileupRead(PileupRead):
     cdef uint8_t _overlap_flag
     cdef uint8_t _trimm_flag
     cdef uint8_t _qc_fail_flag
+    cdef uint32_t _pos_in_read
 
 
 cdef inline make_bsseq_pileup_read(bam_pileup1_t * src, AlignmentFile alignment_file)

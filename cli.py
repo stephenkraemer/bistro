@@ -25,13 +25,22 @@ def cli():
 @click.option('--bam', required=True)
 @click.option('--output_dir', required=True)
 @click.option('--config_file', required=True)
-@click.option('--sample_name')
-# TODO-format: remove test option
-@click.option('--test', is_flag=True)
+@click.option('--sample_name', required=True)
+@click.option('--sample_meta')
+# TODO-learn: --test, default=True seems to have created string option when used with --test False?
 # @click.option('--config', required=True, is_eager=True, callback=set_config_file)
-def qc_run(bam, index, config_file, output_dir, sample_name, test):
+def qc_run(bam, index, config_file, output_dir, sample_name, sample_meta):
+
     from mqc.qc_run import qc_run
+
     config = get_config_dict(config_file)
+    config['sample'] = {}
+    config['sample']['name'] = sample_name
+    if sample_meta:
+        sample_metadata_dict = { x.split('=')[0]: x.split('=')[1]
+                                 for x in sample_meta.split(',') }
+        config['sample'].update(sample_metadata_dict)
+
     qc_run(bam_path=bam,
            index_file_path=index,
            config=config,

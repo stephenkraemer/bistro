@@ -38,7 +38,8 @@ bam_files = [
 
 for idx_file, n_pos_in_index, walltime in index_files:
     for bam_file, sample_name in bam_files:
-
+        *population_list, replicate = sample_name.split('_')
+        population = '_'.join(population_list)
         job_name = sample_name + '_' + str(n_pos_in_index)
         output_dir_job_results = os.path.join(run_folder, 'qc_run', job_name)
         os.makedirs(output_dir_job_results, exist_ok=True)
@@ -58,6 +59,7 @@ for idx_file, n_pos_in_index, walltime in index_files:
             --bam {bam_file} \\
             --output_dir {output_dir_job_results} \\
             --sample_name {sample_name} \\
+            --sample_meta population={population},replicate={replicate}
             --config_file {config_file}
             END=$(date +%s.%N)
             diff=$(echo "$END - $START" | bc)

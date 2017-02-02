@@ -2,12 +2,14 @@ import numpy as np
 import pandas as pd
 import mqc
 from typing import List
+import scipy.ndimage.filters as sfilters
 
 import matplotlib
 
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import seaborn as sns
+import itertools as it
 
 MATE1_IDX = 4
 MATE2_IDX = 5
@@ -149,7 +151,15 @@ class StratifiedBetaValueCounter:
 class BetaValueData:
     """Compute beta value statistics and provide in series/dataframe format"""
 
-    def __init__(self):
+    def __init__(self, config):
+        """
+        Attributes
+        ----------
+        self.df: pd.DataFrame()
+            index levels: 'region' 'trimming_status' 'bsseq_strand' 'beta_value'
+            column labels: 'count'    'Frequency'    'Smoothed_frequency'
+        """
+        self.sigma_gaussian_kde = config['beta_value_dist_stats']['kde_sigma']
         self.df = pd.DataFrame()
         self.counters: List['mqc.beta_values.StratifiedBetaValueCounter'] = []
 
@@ -172,14 +182,21 @@ class BetaValueData:
         self.df = pd.concat([self.df, df], axis='index')
         self.df = self.df.sort_index(level=1, sort_remaining=True)
 
-    def add_smoothed_beta_values(self):
-        raise NotImplementedError
-
-    def add_binned_beta_values(self):
-        raise NotImplementedError
-
     # TODO: do this automatically
-    def compute_frequencies(self):
+    def add_smoothed_beta_value_frequencies(self) -> None:
+        self._compute_frequencies()
+        def gaussian_kde(beta_values_group_ser: pd.Series, sigma):
+            beta_values_group_arr = sfilters.gaussian_filter1d(
+                    input=beta_values_group_ser, sigma=sigma)
+            beta_values_group_ser[:] = beta_values_group_arr
+            return beta_values_group_ser
+
+        grouped = self.df.groupby(
+                level=['region', 'trimming_status', 'bsseq_strand'])
+        self.df['Smoothed_frequency'] = grouped['Frequency'].transform(
+                gaussian_kde, sigma=self.sigma_gaussian_kde)
+
+    def _compute_frequencies(self) -> None:
         def get_frequencies_in_stratum(group_df):
             freqs: pd.Series
             freqs = group_df['count'] / group_df['count'].sum()
@@ -197,23 +214,52 @@ class BetaValueData:
 
 
 class BetaValuePlotter:
-    def __init__(self, beta_value_data: 'BetaValueData'):
+    def __init__(self, beta_value_data: 'BetaValueData', config):
         self.beta_value_data = beta_value_data
+        self.sample_name = config['sample']['name']
 
-    def beta_value_dist_plot(self, region_str, output_path):
+    def beta_value_dist_plot(self, out_basepath_abs):
         """Plot total, mate- and strand-stratified beta value distribution plots in a given region"""
         df = self.beta_value_data.df
         idx = pd.IndexSlice
-        """
-        region trimming_status bsseq_strand beta_value       count    Frequency
-        global minimal         c_bc         0.000            0.0      0.33
-                                            0.001            0.0      0.33
-                                            0.002            0.0
-                                            0.003            0.0
-                                            0.004            0.0
-        """
-        plotting_data = df.loc[idx[region_str, :, ['mate1', 'mate2'], :]].reset_index()
-        g = sns.FacetGrid(data=plotting_data, col='bsseq_strand', col_wrap=2, hue='trimming_status')
-        g = g.map(plt.plot, 'beta_value', 'Frequency')
-        g = g.add_legend()
-        g.fig.savefig(output_path)
+
+        # TODO-doc: 'total' not 'global'
+        bsseq_strand_groups_with_name = [
+            (['total'], 'total_beta'),
+            (['mate1', 'mate2'], 'mate_beta'),
+            ('c_bc c_bc_rv w_bc w_bc_rv'.split(), 'strand_beta')
+        ]
+        regions = df.index.get_level_values('region').unique()
+        plotting_strata = it.product(regions, bsseq_strand_groups_with_name)
+
+        for curr_region, (curr_str_group, curr_str_name) in plotting_strata:
+            rows = idx[curr_region, :, curr_str_group, :]
+            # both trimming modes and all beta values
+            plotting_data = df.loc[rows].reset_index()
+            # TODO-doc: legend kwarg only in factorplot, not FacetGrid
+            # TODO-snippet
+            g = sns.FacetGrid(data=plotting_data,
+                              col='bsseq_strand', col_wrap=2,
+                              hue='trimming_status',
+                              size=cm_to_inch(8), aspect=1,
+                              legend_out=True,
+                              )
+
+            g = g.map(plt.plot, 'beta_value', 'Smoothed_frequency')
+
+            g.set_axis_labels('Beta value', 'Frequency')
+
+            g.set_titles(
+                    col_template = '{col_name}', row_template = '{row_name}')
+
+            g.fig.subplots_adjust(top=0.85)
+            g.fig.suptitle(self.sample_name, ha='center')
+
+            g = g.add_legend(title='Trimming')
+
+            out_path = f'{out_basepath_abs}.{curr_region}.{curr_str_name}.png'
+            g.savefig(out_path)
+
+
+def cm_to_inch(cm):
+    return cm / 2.54
