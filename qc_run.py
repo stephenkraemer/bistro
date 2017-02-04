@@ -61,7 +61,7 @@ def qc_run(bam_path, index_file_path, config, meth_metrics_dir_abs, sample_name)
     _plot_beta_value_distribution_stats(
             beta_value_data, out_paths=out_paths, config=config)
 
-    _plot_coverage_stats(coverage_data, config, out_paths)
+    _calculate_plot_save_coverage_stats(coverage_data, config, out_paths)
 
     _save_data(out_paths, mbias_data, beta_value_data, coverage_data)
 
@@ -222,7 +222,9 @@ def _plot_beta_value_distribution_stats(beta_value_data, out_paths, config):
     print('done\n')
 
 
-def _plot_coverage_stats(coverage_data, config, out_paths):
+def _calculate_plot_save_coverage_stats(coverage_data, config, out_paths):
+    coverage_data.save_aggregate_stats()
+    coverage_data.save_counts()
     plotter = mqc.coverage.CoveragePlotter(coverage_data, config)
     plotter.plot_cov_histogram(out_paths['coverage_cpg_freq'], show_frequency=True)
     plotter.plot_cov_histogram(out_paths['coverage_cpg_count'], show_frequency=False)

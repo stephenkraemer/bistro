@@ -1,0 +1,9 @@
+[conversion_error_calling]
+  max_number_of_unconv_cytosines = 10
+
+[coverage_analysis]
+  max_per_cpg_cov = 100
+
+[paths]
+  coverage_dir = 'coverage_dir'
+  coverage_counts_p = '{coverage_dir}/{population}.cov.counts.p'

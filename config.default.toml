@@ -16,6 +16,7 @@
     50, 70, 90, 110, 130, 150, 200
   ]
 
+  # for customization, you have to give a *complete* new dict
   [trimming.relative_to_fragment_ends_dict]
     w_bc = [0, 9]
     c_bc = [0, 9]
@@ -39,5 +40,13 @@
 [coverage_analysis]
   max_per_cpg_cov = 60
 
-[run_params]
-  sample_name = 'hsc_rep1'
+[paths]
+  coverage_dir = 'coverage'
+  mbias_dir = 'mbias'
+  beta_value_dir = 'beta_values'
+  coverage_counts_p = '{coverage_dir}/{name}.cov.counts.p'
+  coverage_counts_tsv = '{coverage_dir}/{name}.cov.counts.tsv'
+  # aggregated stats (mean, median)
+  coverage_stats_p = '{coverage_dir}/{name}.cov.stats.p'
+  coverage_stats_tsv = '{coverage_dir}/{name}.cov.stats.tsv'
+

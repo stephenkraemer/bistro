@@ -2,24 +2,37 @@ import os
 import pytest
 import pytoml
 import time
-
 import mqc
 
-test_dir = os.path.dirname(__file__)
-bam_path = os.path.join(test_dir, 'test.bam')
-index_file_path = os.path.join(test_dir, 'test_index.bed.gz')
+TEST_DIR = os.path.dirname(__file__)
+bam_path = os.path.join(TEST_DIR, 'test.bam')
+index_file_path = os.path.join(TEST_DIR, 'test_index.bed.gz')
 sample_name = 'test_sample'
+
+timestamp = time.strftime('%d_%H')
+OUTDIR = os.path.join('/home/kraemers/temp', 'mqc_test_' + timestamp)
+os.makedirs(OUTDIR, exist_ok=True)
+print(f'Saving objects created during testing in {OUTDIR}')
+
+args_dict = {'sample_name': 'hsc_rep1',
+             'sample_meta': 'population=hsc,replicate=1',
+             'output_dir': OUTDIR}
+
+# config_file = os.path.join(TEST_DIR, 'custom.config.toml')
+
+CONFIG = mqc.config.get_config_dict(args_dict,
+                                    config_file_path=None)
+
+for d in ['coverage_dir', 'beta_value_dir', 'mbias_dir']:
+    os.makedirs(CONFIG['paths'][d], exist_ok=True)
+
+@pytest.fixture(scope="session", autouse=True)
+def test_output_dir():
+    return OUTDIR
 
 @pytest.fixture(scope="session", autouse=True)
 def config():
-    test_dir = os.path.dirname(__file__)
-    config_file = os.path.join(test_dir, '../config.default.toml')
-    with open(config_file) as f_toml:
-        config_dict = pytoml.load(f_toml)
-    config_dict['sample'] = {'name': 'b_cells_rep1',
-                             'population': 'b_cells',
-                             'replicate': 'rep1'}
-    return config_dict
+    return CONFIG
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -34,13 +47,6 @@ def pileup_motifs_list(config):
     return pileup_motifs_and_idxs
 
 
-@pytest.fixture(scope="session", autouse=True)
-def test_output_dir():
-    timestamp = time.strftime('%d_%H')
-    outdir = os.path.join('/home/kraemers/temp', 'mqc_test_' + timestamp + '/')
-    os.makedirs(outdir, exist_ok=True)
-    print(f'Saving objects created during testing in {outdir}')
-    return outdir
 
 
 # Marker for incremental tests (http://doc.pytest.org/en/latest/example/simple.html#incremental-testing-test-steps)

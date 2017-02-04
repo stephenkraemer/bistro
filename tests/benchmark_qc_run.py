@@ -59,7 +59,7 @@ for idx_file, n_pos_in_index, walltime in index_files:
             --bam {bam_file} \\
             --output_dir {output_dir_job_results} \\
             --sample_name {sample_name} \\
-            --sample_meta population={population},replicate={replicate}
+            --sample_meta population={population},replicate={replicate} \\
             --config_file {config_file}
             END=$(date +%s.%N)
             diff=$(echo "$END - $START" | bc)
