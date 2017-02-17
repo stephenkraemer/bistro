@@ -7,13 +7,13 @@
 
 [trimming]
   max_flen_considered_for_trimming = 500
-  required_n_events_for_cutting_site_determination = 3000
-  max_window_size_for_smoothing = 5
-  min_plateau_length = 40
+  required_n_events_for_cutting_site_determination = 5000
+  max_window_size_for_smoothing = 30
+  min_plateau_length = 60
   max_std_within_plateau = 0.1
   # Don't use out-of-bounds fragment lengths! (see max_flen/min_flen params)
   flens_to_show_in_plots = [
-    50, 70, 90, 110, 130, 150, 200
+    50, 70, 80, 90, 100, 110, 130, 150, 200
   ]
 
   # for customization, you have to give a *complete* new dict

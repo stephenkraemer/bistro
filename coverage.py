@@ -148,9 +148,12 @@ class CoveragePlotter:
             .set_titles(row_template='{row_name}')
              )
 
-        for curr_ax in g.axes.flat:
-            curr_ax.xaxis.set_major_locator(ticker.MaxNLocator(nbins=30, integer=True))
-
+        # TODO-fixme
+        g.set(
+                xlim=[0,30],
+                xticks=(np.arange(0,30,2)),
+                xticklabels=[str(x) for x in np.arange(0,30,2)],
+              )
         # TODO-snippet
         g.fig.subplots_adjust(top=0.85)
         g.fig.suptitle(self.sample_name, x=0.53, ha='center')

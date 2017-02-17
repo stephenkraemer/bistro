@@ -33,7 +33,8 @@ index_files = [
 ]
 
 bam_files = [
-    ('/icgc/dkfzlsdf/analysis/hs_ontogeny/results/wgbs/results_per_pid/hsc_rep1/alignment/blood_hsc_rep1_merged.mdup.bam', 'hsc_rep1'),
+    ('/icgc/dkfzlsdf/analysis/hs_ontogeny/results/wgbs/results_per_pid/mpp1_rep3/alignment/blood_mpp1_rep3_merged.mdup.bam', 'mpp1_rep3'),
+    ('/icgc/dkfzlsdf/analysis/hs_ontogeny/results/wgbs/results_per_pid/hsc_rep3/alignment/blood_hsc_rep3_merged.mdup.bam', 'hsc_rep3'),
 ]
 
 for idx_file, n_pos_in_index, walltime in index_files:

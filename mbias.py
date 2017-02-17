@@ -50,10 +50,17 @@ class MbiasCounter:
         for motif_base, pileup_reads in zip(watson_motif_seq, motif_pileups):
             if motif_base in ['C', 'G']:
                 for pileup_read in pileup_reads:
-                    # pileup_read: mqc.bsseq_pileup_read.BSSeqPileupRead
-                    if (pileup_read.qc_fail_flag
-                        or pileup_read.overlap_flag
-                        or pileup_read.trimm_flag):
+                    pileup_read: mqc.bsseq_pileup_read.BSSeqPileupRead
+                    if (pileup_read.qc_fail_flag or
+                        pileup_read.bsseq_strand_ind == b_na_ind):
+                        continue
+
+                    meth_status_flag = pileup_read.get_meth_status_at_pileup_pos(motif_base)
+                    if meth_status_flag == 8:
+                        meth_status_index = 0
+                    elif meth_status_flag == 4:
+                        meth_status_index = 1
+                    else:  # SNP, Ref base
                         continue
 
                     # TODO: tlen should not return lower number than number of bases in read
@@ -62,19 +69,8 @@ class MbiasCounter:
                     if tlen > self.max_flen_considered_for_trimming:
                         tlen = self.max_flen_considered_for_trimming
 
-                    pileup_read: mqc.bsseq_pileup_read.BSSeqPileupRead
+                    # pileup_read: mqc.bsseq_pileup_read.BSSeqPileupRead
                     pos_in_read = pileup_read.pos_in_read
-                    meth_status_flag = pileup_read.get_meth_status_at_pileup_pos(motif_base)
-
-                    if meth_status_flag == 8:
-                        meth_status_index = 0
-                    elif meth_status_flag == 4:
-                        meth_status_index = 1
-                    else:  # SNP, Ref base
-                        continue
-
-                    if pileup_read.bsseq_strand_ind == b_na_ind:
-                        continue
 
                     self.counter[pileup_read.bsseq_strand_ind][tlen - 1][pos_in_read][meth_status_index] += 1
 
@@ -216,11 +212,12 @@ class MbiasData:
     def get_masked_mbias_df(self, trimming_mode: str, cutting_sites: 'mqc.mbias.CuttingSites'):
         """Get M-bias counts in dataframe format, with positions in M-bias trimming zones set to NA"""
 
-        # Look for cached result first
-        if trimming_mode == 'minimal' and not self._minimal_masked_mbias_stats_df.empty:
-            return self._minimal_masked_mbias_stats_df
-        elif trimming_mode == 'adjusted' and not self._adjusted_masked_mbias_stats_df.empty:
-            return self._adjusted_masked_mbias_stats_df
+        # TODO: do I want to cache?
+        # # Look for cached result first
+        # if trimming_mode == 'minimal' and not self._minimal_masked_mbias_stats_df.empty:
+        #     return self._minimal_masked_mbias_stats_df
+        # elif trimming_mode == 'adjusted' and not self._adjusted_masked_mbias_stats_df.empty:
+        #     return self._adjusted_masked_mbias_stats_df
 
         # We have to compute the masked dataframe
         cutting_sites_df = cutting_sites.get_df()
@@ -250,12 +247,14 @@ class MbiasData:
                      .groupby(level=['bsseq_strand', 'flen'], axis='index')
                      .apply(mask_read_positions_in_trimming_zone))
 
-        if trimming_mode == 'minimal':
-            setattr(self, '_minimal_masked_mbias_stats_df', masked_df)
-        elif trimming_mode == 'adjusted':
-            setattr(self, '_adjusted_masked_mbias_stats_df', masked_df)
-        else:
-            raise ValueError('Unknown trimming mode')
+        # TODO: do I want to cache this?
+        # TODO: this code is weird!
+        # if trimming_mode == 'minimal':
+        #     setattr(self, '_minimal_masked_mbias_stats_df', masked_df)
+        # elif trimming_mode == 'adjusted':
+        #     setattr(self, '_adjusted_masked_mbias_stats_df', masked_df)
+        # else:
+        #     raise ValueError('Unknown trimming mode')
 
         return masked_df
 
@@ -269,6 +268,8 @@ class MbiasDataPlotter:
         self.sample_name = config['sample']['name']
         self.max_read_length = config['data_properties']['max_read_length_bp']
         self.flens_to_show = config['trimming']['flens_to_show_in_plots']
+        # TODO-hardcoded
+        self.ylim = [0.5, 1]
 
 
         self.min_mean_raw_data = 20
@@ -300,7 +301,7 @@ class MbiasDataPlotter:
                 .map(plt.plot, 'pos', 'beta_value', linewidth=1, alpha=0.4)
                 .set_axis_labels('Position in read', 'Average methylation')
                 .set(xlim=[1, self.max_read_length],
-                     ylim=[0,1])
+                     ylim=self.ylim)
         )
 
         g.set_titles(col_template = '{col_name}',
@@ -343,9 +344,18 @@ class MbiasDataPlotter:
                            col_order='w_bc w_bc_rv c_bc c_bc_rv'.split(),
                            col_wrap=2,
                            hue='flen',
-                           xlim=[0, self.max_read_length])
+                           xlim=[0, self.max_read_length],
+                           ylim=self.ylim)
              .map(plt.plot, 'pos', beta_value_column_name)
+             .set_axis_labels('Position in read', 'Average methylation')
              .add_legend())
+
+        g.set_titles(col_template = '{col_name}',
+                     row_template = '{row_name}')
+
+        g.fig.subplots_adjust(top=0.9)
+        g.fig.suptitle(self.sample_name, fontsize=12)
+
         g.fig.savefig(output_path)
 
 
@@ -435,10 +445,17 @@ class MinimalCuttingSites:
             return self._minimal_cutting_sites_array
 
     def get_df(self):
-        if self._minimal_cutting_sites_df.empty:
-            raise NotImplementedError
-        else:
+        if not self._minimal_cutting_sites_df.empty:
             return self._minimal_cutting_sites_df
+        else:
+            df = counter_array_to_dataframe(
+                    self._minimal_cutting_sites_array,
+                    labels=[b_inds._fields, ['start', 'end'], [], []],
+                    column_names=['bsseq_strand', 'start_or_end', 'flen', 'cutting_site'],
+                    increment_integer_labels=True)
+            # TODO: unstack dataframe
+            # This code is an unfinished draft
+            raise NotImplementedError
 
 
 class AdjustedMbiasCuttingSites:
@@ -584,8 +601,6 @@ class AdjustedMbiasCuttingSites:
                                  else flen)
 
 
-        plateau_start = 0
-        plateau_end = 0
         # TODO-doublecheck: what happens if there is a NA value in the middle of the curve and std returns np.nan?
         for max_start_pos, plateau_length in enumerate(range(effective_read_length, min_len - 1, -1), 1):
             std_to_beat = max_std
@@ -593,19 +608,27 @@ class AdjustedMbiasCuttingSites:
             for start_pos in range(0, max_start_pos):
                 end_pos = start_pos + plateau_length
                 # TODO-doublecheck
-                curr_std = beta_values.iloc[start_pos:end_pos].std()
+                curr_beta_values = beta_values.iloc[start_pos:end_pos]
+                curr_std = curr_beta_values.std()
                 if curr_std < std_to_beat:
-                    std_to_beat = curr_std
-                    best_start = start_pos
+                    plateau_height = curr_beta_values.mean()
+                    left_end_bad = ( abs(curr_beta_values[0:3] - plateau_height) > curr_std).any()
+                    right_end_bad = ( abs(curr_beta_values[-3:] - plateau_height) > curr_std).any()
+                    if not (left_end_bad or right_end_bad):
+                        std_to_beat = curr_std
+                        best_start = start_pos
+                        best_end = end_pos
+                        best_plateau_height = plateau_height
             if best_start is not None:
-                plateau_start = best_start
-                plateau_end = best_start + plateau_length
                 break
+        else:
+            best_start = 0
+            best_end = 0
+            best_plateau_height = 0
 
         # TODO-doublecheck
-        plateau_height = beta_values.iloc[plateau_start:plateau_end].mean()
 
-        return pd.Series([plateau_start, plateau_end, plateau_height],
+        return pd.Series([best_start, best_end, best_plateau_height],
                          index=['start', 'end', 'average_methylation'])
 
     @staticmethod
@@ -657,3 +680,49 @@ def cutting_sites_area_plot(mbias_cutting_sites: 'AdjustedMbiasCuttingSites', ou
 
 def cm_to_inch(cm):
     return cm / 2.54
+
+def counter_array_to_dataframe(arr, labels, column_names,
+                               increment_integer_labels=True):
+    """
+
+    Parameters
+    ----------
+    arr: multidimensional array
+    labels: List[List] one list per dimension of the array.
+        List can be empty (-> use integer labels for this dimension)
+        or list may contain N labels, where N is the size of the dimension
+
+    Returns
+    -------
+    pd.DataFrame
+
+    """
+    import itertools
+    import numpy as np
+    import pandas as pd
+
+
+    indices = [np.arange(x) for x in arr.shape]
+
+    if increment_integer_labels:
+        integer_labels = [np.arange(1, x+1) for x in arr.shape]
+    else:
+        integer_labels = [np.arange(x) for x in arr.shape]
+
+    filled_labels = [labels_for_dim if labels_for_dim else indices_for_dim
+                     for labels_for_dim, indices_for_dim in zip(labels, integer_labels)]
+
+    index_label_tuples = [list(zip(indices_for_dim, labels_for_dim))
+                          for indices_for_dim, labels_for_dim
+                          in zip(indices, filled_labels)]
+
+    rows = []
+    for idx_label_tuples in itertools.product(*index_label_tuples):
+        idx_tuple = tuple(i for i,l in idx_label_tuples)
+        labels = [l for i,l in idx_label_tuples]
+        curr_row = labels + [arr[idx_tuple]]
+        rows.append(curr_row)
+
+    df = pd.DataFrame(rows, columns=column_names)
+
+    return df
