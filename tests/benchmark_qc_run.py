@@ -24,6 +24,7 @@ code_snapshot_dir = os.path.join(run_folder, 'mqc')
 shutil.copytree('/home/kraemers/projects/mqc/mqc/', dst=code_snapshot_dir)
 
 
+# TODO: use copied config file
 config_file = '/home/kraemers/projects/mqc/mqc/config.default.toml'
 
 index_files = [
@@ -34,7 +35,8 @@ index_files = [
 
 bam_files = [
     ('/icgc/dkfzlsdf/analysis/hs_ontogeny/results/wgbs/results_per_pid/mpp1_rep3/alignment/blood_mpp1_rep3_merged.mdup.bam', 'mpp1_rep3'),
-    ('/icgc/dkfzlsdf/analysis/hs_ontogeny/results/wgbs/results_per_pid/hsc_rep3/alignment/blood_hsc_rep3_merged.mdup.bam', 'hsc_rep3'),
+    ('/icgc/dkfzlsdf/project/VascularAgeing/sequencing/whole_genome_bisulfite_tagmentation_sequencing/view-by-pid/VascAge_A3/tumor/paired/merged-alignment/.merging_0/tumor_VascAge_A3_merged.mdup.bam', 'VascAge_A3')
+    # ('/icgc/dkfzlsdf/analysis/hs_ontogeny/results/wgbs/results_per_pid/hsc_rep3/alignment/blood_hsc_rep3_merged.mdup.bam', 'hsc_rep3'),
 ]
 
 for idx_file, n_pos_in_index, walltime in index_files:

@@ -2,18 +2,18 @@
   max_number_of_unconv_cytosines = 2
 
 [basic_quality_filtering]
-  min_mapq = 1
-  min_phred_score = 1
+  min_mapq = 20
+  min_phred_score = 25
 
 [trimming]
-  max_flen_considered_for_trimming = 500
+  max_flen_considered_for_trimming = 600
   required_n_events_for_cutting_site_determination = 5000
   max_window_size_for_smoothing = 30
   min_plateau_length = 60
   max_std_within_plateau = 0.1
   # Don't use out-of-bounds fragment lengths! (see max_flen/min_flen params)
   flens_to_show_in_plots = [
-    50, 70, 80, 90, 100, 110, 130, 150, 200
+    50, 70, 80, 90, 100, 110, 130, 150, 200, 250, 300, 350
   ]
 
   # for customization, you have to give a *complete* new dict
@@ -28,7 +28,7 @@
   kde_sigma = 4
 
 [data_properties]
-  max_read_length_bp = 101
+  max_read_length_bp = 130
   min_flen_considered_for_methylation_calling = 30
 
 [parallelization]
@@ -38,7 +38,7 @@
     distance_between_displayed_flen = 30
 
 [coverage_analysis]
-  max_per_cpg_cov = 60
+  max_per_cpg_cov = 80
 
 [paths]
   coverage_dir = 'coverage'
