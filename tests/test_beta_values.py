@@ -1,9 +1,10 @@
-from unittest import mock
-import numpy as np
 import math
-import pytest
-import pandas as pd
 import os
+from unittest import mock
+
+import numpy as np
+import pandas as pd
+import pytest
 
 import mqc
 
@@ -11,7 +12,7 @@ IDX = pd.IndexSlice
 
 class TestBetaValueCounter:
     def test_event_counting(self, pileup_motifs_list, config):
-        beta_value_counter_minimal = mqc.beta_values.StratifiedBetaValueCounter(config)
+        beta_value_counter_minimal = mqc.counters.beta_values.StratifiedBetaValueCounter(config)
         for motif_pileups, curr_idx_pos in pileup_motifs_list:
             n_meth, n_unmeth, beta = beta_value_counter_minimal.update_and_return_total_beta_value(
                 motif_pileups, curr_idx_pos)
@@ -46,7 +47,7 @@ def beta_value_data_df():
 
 class TestBetaValueData:
     def test_basic_function(self, config):
-        beta_value_data = mqc.beta_values.BetaValueData(config)
+        beta_value_data = mqc.counters.beta_values.BetaValueData(config)
         beta_counter_array = np.zeros([7, 1001])
         beta_counter_array[:, -1] = 100
         beta_counter_array[:, 0] = 50
@@ -66,7 +67,7 @@ class TestBetaValueData:
         These will come from the minimal and adjusted beta value calling
         """
 
-        beta_value_data = mqc.beta_values.BetaValueData(config)
+        beta_value_data = mqc.counters.beta_values.BetaValueData(config)
         beta_value_counter_1, beta_value_counter_2 = beta_value_counters
 
         beta_value_data.add_data_from_counter(beta_value_counter_1,
@@ -86,7 +87,7 @@ class TestBetaValueData:
         assert beta_value_data.df.loc[('global', 'adjusted', 'w_bc', 0)][0] == 100
 
     def test_compute_frequencies(self, beta_value_data_df, config):
-        beta_data = mqc.beta_values.BetaValueData(config)
+        beta_data = mqc.counters.beta_values.BetaValueData(config)
         beta_data.df = beta_value_data_df
         beta_data._compute_frequencies()
         row_idx1 =  ('global', 'minimal', 'w_bc', 0)
@@ -98,7 +99,7 @@ class TestBetaValueData:
         # Incremental test: will only work if ._compute_frequencies works
         # Just to test that this runs through,
         # no direct assertion of smoothing result, check in test plots
-        beta_data = mqc.beta_values.BetaValueData(config)
+        beta_data = mqc.counters.beta_values.BetaValueData(config)
         beta_data.df = beta_value_data_df
         beta_data.add_smoothed_beta_value_frequencies()
 
@@ -116,11 +117,11 @@ class TestBetaValueData:
 
 class TestBetaValuePlotter:
     def test_base_plot(self, beta_value_data_df, test_output_dir, config):
-        beta_value_data = mqc.beta_values.BetaValueData(config)
+        beta_value_data = mqc.counters.beta_values.BetaValueData(config)
         beta_value_data.df = beta_value_data_df
         beta_value_data.add_smoothed_beta_value_frequencies()
 
-        beta_value_plotter = mqc.beta_values.BetaValuePlotter(
+        beta_value_plotter = mqc.counters.beta_values.BetaValuePlotter(
                 beta_value_data, config)
         out_basepath = os.path.join(test_output_dir, 'test_beta_value_dist')
         beta_value_plotter.beta_value_dist_plot(out_basepath_abs=out_basepath)

@@ -1,7 +1,8 @@
 import os
-import pytest
-import pytoml
 import time
+
+import pytest
+
 import mqc
 
 TEST_DIR = os.path.dirname(__file__)
@@ -37,7 +38,7 @@ def config():
 
 @pytest.fixture(scope="session", autouse=True)
 def pileup_motifs_list(config):
-    minimal_cutting_sites = mqc.mbias.MinimalCuttingSites(config)
+    minimal_cutting_sites = mqc.counters.mbias.MinimalCuttingSites(config)
     motif_pileup_iter = mqc.motif_pileup_generator(bam_path, index_file_path)
     pileup_motifs_and_idxs = []
     for motif_pileups, curr_idx_pos in motif_pileup_iter:

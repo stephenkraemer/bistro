@@ -33,6 +33,7 @@
 
 [parallelization]
   pos_per_process = 1000
+  n_cores = 3
 
 [mbias_plots]
     distance_between_displayed_flen = 30

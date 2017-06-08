@@ -1,15 +1,17 @@
-import textwrap
-from unittest.mock import Mock
 import io
 import itertools
-import mqc
-import numpy as np
 import os
-import pandas as pd
-import pytest
+import textwrap
 import time
+from unittest.mock import Mock
 
 import matplotlib
+import numpy as np
+import pandas as pd
+import pytest
+
+import mqc
+
 matplotlib.use('Agg')  # import before pyplot import!
 import matplotlib.pyplot as plt
 
@@ -22,8 +24,8 @@ def empty_mbias_data(config):
     mbias_counter = Mock(counter=mbias_counts)
     minimal_cutting_sites = Mock()
     minimal_cutting_sites.get_df.return_value = pd.DataFrame()
-    mbias_data = mqc.mbias.MbiasData(mbias_counter=mbias_counter,
-                                     config=config)
+    mbias_data = mqc.counters.mbias.MbiasData(mbias_counter=mbias_counter,
+                                              config=config)
     return mbias_data
 
 
@@ -165,19 +167,19 @@ def cutting_sites_df():
 
 class TestMbiasCounter:
     def test_update(self, pileup_motifs_list, config):
-        mbias_counter = mqc.mbias.MbiasCounter(config)
+        mbias_counter = mqc.counters.mbias.MbiasCounter(config)
         for motif_pileups, curr_idx_pos in pileup_motifs_list:
-            mbias_counter.update(motif_pileups, curr_idx_pos)
+            mbias_counter.process(motif_pileups, curr_idx_pos)
         assert np.sum(mbias_counter.counter) > 30
 
 
 @pytest.mark.incremental
 class TestMbiasData:
-    def test_counter_to_df_conversion(self, empty_mbias_data: 'mqc.mbias.MbiasData'):
+    def test_counter_to_df_conversion(self, empty_mbias_data: 'mqc.counters.mbias.MbiasData'):
         empty_mbias_data.convert_mbias_arr_info_to_df_format()
         assert empty_mbias_data.mbias_stats_df.loc[('c_bc', 1, 1), 'n_meth'] == 1
 
-    def test_mbias_stats_smoothing(self, mbias_data_with_test_df: 'mqc.mbias.MbiasData'):
+    def test_mbias_stats_smoothing(self, mbias_data_with_test_df: 'mqc.counters.mbias.MbiasData'):
         mbias_data = mbias_data_with_test_df
         mbias_data.add_smoothed_mbias_stats()
 
@@ -192,7 +194,7 @@ class TestMbiasData:
         assert np.isnan(mbias_data.mbias_stats_df.loc[('w_bc', 2, 1), 'n_meth_smoothed'])
 
 
-    def test_mask_df_computation(self, mbias_data_with_test_df: 'mqc.mbias.MbiasData', cutting_sites_df):
+    def test_mask_df_computation(self, mbias_data_with_test_df: 'mqc.counters.mbias.MbiasData', cutting_sites_df):
         mbias_data = mbias_data_with_test_df
         cutting_sites = Mock()
         cutting_sites.get_df.return_value = cutting_sites_df
@@ -216,10 +218,10 @@ class TestMbiasPlotter:
         mbias_data = Mock(mbias_stats_df=mbias_stats_df,
                           min_flen_considered_for_methylation_calling = 1,
                           max_flen_considered_for_trimming = 5,
-                          spec=mqc.mbias.MbiasData
+                          spec=mqc.counters.mbias.MbiasData
                           )
 
-        mbias_plotter = mqc.mbias.MbiasDataPlotter(mbias_data, config_plotter)
+        mbias_plotter = mqc.counters.mbias.MbiasDataPlotter(mbias_data, config_plotter)
         mbias_plotter.distance_between_displayed_flen = 1
         mbias_plotter.min_mean_raw_data = 4
 
@@ -243,12 +245,12 @@ class TestMbiasPlotter:
         mbias_data = Mock(mbias_stats_df=None,
                           min_flen_considered_for_methylation_calling = 1,
                           max_flen_considered_for_trimming = 5,
-                          spec=mqc.mbias.MbiasData
+                          spec=mqc.counters.mbias.MbiasData
                           )
 
         mbias_data.get_masked_mbias_df.return_value = mbias_stats_df
 
-        mbias_plotter = mqc.mbias.MbiasDataPlotter(mbias_data, config_plotter)
+        mbias_plotter = mqc.counters.mbias.MbiasDataPlotter(mbias_data, config_plotter)
         mbias_plotter.distance_between_displayed_flen = 1
         mbias_plotter.min_mean_raw_data = 4
 
@@ -269,7 +271,7 @@ class TestMbiasPlotter:
         mbias_data = Mock()
         mbias_data.get_masked_mbias_df.return_value = df
 
-        mbias_plotter = mqc.mbias.MbiasDataPlotter(mbias_data, config)
+        mbias_plotter = mqc.counters.mbias.MbiasDataPlotter(mbias_data, config)
         output_path = os.path.join(test_output_dir,
                                    'total_mbias_plot.masked.png')
         mbias_plotter.total_plot(output_path, adjusted_cutting_sites=Mock())
@@ -277,7 +279,7 @@ class TestMbiasPlotter:
 
 class TestAdjustedMbiasCuttingSites:
     def test_get_array(self, config, cutting_sites_df):
-        adjusted_cutting_sites = mqc.mbias.AdjustedMbiasCuttingSites(
+        adjusted_cutting_sites = mqc.counters.mbias.AdjustedMbiasCuttingSites(
             mbias_data=Mock(),
             calling_mode='standard',
             config=config
@@ -309,7 +311,7 @@ class TestAdjustedMbiasCuttingSites:
 
         def check_curve(curve_df, correct_cutting_sites, curve_name):
             t0 = time.time()
-            ser = mqc.mbias.AdjustedMbiasCuttingSites.fit_normalvariate_plateau(curve_df, config)
+            ser = mqc.counters.mbias.AdjustedMbiasCuttingSites.fit_normalvariate_plateau(curve_df, config)
             t1 = time.time()
             total_time = t1-t0
             if curve_name == 'good_curve':
@@ -345,7 +347,7 @@ class TestAdjustedMbiasCuttingSites:
         Test data curves are bad for flen 100, good for flen 101 with plateau from 21 to 80
         """
         mbias_data = Mock(mbias_stats_df=mbias_stats_df_large_for_cutting_site_determin_tests)
-        adjusted_cutting_sites = mqc.mbias.AdjustedMbiasCuttingSites(
+        adjusted_cutting_sites = mqc.counters.mbias.AdjustedMbiasCuttingSites(
             mbias_data=mbias_data,
             calling_mode='standard',
             config=config

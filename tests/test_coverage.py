@@ -1,12 +1,13 @@
 """Tests for coverage calculation from stream and coverage plots"""
 
-import pytest
 import os
-import mqc
-import pandas as pd
-import numpy as np
 from unittest.mock import Mock
 
+import numpy as np
+import pandas as pd
+import pytest
+
+import mqc
 
 
 @pytest.fixture(scope='module')
@@ -34,8 +35,8 @@ def coverage_data_df(config_cov_test):
 
 class TestCoverageCounter:
     def test_update(self, config_cov_test):
-        coverage_counter = mqc.coverage.CoverageCounter(config=config_cov_test,
-                                                        trimming_status='minimal')
+        coverage_counter = mqc.counters.coverage.CoverageCounter(config=config_cov_test,
+                                                                 trimming_status='minimal')
         coverages = [0, 0,
                      1, 1, 1,
                      2, 2, 2,
@@ -49,7 +50,7 @@ class TestCoverageCounter:
 
 class TestCoverageData:
     def test_add_counter(self, config_cov_test):
-        coverage_data = mqc.coverage.CoverageData(config_cov_test)
+        coverage_data = mqc.counters.coverage.CoverageData(config_cov_test)
         counter_min = Mock(per_cpg_cov_counts = [0, 1, 2, 3],
                        trimming_status='minimal')
         counter_adjusted = Mock(per_cpg_cov_counts = [0, 1, 2, 3],
@@ -72,7 +73,7 @@ class TestCoverageData:
         assert (cov_0_3_counts_adj == np.array([0,3])).all()
 
     def test_calculate_relative_frequencies(self, config_cov_test, coverage_data_df):
-        coverage_data = mqc.coverage.CoverageData(config_cov_test)
+        coverage_data = mqc.counters.coverage.CoverageData(config_cov_test)
         coverage_data.df = coverage_data_df
         print(coverage_data.df)
         coverage_data.calculate_relative_frequencies()
@@ -81,7 +82,7 @@ class TestCoverageData:
                 .loc[:, 'Relative_frequency']== [0, 0.5]).all()
 
     def test_save_counts(self, config_cov_test, coverage_data_df):
-        coverage_data = mqc.coverage.CoverageData(config_cov_test)
+        coverage_data = mqc.counters.coverage.CoverageData(config_cov_test)
         coverage_data.df = coverage_data_df
         coverage_data.save_counts()
         df =  pd.read_pickle(config_cov_test['paths']['coverage_counts_p'])
@@ -102,7 +103,7 @@ class TestCoverageData:
         # })
 
     def test_save_aggregate_stats(self, config_cov_test, coverage_data_df):
-        coverage_data = mqc.coverage.CoverageData(config_cov_test)
+        coverage_data = mqc.counters.coverage.CoverageData(config_cov_test)
         coverage_data.df = coverage_data_df
         coverage_data.save_aggregate_stats()
         df = pd.read_pickle(config_cov_test['paths']['coverage_stats_p'])
@@ -123,10 +124,10 @@ class TestCoverageData:
 class TestCoveragePlotter:
     def test_cov_histogram(self, config_cov_test, coverage_data_df, test_output_dir):
         config=config_cov_test
-        coverage_data = mqc.coverage.CoverageData(config_cov_test)
+        coverage_data = mqc.counters.coverage.CoverageData(config_cov_test)
         coverage_data.df = coverage_data_df
         coverage_data.calculate_relative_frequencies()
-        coverage_plotter = mqc.coverage.CoveragePlotter(coverage_data, config=config_cov_test)
+        coverage_plotter = mqc.counters.coverage.CoveragePlotter(coverage_data, config=config_cov_test)
         output_path = os.path.join(test_output_dir, 'cov_frequency_hist.png')
         coverage_plotter.plot_cov_histogram(output_path)
         output_path = os.path.join(test_output_dir, 'cov_counts_hist.png')

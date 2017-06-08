@@ -16,18 +16,20 @@ import mqc.overlap_handling
 import mqc.utilities
 import mqc.conv_err
 """
-from mqc import bsseq_pileup_read
-from mqc import flag_and_index_values
-from mqc import overlap
-from mqc import trimming
-from mqc import mbias
-from mqc import beta_values
-from mqc import qc_run
-from mqc import coverage
 from mqc import config
+from mqc import flag_and_index_values
+from mqc import qc_run
+from mqc import counters
+from mqc import index
+from mqc import pileup
+from mqc import mcall
+from mqc.counters.coverage import CoverageCounter
+from mqc.counters.counters_abc import Counter
+from mqc.analysis import run_analysis
+from mqc.pileup.bsseq_pileup_read import BSSeqPileupRead
+from mqc.counters import coverage, mbias
+from mqc.counters.mbias import MbiasCounter
+from mqc.qc_taggers import overlap
+from mqc import qc_taggers
 
-from mqc.bsseq_pileup_read import BSSeqPileupRead
-from mqc.index import IndexFile, IndexPosition
-from mqc.mbias import MbiasCounter
-from mqc.pileup import motif_pileup_generator
 

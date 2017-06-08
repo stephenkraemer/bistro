@@ -1,10 +1,9 @@
 import gzip
+import os.path
+import pickle
 import shutil
 
-import pickle
-
 import mqc
-import os.path
 
 
 # TODO: there was a numpy warning: numpy-division-with-runtimewarning-invalid-value-encountered-in-double-scalars
@@ -31,7 +30,7 @@ def qc_run(bam_path, index_file_path, config, meth_metrics_dir_abs, sample_name)
     out_paths = _prepare_output_dirs_and_paths(meth_metrics_dir_abs, sample_name=sample_name)
 
     print('Calculating minimal cutting sites...')
-    minimal_cutting_sites = mqc.mbias.MinimalCuttingSites(config)
+    minimal_cutting_sites = mqc.counters.mbias.MinimalCuttingSites(config)
     print('done\n')
 
     mbias_counter, beta_value_counter_minimal, coverage_counter_minimal = (
@@ -50,7 +49,7 @@ def qc_run(bam_path, index_file_path, config, meth_metrics_dir_abs, sample_name)
     beta_value_data = _calculate_beta_value_distribution_stats(
             beta_value_counter_minimal, beta_count_adjusted_trimm, config)
 
-    coverage_data = mqc.coverage.CoverageData(config)
+    coverage_data = mqc.counters.coverage.CoverageData(config)
     coverage_data.add_counter(coverage_counter_minimal)
     coverage_data.add_counter(coverage_counter_adjusted)
     coverage_data.calculate_relative_frequencies()
@@ -113,8 +112,8 @@ def _first_pass_qc_stats_collection(bam_path, index_file_path, meth_calls_minima
                                     minimal_cutting_sites, config):
     print('Starting first pass collection...')
     mbias_counter = mqc.MbiasCounter(config)
-    coverage_counter_minimal = mqc.coverage.CoverageCounter(config, trimming_status='minimal')
-    beta_value_counter_minimal = mqc.beta_values.StratifiedBetaValueCounter(config)
+    coverage_counter_minimal = mqc.CoverageCounter(config, trimming_status='minimal')
+    beta_value_counter_minimal = mqc.counters.beta_values.StratifiedBetaValueCounter(config)
     meth_calls_fobj_minimal = gzip.open(meth_calls_minimal_trimming_gz_path, 'wt')
 
     motif_pileup_iter = mqc.motif_pileup_generator(bam_path, index_file_path)
@@ -123,7 +122,7 @@ def _first_pass_qc_stats_collection(bam_path, index_file_path, meth_calls_minima
                                         cutting_sites=minimal_cutting_sites,
                                         config=config)
 
-        mbias_counter.update(motif_pileups, index_position=curr_idx_pos)
+        mbias_counter.process(motif_pileups, index_position=curr_idx_pos)
 
         n_meth, n_unmeth, beta = beta_value_counter_minimal.update_and_return_total_beta_value(
                 motif_pileups, curr_idx_pos)
@@ -140,11 +139,11 @@ def _first_pass_qc_stats_collection(bam_path, index_file_path, meth_calls_minima
 
 def _calculate_mbias_stats(mbias_counter, config):
     print('Calculating M-bias stats...')
-    mbias_data = mqc.mbias.MbiasData(mbias_counter, config)
+    mbias_data = mqc.counters.mbias.MbiasData(mbias_counter, config)
     mbias_data.convert_mbias_arr_info_to_df_format()
     mbias_data.add_smoothed_mbias_stats()
 
-    mbias_adjusted_cutting_sites = mqc.mbias.AdjustedMbiasCuttingSites(
+    mbias_adjusted_cutting_sites = mqc.counters.mbias.AdjustedMbiasCuttingSites(
             mbias_data, calling_mode='standard', config=config)
 
     print('Done')
@@ -154,8 +153,8 @@ def _calculate_mbias_stats(mbias_counter, config):
 def _second_pass_qc_stats_collection(bam_path, index_file_path, mbias_adjusted_cutting_sites,
                                      meth_calls_adjusted_trimming_gz_path, config):
     print('Starting second pass collection...')
-    beta_count_adjusted_trimm = mqc.beta_values.StratifiedBetaValueCounter(config)
-    coverage_counter_adjusted = mqc.coverage.CoverageCounter(config, trimming_status='adjusted')
+    beta_count_adjusted_trimm = mqc.counters.beta_values.StratifiedBetaValueCounter(config)
+    coverage_counter_adjusted = mqc.CoverageCounter(config, trimming_status='adjusted')
     meth_calls_fobj_adjusted = gzip.open(meth_calls_adjusted_trimming_gz_path, 'wt')
 
     motif_pileup_iter = mqc.motif_pileup_generator(bam_path, index_file_path)
@@ -178,7 +177,7 @@ def _second_pass_qc_stats_collection(bam_path, index_file_path, mbias_adjusted_c
 def _calculate_beta_value_distribution_stats(
         beta_value_counter_minimal, beta_count_adjusted_trimm, config):
     print('Calcuting beta value distribution stats...')
-    beta_value_data = mqc.beta_values.BetaValueData(config)
+    beta_value_data = mqc.counters.beta_values.BetaValueData(config)
     beta_value_data.add_data_from_counter(beta_value_counter_minimal,
                                           region_str='global',
                                           trimming_status_str='minimal')
@@ -192,10 +191,10 @@ def _calculate_beta_value_distribution_stats(
 
 def _plot_mbias_stats(mbias_data, mbias_adjusted_cutting_sites, out_paths, config):
     print('Plotting Mbias stats')
-    mqc.mbias.cutting_sites_area_plot(mbias_cutting_sites=mbias_adjusted_cutting_sites,
-                                      output_path=out_paths['cutting_sites_plot'])
+    mqc.counters.mbias.cutting_sites_area_plot(mbias_cutting_sites=mbias_adjusted_cutting_sites,
+                                               output_path=out_paths['cutting_sites_plot'])
 
-    plotter = mqc.mbias.MbiasDataPlotter(mbias_data, config)
+    plotter = mqc.counters.mbias.MbiasDataPlotter(mbias_data, config)
     # TODO: make this paths arguments to qc_run function
     # TODO: add temp_out_dir folder
     plotter.flen_strat_plot(output_path=out_paths['mbias_stats_no_mask_path'])
@@ -215,7 +214,7 @@ def _plot_mbias_stats(mbias_data, mbias_adjusted_cutting_sites, out_paths, confi
 
 def _plot_beta_value_distribution_stats(beta_value_data, out_paths, config):
     print('Plotting beta values')
-    beta_value_plotter = mqc.beta_values.BetaValuePlotter(
+    beta_value_plotter = mqc.counters.beta_values.BetaValuePlotter(
             beta_value_data, config)
     beta_value_plotter.beta_value_dist_plot(
             out_basepath_abs=out_paths['beta_value_dist_basepath'])
@@ -225,7 +224,7 @@ def _plot_beta_value_distribution_stats(beta_value_data, out_paths, config):
 def _calculate_plot_save_coverage_stats(coverage_data, config, out_paths):
     coverage_data.save_aggregate_stats()
     coverage_data.save_counts()
-    plotter = mqc.coverage.CoveragePlotter(coverage_data, config)
+    plotter = mqc.counters.coverage.CoveragePlotter(coverage_data, config)
     plotter.plot_cov_histogram(out_paths['coverage_cpg_freq'], show_frequency=True)
     plotter.plot_cov_histogram(out_paths['coverage_cpg_count'], show_frequency=False)
 
