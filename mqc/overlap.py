@@ -4,7 +4,7 @@ import mqc
 import random
 random.seed(1234)
 
-def tag_overlaps(pileups: 'List[mqc.bsseq_pileup_read.BSSeqPileupRead]'):
+def tag_overlaps(pileups: 'List[mqc.pileup.bsseq_pileup_read.BSSeqPileupRead]'):
     read_hash = defaultdict(list)
     for pileupread in pileups:
         if not (pileupread.trimm_flag or pileupread.qc_fail_flag):

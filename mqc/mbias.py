@@ -16,12 +16,13 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import seaborn as sns
 
+
 b_inds = mqc.flag_and_index_values.bsseq_strand_indices
 b_na_ind = mqc.flag_and_index_values.bsseq_strand_na_index
 m_flags = mqc.flag_and_index_values.methylation_status_flags
 
 
-class MbiasCounter:
+class MbiasCounter(mqc.Counter):
     """Count M-bias stats from a stream of motif pileups and provide as np.ndarray"""
 
     def __init__(self, config):
@@ -45,12 +46,12 @@ class MbiasCounter:
         self.max_read_length = config["data_properties"]["max_read_length_bp"]
         self.counter = np.zeros([4, self.max_flen_considered_for_trimming + 1, self.max_read_length, 2], dtype='i4')
 
-    def update(self, motif_pileups, index_position):
+    def process(self, motif_pileups, index_position):
         watson_motif_seq = index_position.watson_motif
         for motif_base, pileup_reads in zip(watson_motif_seq, motif_pileups):
             if motif_base in ['C', 'G']:
                 for pileup_read in pileup_reads:
-                    pileup_read: mqc.bsseq_pileup_read.BSSeqPileupRead
+                    pileup_read: mqc.pileup.bsseq_pileup_read.BSSeqPileupRead
                     if (pileup_read.qc_fail_flag or
                         pileup_read.bsseq_strand_ind == b_na_ind):
                         continue
@@ -209,7 +210,7 @@ class MbiasData:
         df['n_total_smoothed'] = df['n_meth_smoothed'] + df['n_unmeth_smoothed']
 
 
-    def get_masked_mbias_df(self, trimming_mode: str, cutting_sites: 'mqc.mbias.CuttingSites'):
+    def get_masked_mbias_df(self, trimming_mode: str, cutting_sites: 'mqc.counters.mbias.CuttingSites'):
         """Get M-bias counts in dataframe format, with positions in M-bias trimming zones set to NA"""
 
         # TODO: do I want to cache?

@@ -1,7 +1,6 @@
-import mqc.trimming
-
 import mqc
-import mqc.qc_taggers.overlap
+import mqc.overlap
+import mqc.trimming
 
 
 def call_meth_at_pileup(motif_pileups, index_position: 'mqc.IndexPosition', cutting_site_array,
@@ -14,7 +13,7 @@ def call_meth_at_pileup(motif_pileups, index_position: 'mqc.IndexPosition', cutt
         if motif_base in ['C', 'G']:
             mqc.qc_taggers.trimming.set_trimming_flag(pileup_reads, cutting_site_array,
                                                       max_flen_considered_for_trimming=max_flen_considered_for_trimming)
-            mqc.qc_taggers.overlap.tag_overlaps(pileup_reads)
+            mqc.overlap.tag_overlaps(pileup_reads)
             for read in pileup_reads:
                 # read: mqc.BSSeqPileupRead
                 if read.qc_fail_flag:
