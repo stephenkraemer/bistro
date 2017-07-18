@@ -220,7 +220,7 @@ cdef inline make_bsseq_pileup_read(bam_pileup1_t * src,
         dest._pos_in_read = -1
         return dest
 
-    cdef uint16_t flag = pysam_get_flag(bam_line)
+    cdef uint16_t flag = dest._alignment._delegate.core.flag
     if (flag & flag_proper_pair_mask != 3 or flag & flag_qc_fail_mask != 0):
         # print('Found bad flag')
         # print(flag)
@@ -240,7 +240,7 @@ cdef inline make_bsseq_pileup_read(bam_pileup1_t * src,
     # add meth status
     if (dest._is_del or dest._is_refskip or
                 dest._observed_watson_base == 'N' or
-    dest._bsseq_strand_ind == NA_STRAND_IND)
+    dest._bsseq_strand_ind == NA_STRAND_IND):
         dest._meth_status_flag = IS_NA
     else:
         dest._meth_status_flag = (meth_dict[dest._bsseq_strand_ind]
@@ -345,7 +345,7 @@ cdef inline get_bsseq_strand_index(uint32_t flag):
     else:  # BSSeq-strand not defined
         return -1
 
-def pileups(PileupColumn pileup_column):
+def pileups(PileupColumn pileup_column, str expected_watson_base):
     pileups = []
 
     if pileup_column.plp == NULL or pileup_column.plp[0] == NULL:
@@ -356,5 +356,6 @@ def pileups(PileupColumn pileup_column):
     cdef int x
     for x in range(pileup_column.n_pu):
         pileups.append(make_bsseq_pileup_read(&(pileup_column.plp[0][x]),
-                                              pileup_column._alignment_file))
+                                              pileup_column._alignment_file,
+                                              expected_watson_base))
     return pileups

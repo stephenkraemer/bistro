@@ -54,10 +54,42 @@ or some kinds of epipolymorphism analysis
 
 import itertools
 import pysam
-import mqc
-from typing import Generator, Tuple, List
+import mqc.pileup.bsseq_pileup_read as bsread
+from mqc.pileup.bsseq_pileup_read import BSSeqPileupRead
 
-def stepwise_pileup_generator(index_file, bam_path) -> Generator[mqc.MotifPileup]:
+from mqc.index import IndexPosition
+from typing import Iterable, Tuple, List
+
+
+class MotifPileup:
+    """Access to all relevant information about an index position
+    
+    Provides BSSeqPileupReads at all C/G motif bases, with iterators to 
+    either iterate over all reads in chained fashion, or to iteratore over
+    the individual motif bases separately
+    """
+
+    def __init__(self,
+                 motif_pileups,
+                 idx_pos: IndexPosition):
+        if motif_pileups is None:
+            self.motif_pileups = [[]] * len(idx_pos.watson_motif)
+        else:
+            self.motif_pileups = motif_pileups
+        self.idx_pos = idx_pos
+
+    def column_wise_generator(self) -> Tuple[
+        int, str, List[BSSeqPileupRead]]:
+        for pos_idx, motif_base, pileup_reads in enumerate(zip(
+                self.idx_pos.watson_motif, self.motif_pileups)):
+            if motif_base in ['C', 'G']:
+                yield (pos_idx, motif_base, pileup_reads)
+
+    def all_pileupreads_generator(self):
+        return itertools.chain.from_iterable(self.motif_pileups)
+
+
+def stepwise_pileup_generator(index_file, bam_path) -> Iterable[MotifPileup]:
     """ Extract MotifPileups at index positions from the stream of pileups at all positions
     Iterates over all index positions on a chromosome. Where coverage is available,
     MotifPileup objects with the BSSeqPileupReads at the index positions are created.
@@ -72,9 +104,9 @@ def stepwise_pileup_generator(index_file, bam_path) -> Generator[mqc.MotifPileup
     # Or an empty pileup column (None) if the position has no coverage
     curr_idx_pos = next(index_file)  # first position in index file
     all_pileup_columns = all_position_pileup_generator(
-            bam_path,
-            ref=curr_idx_pos.chrom,
-            start=curr_idx_pos.start)
+        bam_path,
+        ref=curr_idx_pos.chrom,
+        start=curr_idx_pos.start)
     for pileup_column, curr_pileup_pos in all_pileup_columns:
 
         # Process hits
@@ -85,7 +117,7 @@ def stepwise_pileup_generator(index_file, bam_path) -> Generator[mqc.MotifPileup
             curr_base = curr_idx_pos.watson_motif[0]
             if curr_base in ['C', 'G'] and not pileup_column is None:
                 motif_pileups = [
-                    mqc.pileup.bsseq_pileup_read.pileups(pileup_column)]
+                    bsread.pileups(pileup_column)]
             else:
                 motif_pileups = [[]]
             for curr_base in curr_idx_pos.watson_motif[1:]:
@@ -99,7 +131,8 @@ def stepwise_pileup_generator(index_file, bam_path) -> Generator[mqc.MotifPileup
                     # stop iteration over pileup columns
                     break
                 if curr_base in ['C', 'G'] and not pileup_column is None:
-                    motif_pileups.append(mqc.pileup.bsseq_pileup_read.pileups(pileup_column))
+                    motif_pileups.append(
+                        bsread.pileups(pileup_column))
                 else:
                     # pileup_column None or non C/G base
                     motif_pileups.append([])
@@ -121,7 +154,7 @@ def stepwise_pileup_generator(index_file, bam_path) -> Generator[mqc.MotifPileup
 
 def all_position_pileup_generator(bam_path, ref, start):
     """ Return pileup results (pysam.PileupColumn or None) for all chromosome positions following the first index position
-    
+
     The htslib pileup engine skips positions with 0 coverage
     This generator will yield a MotifPileup also at these positions
     """
@@ -141,29 +174,3 @@ def all_position_pileup_generator(bam_path, ref, start):
         yield (pileup_column, curr_pos)
 
     sam_file.close()
-
-
-class MotifPileup:
-    """Access to all relevant information about an index position
-    
-    Provides BSSeqPileupReads at all C/G motif bases, with iterators to 
-    either iterate over all reads in chained fashion, or to iteratore over
-    the individual motif bases separately
-    """
-    def __init__(self,
-                 motif_pileups,
-                 idx_pos: mqc.index.IndexPosition):
-        if motif_pileups is None:
-            self.motif_pileups = [[]] * len(idx_pos.watson_motif)
-        else:
-            self.motif_pileups = motif_pileups
-        self.idx_pos = idx_pos
-
-    def column_wise_generator(self) -> Tuple[int, str, List[mqc.BSSeqPileupRead]]:
-        for pos_idx, motif_base, pileup_reads in enumerate(zip(
-                self.idx_pos.watson_motif, self.motif_pileups)):
-            if motif_base in ['C', 'G']:
-                yield (pos_idx, motif_base, pileup_reads)
-
-    def all_pileupreads_generator(self):
-        return itertools.chain.from_iterable(self.motif_pileups)

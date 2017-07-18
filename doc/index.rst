@@ -13,6 +13,7 @@ Contents:
 
    intro
    run_configuration
+   developers
 
 
 
