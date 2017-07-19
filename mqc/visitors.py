@@ -31,8 +31,8 @@ class Counter(metaclass=ABCMeta):
             names of counter dimensions, will be used as column names
             in counter dataframe
         dim_levels:
-            List of list containing levels for all dimensions. Any sequence
-            of sequences is ok.
+            List[Union[list, tuple, range]] containing
+            levels for all dimensions.
         counter_array:
             Numpy array to hold counts
     """
@@ -53,9 +53,10 @@ class Counter(metaclass=ABCMeta):
         if not isinstance(dim_names, list):
             raise TypeError('Counter expects list of dimension names')
 
-        if not all([isinstance(elem, Iterable) for elem in dim_levels]):
+        if not all([isinstance(elem, (list, tuple, range))
+                    for elem in dim_levels]):
             raise TypeError('Counter expects dimension levels argument'
-                            'to be list of lists, with one list per'
+                            'to be list of list/tuple/range, with one list per'
                             'dimension')
 
         self.dim_names = dim_names
