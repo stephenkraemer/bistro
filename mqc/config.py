@@ -1,54 +1,4 @@
-"""Config file and command line parsing
-
-WGBS data processing tasks are usually run over a cohort of samples.
-Thereby, there a configuration values which
-
-1. Change from sample to sample within the same project
-2. change from project to project, but remain the same between samples of the same project
-3. Can often be left at defaults across projects, but sometimes have to be adapted
-
-This is handled as follows
-
-1. Sample-specific config variables are passed through the CLI
-2. Project-specific config variables are defined in a TOML config file provided by the user
-3. Nothing is hardcoded, all parameters of the program from file paths to plotting parameters are accessible through a single global config file providing sensible defaults whereever possible
-
-This function parses and integrates all these configuration levels and provides
-them in one dict for use in the program. The dict always
-contains the sections 'sample' and 'run' with sample metadata and run
-parameters passed through the CLI, and additionally all sections specified
-in the default config file.
-
-Sample metadata and run parameter specification
------------------------------------------------
-
-This function expects a CLI parameter named sample_name. In addition,
-the run parameter 'output_dir' should be specified. Optionally, a string
-specifying further sample metadata can be given as CL arg, it will be parsed
-assuming this format: key=value[, key=value...]. All metadata are made
-available in the section config[ 'sample'], e.g.
-
-| config['sample']['name'] = 'sample_name'
-| config[ 'sample']['metadata_key'] = 'metadata_value'
-
-All other parameters passed through the CLI are collected in config['run']
-
-Path specification and expansion
---------------------------------
-
-All relative paths are assumed to be relative to output dir, which is
-assumed to differ between samples and must be given through the CLI.
-Therefore, all relative paths will be prepended with the path to
-output_dir. The path to output_dir must be absolute.
-
-Moreover, this function expands fields ({}) in path config variables.
-Fields may point to either other paths or sample metadata (e.g. {name}).
-Currently, circular references are not catched, so be careful. Note that
-it is not possible to protect fields using double braces, as one would
-do in python format strings. It is also possible to have braces in the
-output_dir variable.
-
-"""
+"""Config file and command line parsing"""
 
 import copy
 import os
@@ -57,22 +7,55 @@ import re
 from collections import OrderedDict
 
 
-def assemble_config_vars(command_line_args_dict,
-                         default_config_file_path,
-                         user_config_file_path=None):
-    """ Construct dict of all configuration parameters
+def assemble_config_vars(command_line_args_dict: dict,
+                         default_config_file_path: str,
+                         user_config_file_path: str = ''):
+    """Assemble configuration variables in one dict and expand paths
 
     Parameters
     ----------
-    command_line_args_dict: dict
-     command line params
+    command_line_args_dict:
+        Command line arguments, provided as dict by command line parser
     default_config_file_path: str
+        Required, typically every mqc based tool will have its own default
+        config file
     user_config_file_path : str
+        Optional path to user config file
 
     Returns
     -------
-    dict
+    dict:
         dict integrating all configuration variables
+
+
+    **Implementation notes**
+
+    *Sample metadata and run parameter specification*
+
+    This function expects two CLI parameters: sample_name and output_dir.
+    The path to output_dir must be absolute. Optionally, a string specifying
+    further sample metadata can be given as CL arg, it will be parsed
+    assuming this format: key=value[, key=value...]. All sample metadata are
+    made available in the section config[ 'sample'], e.g.
+
+    | config['sample']['name'] = 'sample_name'
+    | config[ 'sample']['metadata_key'] = 'metadata_value'
+
+    All command line args except the sample_name and sample_metadata are
+    collected in config['run']
+
+    *Path expansion*
+
+    All file paths must be defined in the section 'paths'.
+
+    All relative paths are assumed to be relative to output dir, and expanded
+    to absolute paths accordingly.
+
+    Fields ({}) in path config variables may point to either other path
+    variables or sample metadata (e.g. {name}). Fields are expanded
+    recursively. Currently, circular references are not catched,
+    so be careful. Note that it is not possible to protect fields using
+    double braces, as one would do in python format strings.
     """
 
     # Pop sample metadata from command line args dict
@@ -123,7 +106,7 @@ def assemble_config_vars(command_line_args_dict,
     # Expand braced fields in paths
     path_names = list(config['paths'].keys())
     for curr_path_name in path_names:
-        config['paths'][curr_path_name] = expand_path(config, curr_path_name)
+        config['paths'][curr_path_name] = _expand_path(config, curr_path_name)
 
     # Prepend output dir to paths if they are relative
     for curr_path_name in path_names:
@@ -134,7 +117,11 @@ def assemble_config_vars(command_line_args_dict,
     return config
 
 
-def expand_path(config, path_name):
+def _expand_path(config, path_name):
+    """Expand single path
+
+    Path expansion is explained in the docstring for assemble_config_vars
+    """
     field_pattern = r'{(.*?)}'
     path_to_expand = config['paths'][path_name]
     field_names_unexpanded_path = re.findall(field_pattern,
@@ -145,7 +132,7 @@ def expand_path(config, path_name):
         elif curr_field_name in config['paths']:
             curr_field_value = config['paths'][curr_field_name]
             if re.search(field_pattern, curr_field_value):
-                curr_field_value = expand_path(config, curr_field_name)
+                curr_field_value = _expand_path(config, curr_field_name)
                 config['paths'][curr_field_name] = curr_field_value
         else:
             raise ValueError(f"Can't expand path {path_to_expand}")
@@ -166,6 +153,16 @@ def get_sample_info_dict(sample_name, sample_meta_str=None):
 
 
 def update_nested_dict(base_dict, custom_dict):
+    """Update nested dict with rather strict rules
+
+    Raises
+    ------
+    TypeError
+        if type of the update value does not match the original value
+    KeyError
+        if custom_dict contains a key not present in base_dict (also
+        within nested dicts)
+    """
     for key, custom_value in custom_dict.items():
 
         try:

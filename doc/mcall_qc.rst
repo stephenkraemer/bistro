@@ -43,7 +43,3 @@ Note that you can use
 - sample metadata (like the sample name), which you have passed through the CLI
 - references to other paths
 - absolute paths or relative paths. Relative paths are interpreted as relative to the output directory passed to the mcall command.
-
-Implementation details (mostly for developers)
-Checkout the module documentation here: :py:mod:`mqc.config`
-

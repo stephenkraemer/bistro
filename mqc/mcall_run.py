@@ -82,6 +82,7 @@ class PileupRun(metaclass=ABCMeta):
     1. initialize visitors by calling their respective constructors with
        the config dict and potentially a CuttingSites instance as arguments
     2. return a list of visitors
+
     """
 
     def __init__(self, config, cutting_sites=None):
@@ -110,6 +111,7 @@ class PileupRun(metaclass=ABCMeta):
           If this is not the case, parallelization of e.g. writing methylation
           calls to file becomes more complex, because one has to maintain the
           correct order of the output.
+
         """
 
         with mp.Pool(processes=self.n_cores) as pool:

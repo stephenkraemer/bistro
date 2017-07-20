@@ -7,8 +7,8 @@ Contents:
    :maxdepth: 2
 
    intro
-   developers
    mcall_qc
+   developers
    api
 
 

@@ -13,7 +13,9 @@ from collections import Iterable
 
 class Visitor(metaclass=ABCMeta):
     """Just used for type annotations"""
-    pass
+    @abstractmethod
+    def process(self, motif_pileup: MotifPileup):
+        pass
 
 
 class Counter(metaclass=ABCMeta):
@@ -94,7 +96,7 @@ class Counter(metaclass=ABCMeta):
         pd.DataFrame
 
             Dataframe with one column per array dimension, named after
-            :attribute:`~mqc.Counter.dim_names`, and an additional column
+            :attr:`~mqc.Counter.dim_names`, and an additional column
             for the counts, named 'Counts'
         """
         if self._counter_dataframe.empty:
