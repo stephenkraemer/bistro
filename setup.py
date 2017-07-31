@@ -1,16 +1,18 @@
+from os.path import join
 from setuptools import setup, find_packages
 from setuptools.extension import Extension
 from Cython.Build import cythonize
 from distutils import sysconfig
+import sys
 
-
+python_lib = sysconfig.get_python_lib()
 extensions = [
     Extension(
         "mqc.pileup.bsseq_pileup_read",
         ["mqc/pileup/bsseq_pileup_read.pyx"],
-        include_dirs = ['/home/kraemers/programs/python_virtualenvs/python_3.6.0/include/python3.6m',
-                        '/home/kraemers/programs/python_virtualenvs/python_3.6.0/lib/python3.6/site-packages/pysam/',
-                        '/home/kraemers/programs/python_virtualenvs/python_3.6.0/lib/python3.6/site-packages/pysam/include/htslib'],
+        include_dirs = [sysconfig.get_python_inc(prefix=sys.prefix),
+                        join(python_lib, 'pysam'),
+                        join(python_lib, 'pysam/include/htslib')],
         # libraries=['fftw3', 'fftw3f', 'fftw3l', 'fftw3_threads', 'fftw3f_threads', 'fftw3l_threads'],
         # library_dirs=['/some/path/to/include/'], # not needed for fftw unless it is installed in an unusual place
     ),
@@ -29,16 +31,17 @@ setup(name='mqc',
           'console_scripts': ['mqc=mqc.cli:mqc'],
       },
       install_requires=[
+          'cython (>=0.25)',
           'pandas',
           'numpy',
           'seaborn',
           'pytoml',
-          'pytest',
           'click',
           'joblib',
-          'cython (>=0.25)',
           'python-magic (>=0.4.13)',
+          'pytest',
           'pytest-mock',
+          'pysam',
       ],
       ext_modules=cythonize(extensions)
       )
