@@ -1,18 +1,16 @@
+import shutil
 import textwrap
 from collections import defaultdict, OrderedDict
 import pytest
 import tempfile
 import gzip
 import os
+import os.path as op
 import subprocess
 import pandas as pd
+from unittest.mock import call
 
-from mqc.index import parallel_index_generation, bed_lines_generator
-
-@pytest.fixture(scope="module")
-def fasta_output_dir():
-    return tempfile.mkdtemp()
-
+from mqc.index import start_parallel_index_generation, bed_lines_generator, find_chroms, read_fasta
 
 @pytest.fixture()
 def fasta_seq():
@@ -24,34 +22,33 @@ def fasta_seq():
             'TACNCG')
 
 @pytest.fixture(scope="module")
-def fasta_file_content():
-    return ('>chr1\n'
-            'GCNNn\n'  
-            'ACGTA\n'  
-            'AGCcA\n'  
-            'gcgNt\n'  
-            'CCGAA\n'  
-            'TAcNcg\n')
+def genome_fasta_path():
 
-@pytest.fixture(scope="module")
-def fasta_files(fasta_output_dir, fasta_file_content):
+    chr_text_template = ('>chr{chr}\n'
+                         'GCNNn\n'
+                         'ACGTA\n'
+                         'AGCcA\n'
+                         'gcgNt\n'
+                         'CCGAA\n'
+                         'TAcNcg\n\n')
 
-    fasta_file_path_chr1 = os.path.join(fasta_output_dir, 'chr1.fa.gz')
-    with gzip.open(fasta_file_path_chr1, 'wt') as fobj:
-        fobj.write(fasta_file_content)
+    tmpdir = tempfile.mkdtemp()
+    fa_path = op.join(tmpdir, 'mm10.fa.gz')
 
-    fasta_file_path_chrMt = os.path.join(fasta_output_dir, 'chrMt.fa.gz')
-    with gzip.open(fasta_file_path_chrMt, 'wt') as fobj:
-        fobj.write(fasta_file_content)
+    with gzip.open(fa_path, 'wt') as fobj:
+        fobj.write(chr_text_template.format(chr='1'))
+        fobj.write(chr_text_template.format(chr='Mt'))
 
-    return fasta_file_path_chr1, fasta_file_path_chrMt
+    yield fa_path
+    # TODO: is this safe against exceptions?
+    shutil.rmtree(tmpdir)
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture()
 def index_df():
-    columns = 'chr start end motif score strand triplet_seq seq_context'.split()
+    columns = '#chrom start end motif score strand triplet_seq seq_context'.split()
     rows = [
-        ['chr1', '1',  '2',  'CN',  '.', '+', 'CNN', '.'],
+        # ['chr1', '1',  '2',  'CN',  '.', '+', 'CNN', '.'],
         ['chr1', '6',  '7',  'CG',  '.', '+', 'CGT', 'NACGT'],
         ['chr1', '7',  '8',  'CG',  '.', '-', 'CGT', 'TACGT'],
         ['chr1', '11', '12', 'CHH', '.', '-', 'CTT', 'GGCTT'],
@@ -63,7 +60,7 @@ def index_df():
         ['chr1', '20', '21', 'CHG',  '.', '+', 'CCG', ''],
         ['chr1', '21', '22', 'CG',  '.', '+', 'CGA', ''],
         ['chr1', '22', '23', 'CG',  '.', '-', 'CGG', ''],
-        ['chr1', '27', '28', 'CN',  '.', '+', 'CNC', ''],
+        # ['chr1', '27', '28', 'CN',  '.', '+', 'CNC', ''],
         ['chr1', '29', '30', 'CG',  '.', '+', 'CG$', ''],
         ['chr1', '30', '31', 'CG',  '.', '-', 'CGN', ''],
     ]
@@ -77,10 +74,17 @@ def df_to_bed_file_content(df, colnames, n_lines=-1):
     header_line = '\t'.join(colnames) + '\n'
     return header_line + ser_of_row_strings.str.cat(sep='\n') + '\n'
 
+#TODO: is this necessary? -> just use tmpdir?
+@pytest.fixture(scope='function')
+def index_output_dir():
+    tmpdir = tempfile.mkdtemp()
+    yield tmpdir
+    # TODO: is this safe against exceptions?
+    shutil.rmtree(tmpdir)
 
-def run_make_index(output_path_template, fasta_output_dir, addit_run_args):
-    args = (['--fasta_path_template', f'{fasta_output_dir}/chr{{chr}}.fa.gz',
-            '--output_path_template', output_path_template]
+def run_make_index(index_output_dir, genome_fasta, addit_run_args):
+    args = (['--genome_fasta', genome_fasta,
+            '--output_dir', index_output_dir]
             + addit_run_args)
     subprocess.check_call(['mqc', 'make_index'] + args)
 
@@ -104,47 +108,54 @@ def create_make_index_err_msg(expected_index_file_text,
 class TestMqcMakeIndexTest:
 
     def test_create_index_with_motifs_cg_chh_chg(
-            self, fasta_output_dir, fasta_files, index_df, tmpdir):
+            self, index_output_dir, genome_fasta_path, index_df):
 
-        output_path_template = f'{tmpdir}/chr{{chr}}_all-motifs.bed.gz'
-        run_make_index(output_path_template, fasta_output_dir,
+        # TODO: change flags --cg etc. to uppercase
+        run_make_index(index_output_dir=index_output_dir,
+                       genome_fasta=genome_fasta_path,
                        addit_run_args=['--cg', '--chh', '--chg'])
 
+        genome_name = 'mm10'
+        motifs_str = 'CG-CHG-CHH'
+        output_file_template = f"{index_output_dir}/{genome_name}_{motifs_str}_{{chrom}}.bed.gz"
+        chromMt_index_fp = output_file_template.format(chrom='chrMt')
+        with gzip.open(chromMt_index_fp, 'rt') as index_fobj:
+            chromMt_index_text = index_fobj.read()
 
-        generated_index_file_path = output_path_template.format(chr='1')
-        with gzip.open(generated_index_file_path, 'rt') as index_fobj:
-            generated_index_file_text = index_fobj.read()
-
-        columns = 'chr start end motif score strand'.split()
+        columns = '#chrom start end motif score strand'.split()
+        index_df['#chrom'] = 'chrMt'
         expected_index_file_text = df_to_bed_file_content(index_df, columns)
 
         err_message = create_make_index_err_msg(expected_index_file_text,
-                                                generated_index_file_text)
+                                                chromMt_index_text)
 
-        assert generated_index_file_text == expected_index_file_text, \
+        assert chromMt_index_text == expected_index_file_text, \
             err_message
 
 
     def test_create_index_with_motifs_cg_chh_chg_and_triplet_seq_and_seq_context_annotations(
-            self, fasta_output_dir, fasta_files, index_df, tmpdir):
+            self, index_output_dir, genome_fasta_path, index_df):
 
-        output_path_template = f'{str(tmpdir)}/chr{{chr}}_all-motifs.bed.gz'
         add_run_args = ['--cg', '--chh', '--chg',
                         '--triplet_seq',
                         '--seq_context', '2']
 
-        run_make_index(output_path_template, fasta_output_dir,
-                       add_run_args)
+        run_make_index(index_output_dir=index_output_dir,
+                       genome_fasta=genome_fasta_path,
+                       addit_run_args=add_run_args)
 
-        generated_index_file_path = output_path_template.format(chr='1')
+        genome_name = 'mm10'
+        motifs_str = 'CG-CHG-CHH'
+        output_file_template = f"{index_output_dir}/{genome_name}_{motifs_str}_{{chrom}}.bed.gz"
+        generated_index_file_path = output_file_template.format(chrom='chr1')
         with gzip.open(generated_index_file_path, 'rt') as index_fobj:
             # I only added seq_context fields for the first lines in the solution
-            generated_index_file_text = ''.join(index_fobj.readlines()[0:5])
+            generated_index_file_text = ''.join(index_fobj.readlines()[0:4])
 
 
-        columns = 'chr start end motif score strand triplet_seq seq_context'.split()
+        columns = '#chrom start end motif score strand triplet_seq seq_context'.split()
         expected_index_file_text = df_to_bed_file_content(index_df, columns,
-                                                          n_lines=4)
+                                                          n_lines=3)
 
         err_message = create_make_index_err_msg(expected_index_file_text,
                                                 generated_index_file_text)
@@ -152,45 +163,31 @@ class TestMqcMakeIndexTest:
         assert generated_index_file_text == expected_index_file_text, \
             err_message
 
-def mock_fasta_to_index(*args, **kwargs):
-    return kwargs
+    def test_create_cg_only_index_without_annotations(
+            self, index_df, tmpdir, genome_fasta_path):
 
-def test_make_index_determines_filepaths_and_calls_parallel_index_generation(tmpdir):
+        add_run_args = ['--cg']
+        run_make_index(index_output_dir=tmpdir,
+                       genome_fasta=genome_fasta_path,
+                       addit_run_args=add_run_args)
 
-    fa1_tmp = tmpdir.join("chr1.fa.gz").ensure()
-    fa2_tmp = tmpdir.join("chrMt.fa.gz").ensure()
+        genome_name = 'mm10'
+        motifs_str = 'CG'
+        output_file_template = f"{tmpdir}/{genome_name}_{motifs_str}_{{chrom}}.bed.gz"
+        generated_index_file_path = output_file_template.format(chrom='chr1')
+        with gzip.open(generated_index_file_path, 'rt') as index_fobj:
+            chr1_idx_text = index_fobj.read()
 
-    fa2_template = tmpdir.join("chr{chr}.fa.gz")
-    index_output_dir = tmpdir.mkdir('indices')
-    output_path_template = index_output_dir.join(
-        "index_chr{chr}_cg-chh.bed.gz")
+        columns = '#chrom start end motif score strand'.split()
+        is_cg = index_df['motif'] == 'CG'
+        cg_index_df = index_df.loc[is_cg, :]
+        expected_index_file_text = df_to_bed_file_content(cg_index_df, columns)
 
-    other_args = dict(motifs=['cg', 'chh'],
-                      annotations=['triplett_motifs'])
+        err_message = create_make_index_err_msg(expected_index_file_text,
+                                                chr1_idx_text)
 
-    mock_fasta_to_index_returns = parallel_index_generation(
-        fasta_path_template=str(fa2_template),
-        output_path_template=str(output_path_template),
-        fasta_to_index_fn=mock_fasta_to_index,
-        chr_prefix='chr',
-        cores=2,
-        **other_args)
-
-    call_args1 = dict(fasta_fp=str(fa1_tmp),
-                      output_fp=str(index_output_dir.join(
-                          "index_chr1_cg-chh.bed.gz")),
-                      chr_name='chr1',
-                      **other_args)
-
-    call_args2 = dict(fasta_fp=str(fa2_tmp),
-                      output_fp=str(index_output_dir.join(
-                          "index_chrMt_cg-chh.bed.gz")),
-                      chr_name='chrMt',
-                      **other_args)
-
-    assert call_args1 in mock_fasta_to_index_returns
-    assert call_args2 in mock_fasta_to_index_returns
-
+        assert chr1_idx_text == expected_index_file_text, \
+            err_message
 
 @pytest.fixture()
 def annotations_orddict():
@@ -205,6 +202,21 @@ class TestBedLinesGenerator:
     def get_expected_lines(index_df, expected_cols):
         return [list(tup[1:]) for tup in index_df[expected_cols].itertuples()]
 
+    def test_discards_cytosines_which_are_not_in_the_specified_motifs(
+            self, index_df, fasta_seq):
+
+        computed_lines = list(bed_lines_generator(fasta_seq=fasta_seq,
+                                                  motifs=['CG'],
+                                                  annotations={},
+                                                  chr_name='chr1'))
+
+        expected_cols = '#chrom start end motif score strand'.split()
+        is_cg = index_df['motif'] == 'CG'
+        cg_index_df = index_df.loc[is_cg, :]
+        expected_lines = self.get_expected_lines(cg_index_df, expected_cols)
+
+        assert computed_lines == expected_lines
+
     def test_finds_cytosines_and_classifies_motifs_correctly_even_at_boundaries_and_next_to_Ns(
             self, fasta_seq, index_df, annotations_orddict):
 
@@ -212,10 +224,10 @@ class TestBedLinesGenerator:
             annotations_orddict[k] = False
 
         computed_lines = list(bed_lines_generator(fasta_seq=fasta_seq,
-                                                  motifs=['cg', 'chh', 'chg'],
+                                                  motifs=['CG', 'CHH', 'CHG'],
                                                   annotations=annotations_orddict,
                                                   chr_name='chr1'))
-        expected_cols = 'chr start end motif score strand'.split()
+        expected_cols = '#chrom start end motif score strand'.split()
         expected_lines = self.get_expected_lines(index_df, expected_cols)
         assert computed_lines == expected_lines
 
@@ -223,10 +235,10 @@ class TestBedLinesGenerator:
             self, fasta_seq, index_df, annotations_orddict):
         annotations_orddict['seq_context'] = 0
         computed_lines = list(bed_lines_generator(fasta_seq=fasta_seq,
-                                                  motifs=['cg', 'chh', 'chg'],
+                                                  motifs=['CG', 'CHH', 'CHG'],
                                                   annotations=annotations_orddict,
                                                   chr_name='chr1'))
-        expected_cols = 'chr start end motif score strand triplet_seq'.split()
+        expected_cols = '#chrom start end motif score strand triplet_seq'.split()
         expected_lines = self.get_expected_lines(index_df, expected_cols)
         assert computed_lines == expected_lines
 
@@ -235,10 +247,10 @@ class TestBedLinesGenerator:
             self, fasta_seq, index_df, annotations_orddict):
         annotations_orddict['triplet_seq'] = False
         computed_lines = list(bed_lines_generator(fasta_seq=fasta_seq,
-                                                  motifs=['cg', 'chh', 'chg'],
+                                                  motifs=['CG', 'CHH', 'CHG'],
                                                   annotations=annotations_orddict,
                                                   chr_name='chr1'))
-        expected_cols = 'chr start end motif score strand seq_context'.split()
+        expected_cols = '#chrom start end motif score strand seq_context'.split()
         expected_lines = self.get_expected_lines(index_df, expected_cols)
 
         assert computed_lines[0:3] == expected_lines[0:3]
@@ -251,10 +263,10 @@ class TestBedLinesGenerator:
         annotations['seq_context'] = 2
         annotations['triplet_seq'] = True
         computed_lines = list(bed_lines_generator(fasta_seq=fasta_seq,
-                                                  motifs=['cg', 'chh', 'chg'],
+                                                  motifs=['CG', 'CHH', 'CHG'],
                                                   annotations=annotations,
                                                   chr_name='chr1'))
-        expected_cols = 'chr start end motif score strand seq_context triplet_seq'.split()
+        expected_cols = '#chrom start end motif score strand seq_context triplet_seq'.split()
         expected_lines = self.get_expected_lines(index_df, expected_cols)
         assert computed_lines[0:3] == expected_lines[0:3]
 
@@ -264,9 +276,20 @@ class TestBedLinesGenerator:
         annotations['triplet_seq'] = True
         annotations['seq_context'] = 2
         computed_lines = list(bed_lines_generator(fasta_seq=fasta_seq,
-                                                  motifs=['cg', 'chh', 'chg'],
+                                                  motifs=['CG', 'CHH', 'CHG'],
                                                   annotations=annotations,
                                                   chr_name='chr1'))
-        expected_cols = 'chr start end motif score strand triplet_seq seq_context'.split()
+        expected_cols = '#chrom start end motif score strand triplet_seq seq_context'.split()
         expected_lines = self.get_expected_lines(index_df, expected_cols)
         assert computed_lines[0:3] == expected_lines[0:3]
+
+def test_find_chroms(genome_fasta_path):
+    chroms = find_chroms(genome_fasta_path)
+    assert chroms == ['chr1', 'chrMt']
+
+def test_read_fasta(genome_fasta_path, fasta_seq):
+    chr1_seq = read_fasta(genome_fasta_path, 'chr1')
+    chrMt_seq = read_fasta(genome_fasta_path, 'chrMt')
+    assert chr1_seq  == fasta_seq
+    assert chrMt_seq == fasta_seq
+

@@ -1,52 +1,75 @@
+import click
+import os.path as op
+
 from collections import OrderedDict
 
-from os.path import isabs
+import copy
 
-from mqc.index import parallel_index_generation
-import click
+
+from mqc.index import start_parallel_index_generation
+from mqc.config import assemble_config_vars
+from mqc.mcall_run import collect_stats
 
 
 @click.group()
 def mqc():
     pass
 
+input_click_path = click.Path(exists=True, readable=True,
+                              dir_okay=False, resolve_path=True)
+
+# mqc stats
+# =========
 @mqc.command()
-@click.help_option()
-@click.option('--index', required=True,
-              type=click.Path(exists=True, readable=True))
 @click.option('--bam', required=True,
-              type=click.Path(exists=True, readable=True))
+              type=input_click_path)
+@click.argument('index_files', nargs=-1,
+                type=click.Path(resolve_path=True, exists=True, dir_okay=False))
+# TODO: which checks are necessary
 @click.option('--output_dir', required=True,
-              type=click.Path(writable=True))
-@click.option('--config_file', required=True,
-              type=click.Path(exists=True, readable=True))
+              type=click.Path(exists=False, file_okay=False,
+                              writable=True, resolve_path=True))
+@click.option('--config_file', type=input_click_path, help='[optional]')
 @click.option('--sample_name', required=True)
-@click.option('--sample_meta')
+@click.option('--sample_meta',
+              help="Pass additional metadata as"
+                   " 'key=value,key2=value2' [optional]")
+@click.option('--cores', default=1)
+@click.option('--motifs', required=True,
+              help=("Comma separated list of the motifs in the index files."
+                    "For example: CG,CHG"))
 @click.pass_context
-def qc_run(ctx, bam, index, config_file, output_dir, sample_name):
+def stats(ctx, bam, index_files,
+          output_dir, config_file,
+          sample_name, sample_meta, cores, motifs):
+    """Gather Mbias stats"""
 
-    config = mqc.config.get_config_dict(args_dict=ctx.params,
-                                        config_file_path=config_file)
+    package_top_level_dir = op.abspath(op.dirname(__file__))
+    default_config_file = op.join(package_top_level_dir, 'config.default.toml')
 
-    mqc.qc_run.qc_run(bam_path=bam,
-                      index_file_path=index,
-                      config=config,
-                      meth_metrics_dir_abs=output_dir,
-                      sample_name=sample_name)
+    user_config_file = config_file if config_file else ''
 
+    cli_params = copy.deepcopy(ctx.params)
+    cli_params['motifs'] = cli_params['motifs'].upper().split(',')
+
+
+    config = assemble_config_vars(cli_params,
+                                  default_config_file_path=default_config_file,
+                                  user_config_file_path=user_config_file)
+
+    collect_stats(config=config)
+
+    print(f"Stats collection for {sample_name} successful."
+          f"See {output_dir} for results.")
+
+
+# mqc make_index
+# ==============
 @mqc.command()
 @click.help_option()
-@click.option('--fasta_path_template', required=True,
-              help="Template path for fasta files, indicating the"
-                   " chromosome field, e.g. 'mm10_chr{chr}.fa.gz'")
-@click.option('--output_path_template', required=True,
-              help="Template path for index files to be generated, "
-                   "with field for chromosome indication, e.g."
-                   "'mm10_chr{chr}_CG-CHH-CHG.bed.gz."
-                   " Suffix must be specified in the template,"
-                   " note that file will be gzipped.")
+@click.option('--genome_fasta', required=True)
+@click.option('--output_dir', required=True)
 @click.option('--cores', default = 1)
-
 @click.option('--cg', is_flag=True,
               help='Include CG positions in index file')
 @click.option('--chg', is_flag=True)
@@ -60,7 +83,7 @@ def qc_run(ctx, bam, index, config_file, output_dir, sample_name):
               help="Add info about sequence context, with INTEGER bases before and "
                    "after the cytosine. Set INTEGER to 0 to "
                    "disable sequence context [default].")
-def make_index(fasta_path_template, output_path_template, cores,
+def make_index(genome_fasta, output_dir, cores,
                cg, chg, chh, cwg, triplet_seq, seq_context):
 
     if chg and cwg:
@@ -78,9 +101,9 @@ def make_index(fasta_path_template, output_path_template, cores,
     annotations = OrderedDict((('triplet_seq', triplet_seq),
                               ('seq_context', seq_context)))
 
-    parallel_index_generation(fasta_path_template=fasta_path_template,
-                              output_path_template=output_path_template,
-                              motifs=motifs,
-                              annotations=annotations,
-                              cores=cores)
+    start_parallel_index_generation(genome_fasta=genome_fasta,
+                                    index_output_dir=output_dir,
+                                    motifs=motifs,
+                                    annotations=annotations,
+                                    cores=cores)
 

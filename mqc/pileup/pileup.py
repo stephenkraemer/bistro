@@ -52,125 +52,62 @@ and qc filtering in general, as well as better fragment length determination
 or some kinds of epipolymorphism analysis
 """
 
-import itertools
+
 import pysam
-import mqc.pileup.bsseq_pileup_read as bsread
-from mqc.pileup.bsseq_pileup_read import BSSeqPileupRead
+from itertools import chain, repeat
+from collections import namedtuple
+from typing import Iterator, List
 
 from mqc.index import IndexPosition
-from typing import Iterable, Tuple, List
+from mqc.pileup.bsseq_pileup_read import pileups, BSSeqPileupRead
 
 
 class MotifPileup:
-    """Access to all relevant information about an index position
-    
-    Provides BSSeqPileupReads at all C/G motif bases, with iterators to 
-    either iterate over all reads in chained fashion, or to iteratore over
-    the individual motif bases separately
-    """
-
-    def __init__(self,
-                 motif_pileups,
-                 idx_pos: IndexPosition):
-        if motif_pileups is None:
-            self.motif_pileups = [[]] * len(idx_pos.watson_motif)
-        else:
-            self.motif_pileups = motif_pileups
+    def __init__(self, reads: List[BSSeqPileupRead], idx_pos: IndexPosition):
         self.idx_pos = idx_pos
+        self.reads = reads
 
-    def column_wise_generator(self) -> Tuple[
-        int, str, List[BSSeqPileupRead]]:
-        for pos_idx, motif_base, pileup_reads in enumerate(zip(
-                self.idx_pos.watson_motif, self.motif_pileups)):
-            if motif_base in ['C', 'G']:
-                yield (pos_idx, motif_base, pileup_reads)
+def stepwise_pileup_generator(index_positions: Iterator[IndexPosition],
+                              alignment_file: pysam.AlignmentFile,
+                              ) -> Iterator[MotifPileup]:
 
-    def all_pileupreads_generator(self):
-        return itertools.chain.from_iterable(self.motif_pileups)
+    idx_pos_iterable = iter(index_positions)
+    curr_idx = next(idx_pos_iterable)
 
+    pileup_columns = alignment_file.pileup(reference=curr_idx.chrom,
+                                           start=curr_idx.start,
+                                           end=None,
+                                           truncate=True)
 
-def stepwise_pileup_generator(index_file, bam_path) -> Iterable[MotifPileup]:
-    """ Extract MotifPileups at index positions from the stream of pileups at all positions
-    Iterates over all index positions on a chromosome. Where coverage is available,
-    MotifPileup objects with the BSSeqPileupReads at the index positions are created.
-    Positions without coverage are allowed and will result in emtpy MotifPileup objects.
+    empty_pileup_column = (namedtuple('EmptyPileupColumn', 'reference_pos')
+                           (reference_pos = -1))
+    empty_pileup_column_iterable = repeat(empty_pileup_column)
+    pileup_columns_iterator = chain(pileup_columns,
+                                    empty_pileup_column_iterable)
+    curr_pileup_column = next(pileup_columns_iterator)
+    curr_pileup_pos = curr_pileup_column.reference_pos
 
-    For every index position, the MotifPileup object is passed to the process()
-    method of 1. all taggers (in order) and then 2. all counters (in order)
-    """
+    while True:
+        try:
+            if curr_pileup_pos == -1:
+                yield MotifPileup(reads=[], idx_pos=curr_idx)
+                for curr_idx in idx_pos_iterable:
+                    yield MotifPileup(reads=[], idx_pos=curr_idx)
+                break
+            elif curr_idx.start > curr_pileup_pos:
+                curr_pileup_column = next(pileup_columns_iterator)
+                curr_pileup_pos = curr_pileup_column.reference_pos
+                continue
+            elif curr_idx.start < curr_pileup_pos:
+                yield MotifPileup(reads=[], idx_pos=curr_idx)
+                curr_idx = next(idx_pos_iterable)
+                continue
+            elif curr_idx.start == curr_pileup_pos:
+                pileup_reads = pileups(curr_pileup_column, curr_idx.watson_base)
+                yield MotifPileup(reads=pileup_reads, idx_pos=curr_idx)
+                curr_idx = next(idx_pos_iterable)
+                curr_pileup_column = next(pileup_columns_iterator)
+                curr_pileup_pos = curr_pileup_column.reference_pos
+        except StopIteration:
+            return  # generator will now raise StopIteration
 
-    # Get pileups at all chromosome positions
-    # Either get the PileupColumn from pysam/htslib
-    # Or an empty pileup column (None) if the position has no coverage
-    curr_idx_pos = next(index_file)  # first position in index file
-    all_pileup_columns = all_position_pileup_generator(
-        bam_path,
-        ref=curr_idx_pos.chrom,
-        start=curr_idx_pos.start)
-    for pileup_column, curr_pileup_pos in all_pileup_columns:
-
-        # Process hits
-        # Either return a MotifPileup with PileupReads at all C/G positions
-        # Or return an empty MotifPileup if the BAM file ends within
-        # the current index position
-        if curr_pileup_pos == curr_idx_pos.start:
-            curr_base = curr_idx_pos.watson_motif[0]
-            if curr_base in ['C', 'G'] and not pileup_column is None:
-                motif_pileups = [
-                    bsread.pileups(pileup_column)]
-            else:
-                motif_pileups = [[]]
-            for curr_base in curr_idx_pos.watson_motif[1:]:
-                try:
-                    pileup_column, curr_pileup_pos = next(all_pileup_columns)
-                except StopIteration:
-                    # PileupColumn within the current index is not available
-                    # Return empty MotifPileup for this index position.
-                    yield MotifPileup(motif_pileups=None,
-                                      idx_pos=curr_idx_pos)
-                    # stop iteration over pileup columns
-                    break
-                if curr_base in ['C', 'G'] and not pileup_column is None:
-                    motif_pileups.append(
-                        bsread.pileups(pileup_column))
-                else:
-                    # pileup_column None or non C/G base
-                    motif_pileups.append([])
-            yield MotifPileup(motif_pileups=motif_pileups,
-                              idx_pos=curr_idx_pos)
-
-            try:
-                curr_idx_pos = next(index_file)
-            except StopIteration:  # end of index reached, end generator
-                return
-
-    # The pileup column generator is exhausted (end of BAM file)
-    # But we still have index positions -> return empty MotifPileups
-    # for all index positions
-    for curr_idx_pos in index_file:
-        yield MotifPileup(motif_pileups=None,
-                          idx_pos=curr_idx_pos)
-
-
-def all_position_pileup_generator(bam_path, ref, start):
-    """ Return pileup results (pysam.PileupColumn or None) for all chromosome positions following the first index position
-
-    The htslib pileup engine skips positions with 0 coverage
-    This generator will yield a MotifPileup also at these positions
-    """
-    sam_file = pysam.AlignmentFile(bam_path)
-    pileup_columns = sam_file.pileup(reference=ref,
-                                     start=start,
-                                     end=None,
-                                     truncate=True)
-
-    last_pos = start - 1
-    for pileup_column in pileup_columns:
-        curr_pos = pileup_column.reference_pos
-        while last_pos + 1 < curr_pos:
-            yield (None, last_pos + 1)
-            last_pos += 1
-        last_pos = curr_pos
-        yield (pileup_column, curr_pos)
-
-    sam_file.close()

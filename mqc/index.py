@@ -5,14 +5,12 @@ from collections import OrderedDict
 from os.path import dirname, isabs, join
 import numpy as np
 import os
+import os.path as op
 import subprocess
 from typing import List, Iterable, Dict, Any
 from joblib import Parallel, delayed
-import mqc.utils
+from mqc.utils import open_gzip_or_plain_file
 
-
-def make_index():
-    pass
 
 class IndexFile:
     def __init__(self, bed_abspath):
@@ -28,31 +26,17 @@ class IndexFile:
 
 
 class IndexPosition:
+    # TODO: support additional index fields
     def __init__(self, index_line: str):
         fields = index_line.rstrip().split('\t')
-        self.chrom = fields[0].replace('chr', '')
+        # TODO: why?
+        self.chrom = fields[0].replace('chrom', '')
         self.start = int(fields[1])
         self.end = int(fields[2])
-        # TODO: use name for motif? -> name as motif on the respective strand?
-        self.name = fields[3]
+        self.motif = fields[3]
         self.score = fields[4]
         self.strand = fields[5]  # '+' or '-'
-        # TODO: backlog -> only process these fields if required (perhaps implement through properties?)
-
-        def parse_control_pos_str(s):
-            if s == '.':
-                return []
-            else:
-                return [int(curr_pos_str) for curr_pos_str in s.split(',')]
-
-        self.watson_conv_control_cyts = parse_control_pos_str(fields[6])
-        self.crick_conv_control_cyts = parse_control_pos_str(fields[7])
-
-        self.original_motif = self.name
-        # TODO: check this!
-        self.watson_motif = (self.name
-                             if self.strand == '+'
-                             else reverse_complement_seq(self.name))
+        self.watson_base = 'C' if (self.strand == '+') else 'G'
 
     def __str__(self):
         return '{}:{}-{}, motif: {} (on strand {})'.format(
@@ -64,15 +48,72 @@ def reverse_complement_seq(seq):
     return seq.translate(str.maketrans('CGHD', 'GCDH')).reverse()
 
 
-def fasta_to_index(fasta_fp: str, output_fp: str,
-                   chr_name, motifs: List[str], annotations: Dict[str, Any]):
+def start_parallel_index_generation(genome_fasta: str, index_output_dir: str,
+                                    motifs: List[str], annotations: OrderedDict,
+                                    cores: int):
+    """Determine file paths and start parallel index generation
 
-    fasta_seq = read_fasta(fasta_fp)
-    bed_lines = bed_lines_generator(fasta_seq, chr_name,
+    Parameters
+    ----------
+    chr_prefix:
+        string prepended to chromosome index
+    fasta_path_template:
+        template path specifying where to find the fasta files. Must have
+        one field, named '{chr}'. This field will be expanded to match the different chromosome
+        indices of the individual fasta files. Must be absolute path.
+    output_path_template:
+        template path specifying where to save the generated index files. Must
+        have one field, named '{chr}'. This field will be replaced with the chromosome
+        index of the corresponding fasta file
+    motifs:
+        the motifs to be considered for the index generation (CG, CHH, CHG/CWG)
+    annotations:
+        strings specifying the desired annotation columns
+    cores:
+        index generation can be run in parallel with *cores* processes
+    fasta_to_index_fn:
+        dependency injection used for unit test
+    """
+
+    chroms = find_chroms(genome_fasta)
+    genome_name = re.sub(r'.fa(.gz)?$', '', op.basename(genome_fasta))
+    os.makedirs(index_output_dir, exist_ok=True)
+
+    motifs_str = '-'.join(motifs)
+    output_file_template = f"{index_output_dir}/{genome_name}_{motifs_str}_{{chrom}}.bed.gz"
+    output_files = [output_file_template.format(chrom=c) for c in chroms]
+
+    Parallel(n_jobs=cores)(delayed(fasta_to_index)
+                           (genome_fasta,
+                            chrom=curr_chrom,
+                            output_fp=curr_output_fp,
+                            motifs=motifs,
+                            annotations=annotations)
+                           for curr_chrom, curr_output_fp in zip(chroms, output_files))
+
+    print('Completed index generation')
+
+
+def find_chroms(genome_fasta):
+    chroms = []
+    with open_gzip_or_plain_file(genome_fasta) as fobj:
+        for line in fobj:
+            if line.startswith('>'):
+                chrom = line.split()[0].replace('>', '')
+                chroms.append(chrom)
+    return chroms
+
+
+def fasta_to_index(genome_fasta, chrom:str, output_fp: str,
+                   motifs: List[str], annotations: Dict[str, Any]):
+
+    print(f"Working on {chrom}")
+    chrom_seq = read_fasta(genome_fasta, chrom)
+    bed_lines = bed_lines_generator(chrom_seq, chrom,
                                     motifs=motifs, annotations=annotations)
-    with gzip.open(output_fp, 'wt') as out_fobj:
 
-        base_header = ['chr', 'start', 'end', 'motif', 'score', 'strand']
+    with gzip.open(output_fp, 'wt') as out_fobj:
+        base_header = ['#chrom', 'start', 'end', 'motif', 'score', 'strand']
         anno_cols = [k for k, v in annotations.items() if v]
         header_line = '\t'.join(base_header + anno_cols) + '\n'
 
@@ -81,24 +122,40 @@ def fasta_to_index(fasta_fp: str, output_fp: str,
             out_fobj.write('\t'.join(curr_line) + '\n')
 
 
-def read_fasta(fasta_fp) -> str:
-    """ Return chrom sequence from fasta file (plain or gzip) as string"""
+def read_fasta(genome_fasta, chrom) -> str:
 
-    with mqc.utils.open_gzip_or_plain_file(fasta_fp) as chr_fobj:
-        _header = next(chr_fobj)
-        chrom_seq = (chr_fobj.read()
-                     .replace('\n', '')
-                     .upper())
+    def read_lines(fobj):
+        lines = []
+        for curr_line in fobj:
+            if curr_line.startswith('>'):
+                break
+            lines.append(curr_line.strip().upper())
+        chrom_seq = ''.join(lines)
+        return chrom_seq
+
+    chrom_seq = ''
+    with open_gzip_or_plain_file(genome_fasta) as fobj:
+        for curr_line in fobj:
+            if curr_line.startswith('>'):
+                curr_chrom = curr_line.split()[0].replace('>', '')
+                if curr_chrom == chrom:
+                    chrom_seq = read_lines(fobj)
+                    break
+
+    if not chrom_seq:
+        raise ValueError(f"Could not find chromosome {chrom} in\n{genome_fasta}")
+
     return chrom_seq
+
+
 
 def bed_lines_generator(fasta_seq: str, chr_name: str, motifs: List[str],
                         annotations: Dict[str, Any]) -> Iterable[List[str]]:
 
     for i in range(0, len(fasta_seq)):
+
         curr_base = fasta_seq[i]
         if curr_base in ['C', 'G']:
-
-            bed_line = [chr_name, str(i), str(i+1)]
 
             # Note that len(triplet_seq) < 3 at the ends of fasta_seq
             if curr_base == 'C':
@@ -110,11 +167,12 @@ def bed_lines_generator(fasta_seq: str, chr_name: str, motifs: List[str],
                 strand = '-'
 
             motif = classify_motif(triplet_seq)
-            if motif == '.':
+            # TODO: document that this discard CN motifs, which are not choosable currently (?)
+            if motif not in motifs:  # this also discards motif='.' and motif='CN'
                 # Motifs at the boundaries of fasta_seq may not be callable
                 continue
 
-            bed_line += [motif, '.', strand]
+            bed_line = [chr_name, str(i), str(i+1), motif, '.', strand]
 
             for k, v in annotations.items():
                 if v:
@@ -178,64 +236,3 @@ ANNOTATORS = {'triplet_seq': add_triplet_seq,
 
 
 
-def parallel_index_generation(fasta_path_template: str, output_path_template: str,
-                              motifs: List[str], annotations: OrderedDict,
-                              cores: int, chr_prefix='chr',
-                              fasta_to_index_fn=fasta_to_index):
-    """Determine file paths and start parallel index generation
-
-    Parameters
-    ----------
-    chr_prefix:
-        string prepended to chromosome index
-    fasta_path_template:
-        template path specifying where to find the fasta files. Must have
-        one field, named '{chr}'. This field will be expanded to match the different chromosome
-        indices of the individual fasta files. Must be absolute path.
-    output_path_template:
-        template path specifying where to save the generated index files. Must
-        have one field, named '{chr}'. This field will be replaced with the chromosome
-        index of the corresponding fasta file
-    motifs:
-        the motifs to be considered for the index generation (CG, CHH, CHG/CWG)
-    annotations:
-        strings specifying the desired annotation columns
-    cores:
-        index generation can be run in parallel with *cores* processes
-    fasta_to_index_fn:
-        dependency injection used for unit test
-    """
-
-    # Note: Need to pass fasta_to_index_fn to this function
-    # to facilitate unit test
-
-    if not (isabs(fasta_path_template) and isabs(output_path_template)):
-        raise ValueError('Template paths must be specified as absolute paths')
-
-    fasta_dir = dirname(fasta_path_template)
-    fasta_path_regex = fasta_path_template.replace(
-        '{chr}', r'(\d{1,2}|[a-zA-Z]{1,2})')
-    matches_in_fasta_dir = [re.match(fasta_path_regex, join(fasta_dir, fp))
-                            for fp in os.listdir(fasta_dir)]
-    job_params = [
-        {'fasta_fp': m.group(0),
-         'output_fp': output_path_template.replace('{chr}', m.group(1)),
-         'chr_name': chr_prefix + m.group(1)}
-        for m in matches_in_fasta_dir if m]
-
-    if not job_params:
-        raise(ValueError('Could not find any FASTA files!'))
-
-    # Saving return values from fasta_to_index_fn helps with patching
-    # the function in unit test. Would not be necessary otherwise.
-    out_fps = Parallel(n_jobs=cores)(delayed(fasta_to_index_fn)
-                                     (fasta_fp=curr_params['fasta_fp'],
-                                      output_fp=curr_params['output_fp'],
-                                      chr_name=curr_params['chr_name'],
-                                      motifs=motifs,
-                                      annotations=annotations)
-                                     for curr_params in job_params)
-
-    print('Completed index generation')
-
-    return out_fps

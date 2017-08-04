@@ -33,7 +33,6 @@
 
 [parallelization]
   pos_per_process = 1000
-  n_cores = 3
 
 [mbias_plots]
     distance_between_displayed_flen = 30
@@ -42,12 +41,7 @@
   max_per_cpg_cov = 80
 
 [paths]
-  coverage_dir = 'coverage'
-  mbias_dir = 'mbias'
-  beta_value_dir = 'beta_values'
-  coverage_counts_p = '{coverage_dir}/{name}.cov.counts.p'
-  coverage_counts_tsv = '{coverage_dir}/{name}.cov.counts.tsv'
-  # aggregated stats (mean, median)
-  coverage_stats_p = '{coverage_dir}/{name}.cov.stats.p'
-  coverage_stats_tsv = '{coverage_dir}/{name}.cov.stats.tsv'
+  qc_stats_dir = "qc_stats"
+  mbias_stats_tsv = "{qc_stats_dir}/mbias_stats.tsv"
+  mbias_stats_p = "{qc_stats_dir}/mbias_stats.p"
 

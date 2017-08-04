@@ -4,3 +4,4 @@ doc/_build
 mqc.egg-info/
 build
 **.so
+**/.#*.py

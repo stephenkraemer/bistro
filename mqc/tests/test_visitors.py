@@ -31,9 +31,9 @@ class TestArrayToDataFrameConversion:
 
         # Note that these rows are sorted
         expected_rows = [['a', 2, 3], ['a', 3, 4], ['b', 2, 1], ['b', 3, 2]]
-        expected_df = pd.DataFrame(expected_rows,
-                                   columns=dim_names + ['Counts'])
-        expected_df.index = range(0, 4)
+        expected_df = (pd.DataFrame(expected_rows,
+                                    columns=dim_names + ['Counts'])
+                         .set_index(dim_names))
 
         counter_stub = CounterStub(dim_names=dim_names, dim_levels=dim_levels,
                                    arr=arr)
@@ -51,9 +51,9 @@ class TestArrayToDataFrameConversion:
         dim_levels = ['b a'.split()]
 
         expected_rows = [['a', 2], ['b', 1]]
-        expected_df = pd.DataFrame(expected_rows,
+        expected_df = (pd.DataFrame(expected_rows,
                                    columns=dim_names + ['Counts'])
-        expected_df.index = range(0, 2)
+                         .set_index(dim_names))
 
         counter_stub = CounterStub(dim_names=dim_names, dim_levels=dim_levels,
                                    arr=arr)

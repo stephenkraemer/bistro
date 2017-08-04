@@ -23,8 +23,8 @@ DEF IS_UNMETHYLATED = 4
 DEF IS_SNP = 2
 DEF IS_REF = 1
 
-cdef uint32_t min_phred = 20
-cdef uint8_t min_mapq = 20
+cdef uint32_t min_phred = 0
+cdef uint8_t min_mapq = 1
 cdef uint32_t flag_proper_pair_mask = 3
 cdef uint32_t flag_qc_fail_mask = 3852
 

@@ -6,19 +6,38 @@ Implementation notes
 """
 
 import multiprocessing as mp
+import re
 from abc import abstractmethod, ABCMeta
 from collections import OrderedDict
 from typing import Dict, List
+import os.path as op
+import os
+import pwd
+
+import pysam
 
 from mqc.index import IndexFile
 from mqc.pileup.pileup import stepwise_pileup_generator
 from mqc.visitors import Counter, Visitor
+from mqc.mbias import MbiasCounter
 
 
 # from mqc.mbias import MbiasData, AdjustedMbiasCuttingSites, MbiasCounter
 # from mqc.beta_values import StratifiedBetaValueCounter
 # from mqc.coverage import CoverageCounter
 
+
+def collect_stats(config):
+
+    mbias_run = MbiasDeterminationRun(config, cutting_sites=None)
+    mbias_run.run_parallel()
+    mbias_counter: Counter = mbias_run.summed_up_counters['mbias_counter']
+    mbias_df = mbias_counter.get_dataframe()
+    # TODO-refactor: all dirs should be created at once in the beginning
+    os.makedirs(config['paths']['qc_stats_dir'], exist_ok=True, mode=0o777)
+    mbias_df.reset_index().to_csv(config['paths']['mbias_stats_tsv'],
+                                  sep = "\t", header = True, index = False)
+    mbias_df.to_pickle(config['paths']['mbias_stats_p'])
 
 def mcall_run(config):
     """Conceptual draft of a function to perform methylation calling and QC"""
@@ -90,11 +109,9 @@ class PileupRun(metaclass=ABCMeta):
         self.summed_up_counters = {}
 
         # All config vars used directly by methods of this class
-        self.n_cores = config['parallelization']['n_cores']
+        self.n_cores = config['run']['cores']
         self.index_files = config['run']['index_files']
-        if not isinstance(self.index_files[0], IndexFile):
-            raise TypeError('Index files must be given as IndexFile objects')
-        self.bam_path = config['run']['bam_path']
+        self.bam_path = config['run']['bam']
         self.cutting_sites = cutting_sites
 
         # Save whole config dict, because it is used
@@ -102,6 +119,7 @@ class PileupRun(metaclass=ABCMeta):
         self.config = config
 
     def run_parallel(self):
+        # TODO: other path for cores=1
         """Parallelize over index files
 
         Note
@@ -119,6 +137,10 @@ class PileupRun(metaclass=ABCMeta):
                 self._single_run_over_index_file,
                 self.index_files)
             self.sum_up_counters(counter_dicts_per_idx_file)
+
+
+        # counter = self._single_run_over_index_file(self.index_files[0])
+        # return counter
 
     def sum_up_counters(
             self, counter_dicts_per_idx_file: List[Dict[str, Counter]]):
@@ -146,13 +168,13 @@ class PileupRun(metaclass=ABCMeta):
         # This would mean that (id(summed_up_counters[curr_name].counter_array)
         #     == id(first_counter.counter_array)
 
-    def _single_run_over_index_file(self, index_file: IndexFile) -> \
+    def _single_run_over_index_file(self, index_file_path: str) -> \
             Dict[str, 'Counter']:
         """Iterate over index file, generate MotifPileups and pass to Visitors
 
         Parameters
         ----------
-        index_file
+        index_file_path
             IndexFile instance representing (usually) chromosome indices.
             See documentation if you need to use other index 'levels',
             because this may be problematic (for the moment) when runnning
@@ -165,15 +187,19 @@ class PileupRun(metaclass=ABCMeta):
             combinations of visitors may be applied during the PileupRun,
             only counters will be returned for further processing.
         """
-
+        log_name = op.basename(index_file_path).replace('.bed.gz', '')
         visitors: Dict[str, Visitor] = self._get_visitors()
 
+        alignment_file = pysam.AlignmentFile(self.bam_path)
+        index_file = IndexFile(index_file_path)
+
         motif_pileup_generator = stepwise_pileup_generator(
-            index_file=index_file,
-            bam_path=self.bam_path
-        )
+            index_positions=index_file,
+            alignment_file=alignment_file)
 
         for motif_pileup in motif_pileup_generator:
+            if motif_pileup.idx_pos.start % 100_000 == 0:
+                print(f"{log_name}::{motif_pileup.idx_pos.start}")
             for curr_visitor in visitors.values():
                 curr_visitor.process(motif_pileup)
 
@@ -198,22 +224,23 @@ class PileupRun(metaclass=ABCMeta):
 class MbiasDeterminationRun(PileupRun):
     """Go over all index positions and collect M-bias stats
 
-    Implementation notes
-    --------------------
+    *Implementation notes*
+
     - overlap handling is not required because M-bias stats are stratified
-    by sequencing strand, and thus automatically also by mate.
+    by sequencing strand. Overlapping read pairs represent two events on two
+    different strands which should both be counted.
     - trimming is not required because we want to collect stats even in regions
     where we know that bias exists (for verification, if nothing else)
 
     Possible improvements
     ---------------------
     In the future, this class may be able sample the index positions to reduce
-    the number of computations.
+    the number of computations. (or this may be built into PileupRun...)
     """
 
     def _get_visitors(self) -> Dict[str, Visitor]:
         return OrderedDict(
-            mbias_counts=MbiasCounter(self.config),
+            mbias_counter=MbiasCounter(self.config),
         )
 
 

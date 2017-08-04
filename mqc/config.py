@@ -58,6 +58,7 @@ def assemble_config_vars(command_line_args_dict: dict,
     double braces, as one would do in python format strings.
     """
 
+
     # Pop sample metadata from command line args dict
     # The remaining command line args are run parameters
     command_line_args_dict = copy.deepcopy(command_line_args_dict)

@@ -47,7 +47,7 @@ class Counter(metaclass=ABCMeta):
 
         Every subclass should use its init function to:
         - initialize its counter array
-        - call super.__init__()
+        - call super().__init__()
         - save all config variables required for further use as attributes
 
         """
@@ -113,8 +113,9 @@ class Counter(metaclass=ABCMeta):
         rows = self._create_dataframe_rows(index_level_tuples)
         column_names = self.dim_names + ['Counts']
         df = (pd.DataFrame(rows, columns=column_names)
-              .sort_values(by=self.dim_names))
-        df.index = range(0, df.shape[0])
+                .set_index(self.dim_names)
+                # TODO: ensure that this is fully sorted
+                .sort_index(axis='index'))
         return df
 
     def _create_dataframe_rows(self, index_level_tuples):

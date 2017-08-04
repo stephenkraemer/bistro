@@ -1,79 +1,110 @@
-# TODO: make conversion of counter array to pandas dataframe (for adjusted cutting sites)
-#  easier by using Pandas built-in capabilities?
-# TODO: add conversion of minimal cutting array to dataframe method
-# TODO: test plot with minimal cutting site masking
-
-import warnings
-from abc import ABCMeta, abstractmethod
-
-import pandas as pd
 import numpy as np
-import mqc
+import pandas as pd
+import warnings
 
 import matplotlib
-
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import seaborn as sns
 
+from abc import ABCMeta, abstractmethod
+from typing import Dict
 
-b_inds = mqc.flag_and_index_values.bsseq_strand_indices
-b_na_ind = mqc.flag_and_index_values.bsseq_strand_na_index
-m_flags = mqc.flag_and_index_values.methylation_status_flags
+from mqc.pileup.bsseq_pileup_read import BSSeqPileupRead
+from mqc.pileup.pileup import MotifPileup
+from mqc.visitors import Counter
+import mqc.flag_and_index_values as mfl
+
+b_inds = mfl.bsseq_strand_indices
+b_na_ind = mfl.bsseq_strand_na_index
+m_flags = mfl.methylation_status_flags
 
 
-class MbiasCounter(mqc.Counter):
-    """Count M-bias stats from a stream of motif pileups and provide as np.ndarray"""
+class MbiasCounter(Counter):
+    """Count stratified M-bias stats
 
-    def __init__(self, config):
+    *Implementation notes:*
+    The Fragment length dimension includes the length 0, so that it can be
+    indexed by 1-based values. The read position indexes on the other hand
+    are zero-based, for better interaction with the C/cython parts of the
+    program.
+    """
+
+    def __init__(self, config: Dict):
+
+        max_read_length = config['data_properties']['max_read_length_bp']
+        motifs = config['run']['motifs']
+        self.max_flen_considered_for_trimming = (
+            config['trimming']['max_flen_considered_for_trimming'])
+        idx_motif_tuples = enumerate(config['run']['motifs'], start=0)
+        self.motif_idx_dict = {motif: i for i, motif in idx_motif_tuples}
+
+        dim_names = 'Motif BS_strand Flen Pos Meth_status'.split()
+        dim_levels = [motifs,
+                      'C_BC C_BC_RV W_BC W_BC_RV'.split(),
+                      range(0, self.max_flen_considered_for_trimming + 1),
+                      range(1, max_read_length+1),
+                      ['m', 'u']]
+
+        array_shape = [len(motifs),
+                       4,  # BSSeq-strands
+                       self.max_flen_considered_for_trimming + 1,
+                       max_read_length,
+                       2] # meth status
+        counter_array = np.zeros(array_shape, dtype='i4')
+
+        super().__init__(dim_names=dim_names,
+                         dim_levels=dim_levels,
+                         counter_array=counter_array)
+
+    def process(self, motif_pileup: MotifPileup):
+        """Extract M-bias stats from MotifPileup
+
+        Reads are discarded if
+
+        - they have a qc_fail_flag
+        - their bsseq strand could not be determined
+        - they have methylation calling status: NA, SNP or Ref
+
+        Stratified by:
+
+        - motif
+        - BSSeq-strand
+        - fragment length
+        - position in read
+        - methylation status
         """
 
-        Parameters
-        ----------
-        config: dict
+        # import pdb; pdb.set_trace()
 
+        curr_motif = motif_pileup.idx_pos.motif
+        curr_motif_idx = self.motif_idx_dict[curr_motif]
 
-        Attributes
-        ----------
-        self.counter: np.ndarray
-            The 4 dimensions in order: BS-Seq strands(4), flen (max_flen param), read_pos (max_read_length param), methylation status (2)
-            The Fragment length dimension includes the length 0, so that it can be indexed by 1-based values
+        curr_read: BSSeqPileupRead
+        for curr_read in motif_pileup.reads:
+                if (curr_read.qc_fail_flag or
+                    curr_read.bsseq_strand_ind == b_na_ind):
+                    continue
 
-            the read position indexes are zero-based
-        """
-        self.phred_score_threshold = config["basic_quality_filtering"]["min_phred_score"]
-        self.max_flen_considered_for_trimming = config["trimming"]["max_flen_considered_for_trimming"]
-        self.max_read_length = config["data_properties"]["max_read_length_bp"]
-        self.counter = np.zeros([4, self.max_flen_considered_for_trimming + 1, self.max_read_length, 2], dtype='i4')
+                meth_status_flag = curr_read.meth_status_flag
+                if meth_status_flag == m_flags.is_methylated:
+                    meth_status_index = 0
+                elif meth_status_flag == m_flags.is_unmethylated:
+                    meth_status_index = 1
+                else:  # SNP, Ref, NA
+                    continue
 
-    def process(self, motif_pileups, index_position):
-        watson_motif_seq = index_position.watson_motif
-        for motif_base, pileup_reads in zip(watson_motif_seq, motif_pileups):
-            if motif_base in ['C', 'G']:
-                for pileup_read in pileup_reads:
-                    pileup_read: mqc.pileup.bsseq_pileup_read.BSSeqPileupRead
-                    if (pileup_read.qc_fail_flag or
-                        pileup_read.bsseq_strand_ind == b_na_ind):
-                        continue
+                tlen = abs(curr_read.alignment.template_length)
+                if tlen > self.max_flen_considered_for_trimming:
+                    tlen = self.max_flen_considered_for_trimming
 
-                    meth_status_flag = pileup_read.get_meth_status_at_pileup_pos(motif_base)
-                    if meth_status_flag == 8:
-                        meth_status_index = 0
-                    elif meth_status_flag == 4:
-                        meth_status_index = 1
-                    else:  # SNP, Ref base
-                        continue
+                event_class = (curr_motif_idx,
+                               curr_read.bsseq_strand_ind,
+                               tlen,
+                               curr_read.pos_in_read,
+                               meth_status_index)
 
-                    # TODO: tlen should not return lower number than number of bases in read
-                    # TODO: note thoughts on using the tlen field
-                    tlen = abs(pileup_read.alignment.template_length)
-                    if tlen > self.max_flen_considered_for_trimming:
-                        tlen = self.max_flen_considered_for_trimming
-
-                    # pileup_read: mqc.bsseq_pileup_read.BSSeqPileupRead
-                    pos_in_read = pileup_read.pos_in_read
-
-                    self.counter[pileup_read.bsseq_strand_ind][tlen - 1][pos_in_read][meth_status_index] += 1
+                self.counter_array[event_class] += 1
 
 
 class MbiasData:
