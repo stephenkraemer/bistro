@@ -9,6 +9,7 @@ from mqc.config import assemble_config_vars
 POPULATION = "HSC"
 OUTPUT_DIR = "/abs/path/to/out_dir"
 SAMPLE_NAME = "hsc_rep1"
+RUN_VALUE1 = 'run_value1'
 
 
 @pytest.fixture(scope='module')
@@ -17,7 +18,7 @@ def command_line_args_dict():
     return {'sample_name': SAMPLE_NAME,
             'sample_meta': f"population={POPULATION},replicate=1",
             'output_dir': OUTPUT_DIR,
-            'run_parameter1': "value1"}
+            'run_parameter1': RUN_VALUE1}
 
 
 @pytest.fixture(scope='module')
@@ -40,7 +41,7 @@ def user_config_file():
             dir2b = "{dir1b}/dir2b"
             results_dir = "relpath/to/results_dir"
             coverage_dir = "{results_dir}/coverage_dir"
-            coverage_counts_p = "{coverage_dir}/{name}_{population}.cov.counts.p"
+            coverage_counts_p = "{coverage_dir}/{name}_{population}_{run_parameter1}.cov.counts.p"
             """))
     yield tmp_file_path
     shutil.rmtree(tmp_dir_path)
@@ -128,7 +129,7 @@ class TestAssembleConfigVarsFn:
     def test_store_run_params_passed_through_cli_in_own_config_section(
             self, config, command_line_args_dict):
         assert config['run']['output_dir'] == OUTPUT_DIR
-        assert config['run']['run_parameter1'] == "value1"
+        assert config['run']['run_parameter1'] == RUN_VALUE1
 
     def test_interpret_relpaths_as_rel_to_output_dir(
             self, config):
@@ -138,7 +139,7 @@ class TestAssembleConfigVarsFn:
         # relpath is relative to output dir
         assert config['paths']['dir2b'] == f"{OUTPUT_DIR}/path/to/dir1b/dir2b"
 
-    def test_expand_fields_referring_to_sample_metadata_and_other_paths(
+    def test_expand_fields_referring_to_sample_metadata_run_params_and_other_paths(
             self, config):
         """Only for config variables in 'paths' section
 
@@ -149,16 +150,18 @@ class TestAssembleConfigVarsFn:
 
             - other variables defined in the path section
             - sample metadata
+            - run params
 
         - field lookup may be recursive
 
         """
         expected_path_under_coverage_counts_p_key = (
             '{output_dir}/relpath/to/results_dir/coverage_dir/'
-            '{name}_{population}.cov.counts.p'.format(
+            '{name}_{population}_{run_parameter1}.cov.counts.p'.format(
                 output_dir=OUTPUT_DIR,
                 population=POPULATION,
-                name=SAMPLE_NAME))
+                name=SAMPLE_NAME,
+                run_parameter1=RUN_VALUE1))
         assert (config['paths']['coverage_counts_p'] ==
                 expected_path_under_coverage_counts_p_key)
 

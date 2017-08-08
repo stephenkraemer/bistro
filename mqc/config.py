@@ -130,6 +130,8 @@ def _expand_path(config, path_name):
     for curr_field_name in field_names_unexpanded_path:
         if curr_field_name in config['sample']:
             curr_field_value = config['sample'][curr_field_name]
+        elif curr_field_name in config['run']:
+            curr_field_value = config['run'][curr_field_name]
         elif curr_field_name in config['paths']:
             curr_field_value = config['paths'][curr_field_name]
             if re.search(field_pattern, curr_field_value):

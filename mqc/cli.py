@@ -51,6 +51,7 @@ def stats(ctx, bam, index_files,
 
     cli_params = copy.deepcopy(ctx.params)
     cli_params['motifs'] = cli_params['motifs'].upper().split(',')
+    cli_params['motifs_str'] = '-'.join(cli_params['motifs'])
 
 
     config = assemble_config_vars(cli_params,

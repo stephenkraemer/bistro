@@ -86,7 +86,10 @@ def default_paths(filled_mbias_stats_results_dir):
     config = assemble_config_vars(
         command_line_args_dict=dict(output_dir=filled_mbias_stats_results_dir,
                                     sample_name = SAMPLE_NAME,
-                                    sample_meta=SAMPLE_META),
+                                    sample_meta=SAMPLE_META,
+                                    # motifs_str is computed and supplied to
+                                    # assemble_config_vars within collect_stats
+                                    motifs_str='CG-CHG'),
         default_config_file_path=DEFAULT_CONFIG_FILE,
         user_config_file_path='')
     return config['paths']
@@ -135,7 +138,6 @@ def test_no_counts_in_strata_not_hit_by_bam(mbias_stats_df):
     assert (mbias_stats_df['Counts'] == 0).all(), message
 
 @pytest.mark.acceptance_test
-
 def test_provides_strat_mbias_counts_as_pickle_and_tsv(
         mbias_stats_df, filled_mbias_stats_results_dir, default_paths):
     # TODO: FutureWarning: elementwise comparison failed; returning scalar instead, but in the future will perform elementwise comparison mask |= (ar1 == a)

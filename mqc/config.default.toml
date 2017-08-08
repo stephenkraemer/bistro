@@ -42,6 +42,6 @@
 
 [paths]
   qc_stats_dir = "qc_stats"
-  mbias_stats_tsv = "{qc_stats_dir}/mbias_stats.tsv"
-  mbias_stats_p = "{qc_stats_dir}/mbias_stats.p"
+  mbias_stats_tsv = "{qc_stats_dir}/{name}_mbias-stats_{motifs_str}.tsv"
+  mbias_stats_p = "{qc_stats_dir}/{name}_mbias-stats_{motifs_str}.p"
 
