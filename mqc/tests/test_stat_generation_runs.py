@@ -60,14 +60,14 @@ def filled_mbias_stats_results_dir(user_config_file):
 
     command_args = [
         'mqc', 'stats',
-        '--bam', op.join(TESTS_DIR, 'test_mbias-stats.bam'),
+        '--bam', op.join(TESTS_DIR, 'test_files', 'test_mbias-stats.bam'),
         '--output_dir', config_file_subdir,
         '--sample_name', SAMPLE_NAME,
         '--sample_meta', SAMPLE_META,
         '--cores', '2',
         '--motifs', 'CG,CHG',
-        op.join(TESTS_DIR, 'test_index_mbias_chr11.bed.gz'),
-        op.join(TESTS_DIR, 'test_index_mbias_chr11.bed.gz'),
+        op.join(TESTS_DIR, 'test_files', 'test_index_mbias_chr11.bed.gz'),
+        op.join(TESTS_DIR, 'test_files', 'test_index_mbias_chr11.bed.gz'),
     ]
 
     if user_config_file:

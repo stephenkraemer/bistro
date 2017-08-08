@@ -164,3 +164,5 @@ class TestSingleRun:
         assert list(counters.keys()) == ['counter1', 'counter2']
         assert isinstance(counters['counter1'], Counter)
 
+
+

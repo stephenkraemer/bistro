@@ -20,6 +20,8 @@ from mqc.index import IndexFile
 from mqc.pileup.pileup import stepwise_pileup_generator
 from mqc.visitors import Counter, Visitor
 from mqc.mbias import MbiasCounter
+from mqc.mcaller import MethCaller
+from mqc.writers import BedWriter
 
 
 # from mqc.mbias import MbiasData, AdjustedMbiasCuttingSites, MbiasCounter
@@ -39,18 +41,20 @@ def collect_stats(config):
                                   sep = "\t", header = True, index = False)
     mbias_df.to_pickle(config['paths']['mbias_stats_p'])
 
-def mcall_run(config):
+def run_mcalling(config):
     """Conceptual draft of a function to perform methylation calling and QC"""
-    first_run = MbiasDeterminationRun(config, cutting_sites=None)
-    first_run.run_parallel()
-    mbias_counter = first_run.summed_up_counters['mbias_counter']
-    mbias_data = MbiasData(mbias_counter, config)
-    adjusted_cutting_sites = AdjustedMbiasCuttingSites(
-        mbias_data, calling_mode='adjusted', config=config)
+    # first_run = MbiasDeterminationRun(config, cutting_sites=None)
+    # first_run.run_parallel()
+    # mbias_counter = first_run.summed_up_counters['mbias_counter']
+    # mbias_data = MbiasData(mbias_counter, config)
+    # adjusted_cutting_sites = AdjustedMbiasCuttingSites(
+    #     mbias_data, calling_mode='adjusted', config=config)
+    # second_run = QcAndMethCallingRun(config,
+    #                                  adjusted_cutting_sites.get_array())
     second_run = QcAndMethCallingRun(config,
-                                     adjusted_cutting_sites.get_array())
+                                     cutting_sites=None)
     second_run.run_parallel()
-    beta_value_counter = second_run.summed_up_counters['beta_counter']
+    # beta_value_counter = second_run.summed_up_counters['beta_counter']
     # further processing
 
 
@@ -251,6 +255,8 @@ class QcAndMethCallingRun(PileupRun):
         return OrderedDict(
             # trimmer=Trimmer(self.config, self.cutting_sites),
             # ol_handler=OverlapHandler(self.config),
+            meth_caller=MethCaller(),
+            mcall_writer=BedWriter(self.config),
             # mcall_writer=BedMcallWriter(self.config),
             # beta_counter=StratifiedBetaValueCounter(self.config),
             # coverage_counter=CoverageCounter(self.config,

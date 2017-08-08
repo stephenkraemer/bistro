@@ -8,7 +8,7 @@ import copy
 
 from mqc.index import start_parallel_index_generation
 from mqc.config import assemble_config_vars
-from mqc.mcall_run import collect_stats
+from mqc.mcall_run import collect_stats, run_mcalling
 
 
 @click.group()
@@ -63,9 +63,44 @@ def stats(ctx, bam, index_files,
     print(f"Stats collection for {sample_name} successful."
           f"See {output_dir} for results.")
 
+# mqc call
+# =============================================================================
+@mqc.command()
+@click.option('--bam', required=True,
+              type=input_click_path)
+@click.argument('index_files', nargs=-1,
+                type=click.Path(resolve_path=True, exists=True, dir_okay=False))
+# TODO: which checks are necessary
+@click.option('--output_dir', required=True,
+              type=click.Path(exists=False, file_okay=False,
+                              writable=True, resolve_path=True))
+@click.option('--config_file', type=input_click_path, help='[optional]')
+@click.option('--sample_name', required=True)
+@click.option('--sample_meta',
+              help="Pass additional metadata as"
+                   " 'key=value,key2=value2' [optional]")
+@click.option('--cores', default=1)
+@click.pass_context
+def call(ctx, bam, index_files,
+          output_dir, config_file,
+          sample_name, sample_meta, cores):
+    """Methylation calling"""
+
+    package_top_level_dir = op.abspath(op.dirname(__file__))
+    default_config_file = op.join(package_top_level_dir, 'config.default.toml')
+
+    user_config_file = config_file if config_file else ''
+
+    cli_params = copy.deepcopy(ctx.params)
+    config = assemble_config_vars(cli_params,
+                                  default_config_file_path=default_config_file,
+                                  user_config_file_path=user_config_file)
+
+    run_mcalling(config=config)
+
 
 # mqc make_index
-# ==============
+# =============================================================================
 @mqc.command()
 @click.help_option()
 @click.option('--genome_fasta', required=True)

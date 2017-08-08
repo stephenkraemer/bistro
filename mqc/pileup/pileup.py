@@ -66,6 +66,7 @@ class MotifPileup:
     def __init__(self, reads: List[BSSeqPileupRead], idx_pos: IndexPosition):
         self.idx_pos = idx_pos
         self.reads = reads
+        self.beta_value = None
 
 def stepwise_pileup_generator(index_positions: Iterator[IndexPosition],
                               alignment_file: pysam.AlignmentFile,
