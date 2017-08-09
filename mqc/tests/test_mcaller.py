@@ -34,10 +34,12 @@ BASE_READS = [PileupreadStub(**property_dict)
 BASE_MOTIF_PILEUP = MotifPileupStub(reads=BASE_READS)
 
 class TestMethCaller:
-    def test_computes_beta_value_from_usable_reads(self):
+    def test_computes_stats_from_usable_reads(self):
         meth_caller = MethCaller()
         meth_caller.process(BASE_MOTIF_PILEUP)
         assert BASE_MOTIF_PILEUP.beta_value == 0.5
+        assert BASE_MOTIF_PILEUP.n_meth == 2
+        assert BASE_MOTIF_PILEUP.n_unmeth == 2
 
     def test_discards_qc_fail_flag(self):
 
@@ -62,6 +64,8 @@ class TestMethCaller:
         meth_caller.process(motif_pileup_with_qc_fails)
 
         assert motif_pileup_with_qc_fails.beta_value == 0.6
+        assert motif_pileup_with_qc_fails.n_meth == 3
+        assert motif_pileup_with_qc_fails.n_unmeth == 2
 
     def test_discards_if_bsstrand_na(self):
         additional_read_properties = [
@@ -82,3 +86,5 @@ class TestMethCaller:
         meth_caller.process(motif_pileup_with_na_bsseq_strands)
 
         assert motif_pileup_with_na_bsseq_strands.beta_value == 0.4
+        assert motif_pileup_with_na_bsseq_strands.n_meth == 2
+        assert motif_pileup_with_na_bsseq_strands.n_unmeth == 3

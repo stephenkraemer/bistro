@@ -44,10 +44,6 @@ class IndexPosition:
             self.original_motif, self.strand)
 
 
-def reverse_complement_seq(seq):
-    return seq.translate(str.maketrans('CGHD', 'GCDH')).reverse()
-
-
 def start_parallel_index_generation(genome_fasta: str, index_output_dir: str,
                                     motifs: List[str], annotations: OrderedDict,
                                     cores: int):
@@ -80,6 +76,8 @@ def start_parallel_index_generation(genome_fasta: str, index_output_dir: str,
     os.makedirs(index_output_dir, exist_ok=True)
 
     motifs_str = '-'.join(motifs)
+    # NOTE: the hardcoded template is used by PileupRun._single_run_over_index_file
+    #       to find which chromosome it is working on
     output_file_template = f"{index_output_dir}/{genome_name}_{motifs_str}_{{chrom}}.bed.gz"
     output_files = [output_file_template.format(chrom=c) for c in chroms]
 
@@ -197,6 +195,8 @@ def classify_motif(seq):
 
     if seq[2] == 'G':
         return 'CHG'
+
+    #TODO: case seq[2] == N
 
     return 'CHH'
 

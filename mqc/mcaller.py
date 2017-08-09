@@ -27,7 +27,11 @@ class MethCaller(Visitor):
             else:  # SNP, Ref, NA
                 continue
 
+        motif_pileup.n_meth = n_meth
+        motif_pileup.n_unmeth = n_unmeth
+
         try:
             motif_pileup.beta_value = n_meth / (n_meth + n_unmeth)
         except ZeroDivisionError:
             motif_pileup.beta_value = np.nan
+

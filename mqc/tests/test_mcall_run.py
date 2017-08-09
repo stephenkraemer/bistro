@@ -19,7 +19,7 @@ def get_counter_stub(arr, attr_str):
 
 
 class PileupRunStubWithVisitorsAndCounters(PileupRun):
-    def _get_visitors(self):
+    def _get_visitors(self, chrom):
         # empty array must match dimensions of arrays to be added
         empty_arr = np.array([[0, 0], [0, 0]])
         return OrderedDict(
@@ -30,7 +30,7 @@ class PileupRunStubWithVisitorsAndCounters(PileupRun):
 
 
 class PileupRunStubNoCounters(PileupRun):
-    def _get_visitors(self):
+    def _get_visitors(self, chrom):
         # empty array must match dimensions of arrays to be added
         empty_arr = np.array([[0, 0], [0, 0]])
         return OrderedDict(
@@ -130,7 +130,7 @@ class TestSingleRun:
                                    motif_pileup_stub2])
 
         class PileupRunStub(PileupRun):
-            def _get_visitors(self):
+            def _get_visitors(self, chrom):
                 # empty array must match dimensions of arrays to be added
                 return OrderedDict(
                     counter1=counter_mock,

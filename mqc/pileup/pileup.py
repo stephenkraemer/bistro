@@ -67,6 +67,8 @@ class MotifPileup:
         self.idx_pos = idx_pos
         self.reads = reads
         self.beta_value = None
+        self.n_meth = None
+        self.n_unmeth = None
 
 def stepwise_pileup_generator(index_positions: Iterator[IndexPosition],
                               alignment_file: pysam.AlignmentFile,

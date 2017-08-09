@@ -4,12 +4,12 @@ How do I run this?
 -----------------
 snakemake \
 --snakefile /home/kraemers/projects/mqc/mqc/tests/demo_snakefile.py \
+--cluster "qsub -l walltime={params.walltime},mem={params.mem},nodes=1:ppn={params.cores} -N {params.name}" \
+--jobs 20 \
 -n
-# --cluster "qsub -l walltime={params.walltime},mem={params.mem},nodes=1:ppn={params.cores} -N {params.name}" \
-# --jobs 20 \
 """
-# shell.executable("/bin/bash")
-# shell.prefix("source ~/.bashrc; echo 'This job is running in bash'")
+shell.executable("/bin/bash")
+shell.prefix("module load python/3.6.0; source /home/kraemers/programs/python_virtualenvs/mqc_test/bin/activate; echo loaded mqc_test; ")
 
 import os.path as op
 
@@ -35,10 +35,10 @@ rule all:
                              hsc_rep1_dir=hsc_rep1_dir,
                              motif_str=['CG', 'CG-CHG-CHH'], ext=['tsv', 'p']),
 
-        cg_mcalls = expand("{hsc_rep1_dir}/mcalls/hsc_1_{motif_str}_{chrom}.bed.gz)",
-                           hsc_rep1_dir=hsc_rep1_dir,
-                           motif_str = 'CG',
-                           chrom=autosomes),
+        # cg_mcalls = expand("{hsc_rep1_dir}/mcalls/hsc_1_{motif_str}_{chrom}.bed.gz)",
+        #                    hsc_rep1_dir=hsc_rep1_dir,
+        #                    motif_str = 'CG',
+        #                    chrom=autosomes),
 
         # all_motif_mcalls = expand("{hsc_rep1_dir}/mcalls/hsc_1_{motif_str}_{chrom}.bed.gz)",
         #                           hsc_rep1_dir=hsc_rep1_dir,
@@ -87,8 +87,8 @@ rule make_cg_index:
         --cg
         """
 
-#TODO: log message for mbias stats generation
-localrules: get_stats
+# TODO: benchmark
+# benchmark: f"{hsc_rep1_dir}/index-mbias_stats_{{motif_str}}.txt"
 rule get_stats:
     input:
         bam=bam_template,

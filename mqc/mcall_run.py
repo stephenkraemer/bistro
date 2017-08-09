@@ -9,6 +9,7 @@ import multiprocessing as mp
 import re
 from abc import abstractmethod, ABCMeta
 from collections import OrderedDict
+from copy import deepcopy
 from typing import Dict, List
 import os.path as op
 import os
@@ -160,17 +161,18 @@ class PileupRun(metaclass=ABCMeta):
             individual computation can be expected to be identical
         """
 
-        # Set summed_up_counters to empty counters
-        self.summed_up_counters = _filter_for_counters(self._get_visitors())
-        for curr_counters_dict in counter_dicts_per_idx_file:
-            for curr_name, curr_counter in curr_counters_dict.items():
-                self.summed_up_counters[curr_name].counter_array += (
-                    curr_counter.counter_array)
-
         # Note that you can't simply use the first encountered Counter
         # instance (first_counter) to initialize summed_up_counters[curr_name]
         # This would mean that (id(summed_up_counters[curr_name].counter_array)
         #     == id(first_counter.counter_array)
+        self.summed_up_counters = {name: deepcopy(counter)
+                                   for name, counter in counter_dicts_per_idx_file[0].items()}
+
+        for curr_counters_dict in counter_dicts_per_idx_file[1:]:
+            for curr_name, curr_counter in curr_counters_dict.items():
+                self.summed_up_counters[curr_name].counter_array += (
+                    curr_counter.counter_array)
+
 
     def _single_run_over_index_file(self, index_file_path: str) -> \
             Dict[str, 'Counter']:
@@ -192,7 +194,13 @@ class PileupRun(metaclass=ABCMeta):
             only counters will be returned for further processing.
         """
         log_name = op.basename(index_file_path).replace('.bed.gz', '')
-        visitors: Dict[str, Visitor] = self._get_visitors()
+
+        # TODO: put the index file path template into one central place to be able to change it
+        # TODO: solve this with regex?
+        # index_file_path_template = f"{index_output_dir}/{genome_name}_{motifs_str}_{{chrom}}.bed.gz"
+        chrom = index_file_path.split('_')[-1].replace('.bed.gz', '')
+
+        visitors: Dict[str, Visitor] = self._get_visitors(chrom)
 
         alignment_file = pysam.AlignmentFile(self.bam_path)
         index_file = IndexFile(index_file_path)
@@ -212,7 +220,7 @@ class PileupRun(metaclass=ABCMeta):
         return counters
 
     @abstractmethod
-    def _get_visitors(self) -> Dict[str, Visitor]:
+    def _get_visitors(self, chrom) -> Dict[str, Visitor]:
         """Every run specifies its algorithm by providing a list of visitors
 
         Returns
@@ -242,7 +250,7 @@ class MbiasDeterminationRun(PileupRun):
     the number of computations. (or this may be built into PileupRun...)
     """
 
-    def _get_visitors(self) -> Dict[str, Visitor]:
+    def _get_visitors(self, chrom) -> Dict[str, Visitor]:
         return OrderedDict(
             mbias_counter=MbiasCounter(self.config),
         )
@@ -251,12 +259,12 @@ class MbiasDeterminationRun(PileupRun):
 class QcAndMethCallingRun(PileupRun):
     """Methylation calling with QC filtering and stats collection"""
 
-    def _get_visitors(self) -> Dict[str, Visitor]:
+    def _get_visitors(self, chrom) -> Dict[str, Visitor]:
         return OrderedDict(
             # trimmer=Trimmer(self.config, self.cutting_sites),
             # ol_handler=OverlapHandler(self.config),
             meth_caller=MethCaller(),
-            mcall_writer=BedWriter(self.config),
+            mcall_writer=BedWriter(self.config, chrom=chrom),
             # mcall_writer=BedMcallWriter(self.config),
             # beta_counter=StratifiedBetaValueCounter(self.config),
             # coverage_counter=CoverageCounter(self.config,
