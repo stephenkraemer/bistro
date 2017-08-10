@@ -78,8 +78,8 @@ def test_bed_writer_computes_bed_lines_and_writes_to_one_file_per_motif(mocker):
         n_meth = 5,
         n_unmeth = 0
     )
-    config_stub = {'paths': {'meth_calls_basepath': 'does/not/matter'},
-                   'meta': {'name': 'hsc_1'},
+    config_stub = {'paths': {'call': {'meth_calls_basepath': 'does/not/matter'}},
+                   'sample': {'name': 'hsc_1'},
                    'run': {'motifs': 'CG CHG CHH'.split()}}
 
     file_mocks = [MagicMock(), MagicMock(), MagicMock()]
@@ -91,15 +91,15 @@ def test_bed_writer_computes_bed_lines_and_writes_to_one_file_per_motif(mocker):
     writer.process(motif_pileup_stub_cg)
     writer.process(motif_pileup_stub_chg)
 
-    expected_line_cg = "1 10 11 CG . + 0.6 3 2\n".replace(' ', '\t')
-    expected_line_chg = "1 10 11 CHG . + 1 5 0\n".replace(' ', '\t')
+    expected_line_cg = f"1 10 11 CG . + {3/5:.6f} 3 2\n".replace(' ', '\t')
+    expected_line_chg = f"1 10 11 CHG . + {1:.6f} 5 0\n".replace(' ', '\t')
 
-    expected_header = '\t'.join(['#chrom', 'start', 'end',
+    expected_header_no_endl = '\t'.join(['#chrom', 'start', 'end',
                                  'motif', 'score', 'strand',
                                  'beta_value', 'n_meth', 'n_unmeth'])
     order_of_file_openening = [re.search(r'(CG|CHG|CHH)', x[0][0]).group(1)
                                for x in mock_open.call_args_list]
     file_mock_motif_mapping = {x: file_mocks[i]
                                for i, x in enumerate(order_of_file_openening)}
-    assert file_mock_motif_mapping['CG'].write.call_args_list == [call(expected_header), call(expected_line_cg)]
-    assert file_mock_motif_mapping['CHG'].write.call_args_list == [call(expected_header), call(expected_line_chg)]
+    assert file_mock_motif_mapping['CG'].write.call_args_list == [call(expected_header_no_endl + '\n'), call(expected_line_cg)]
+    assert file_mock_motif_mapping['CHG'].write.call_args_list == [call(expected_header_no_endl + '\n'), call(expected_line_chg)]

@@ -42,7 +42,9 @@ setup(name='mqc',
           'pytest',
           'pytest-mock',
           'pysam',
-          'ipywidgets'
+          'ipywidgets',
+          'matplotlib',
+          # 'magic'
       ],
       ext_modules=cythonize(extensions)
       )

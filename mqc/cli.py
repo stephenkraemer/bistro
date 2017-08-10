@@ -1,3 +1,5 @@
+import re
+
 import click
 import os.path as op
 
@@ -56,7 +58,8 @@ def stats(ctx, bam, index_files,
 
     config = assemble_config_vars(cli_params,
                                   default_config_file_path=default_config_file,
-                                  user_config_file_path=user_config_file)
+                                  user_config_file_path=user_config_file,
+                                  command='stats')
 
     collect_stats(config=config)
 
@@ -92,9 +95,16 @@ def call(ctx, bam, index_files,
     user_config_file = config_file if config_file else ''
 
     cli_params = copy.deepcopy(ctx.params)
+    #TODO: avoid hard coding!
+    # output_file_template = f"{index_output_dir}/{genome_name}_{motifs_str}_{{chrom}}.bed.gz"
+    motifs_str = index_files[0].split('_')[-2]
+    cli_params['motifs_str'] = motifs_str
+    cli_params['motifs'] = motifs_str.split('-')
+
     config = assemble_config_vars(cli_params,
                                   default_config_file_path=default_config_file,
-                                  user_config_file_path=user_config_file)
+                                  user_config_file_path=user_config_file,
+                                  command='call')
 
     run_mcalling(config=config)
 

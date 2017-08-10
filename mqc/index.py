@@ -14,8 +14,11 @@ from mqc.utils import open_gzip_or_plain_file
 
 class IndexFile:
     def __init__(self, bed_abspath):
+        # TODO: some sort of context manager for closing this?
         self.index_fobj = gzip.open(bed_abspath, 'rt')
-        next(self.index_fobj)  # skip header
+        header = next(self.index_fobj)  # skip header
+        if not header.startswith('#'):
+            raise ValueError('Index file does not have a header')
 
     def __next__(self):
         next_index_line = next(self.index_fobj)
@@ -29,8 +32,7 @@ class IndexPosition:
     # TODO: support additional index fields
     def __init__(self, index_line: str):
         fields = index_line.rstrip().split('\t')
-        # TODO: why?
-        self.chrom = fields[0].replace('chrom', '')
+        self.chrom = fields[0]
         self.start = int(fields[1])
         self.end = int(fields[2])
         self.motif = fields[3]

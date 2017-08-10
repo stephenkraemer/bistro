@@ -241,7 +241,7 @@ class MbiasData:
         df['n_total_smoothed'] = df['n_meth_smoothed'] + df['n_unmeth_smoothed']
 
 
-    def get_masked_mbias_df(self, trimming_mode: str, cutting_sites: 'mqc.counters.mbias.CuttingSites'):
+    def get_masked_mbias_df(self, trimming_mode: str, cutting_sites):
         """Get M-bias counts in dataframe format, with positions in M-bias trimming zones set to NA"""
 
         # TODO: do I want to cache?
@@ -402,7 +402,7 @@ class CuttingSites(metaclass=ABCMeta):
         pass
 
 
-class MinimalCuttingSites:
+class MinimalCuttingSites(CuttingSites):
     """Calculate and provide M-bias cutting sites in dataframe and array format"""
 
     def __init__(self, config):
@@ -490,7 +490,7 @@ class MinimalCuttingSites:
             raise NotImplementedError
 
 
-class AdjustedMbiasCuttingSites:
+class AdjustedMbiasCuttingSites(CuttingSites):
     """Calculate and provide M-bias cutting sites in dataframe and array format
 
     Attributes

@@ -35,13 +35,16 @@ def user_config_file():
                 value = "custom_value"
             
             [paths]
-            dir1 = "/path/to/dir1"
-            dir2 = "{dir1}/dir2"
-            dir1b = "path/to/dir1b"
-            dir2b = "{dir1b}/dir2b"
-            results_dir = "relpath/to/results_dir"
-            coverage_dir = "{results_dir}/coverage_dir"
-            coverage_counts_p = "{coverage_dir}/{name}_{population}_{run_parameter1}.cov.counts.p"
+              [paths.command1]
+                dir1 = "/path/to/dir1"
+                dir2 = "{dir1}/dir2"
+                dir1b = "path/to/dir1b"
+                dir2b = "{dir1b}/dir2b"
+                results_dir = "relpath/to/results_dir"
+                coverage_dir = "{results_dir}/coverage_dir"
+                coverage_counts_p = "{coverage_dir}/{name}_{population}_{run_parameter1}.cov.counts.p"
+              [paths.command2]
+                other_path = "user version: {this_field}_can't_be_expanded_here_don't_try!"
             """))
     yield tmp_file_path
     shutil.rmtree(tmp_dir_path)
@@ -67,13 +70,16 @@ def default_config_file():
             value = "default_value"
             
             [paths]
-            dir1 = "default"
-            dir2 = "default"
-            dir1b = "default"
-            dir2b = "default"
-            results_dir = "default"
-            coverage_dir = "default"
-            coverage_counts_p = "default"
+              [paths.command1]
+                dir1 = "default"
+                dir2 = "default"
+                dir1b = "default"
+                dir2b = "default"
+                results_dir = "default"
+                coverage_dir = "default"
+                coverage_counts_p = "default"
+              [paths.command2]
+                other_path = "{this_field}_can't_be_expanded_here_don't_try!"
             """))
     yield tmp_file_path
     shutil.rmtree(tmp_dir_path)
@@ -85,7 +91,8 @@ def config(default_config_file,
            command_line_args_dict):
     config = assemble_config_vars(command_line_args_dict,
                                   default_config_file_path=default_config_file,
-                                  user_config_file_path=user_config_file, )
+                                  user_config_file_path=user_config_file,
+                                  command='command1')
     return config
 
 
@@ -117,6 +124,7 @@ class TestAssembleConfigVarsFn:
         with pytest.raises(KeyError) as excinfo:
             assemble_config_vars(command_line_args_dict,
                                  default_config_file_path=default_config_file,
+                                 command='command1',
                                  user_config_file_path=illegal_user_config_file)
         assert ("Config file contains unknown element 'illegal_key'"
                 in str(excinfo.value))
@@ -135,9 +143,9 @@ class TestAssembleConfigVarsFn:
             self, config):
         """Only for config variables in 'paths' section"""
         # absolute path is left as is
-        assert config['paths']['dir2'] == "/path/to/dir1/dir2"
+        assert config['paths']['command1']['dir2'] == "/path/to/dir1/dir2"
         # relpath is relative to output dir
-        assert config['paths']['dir2b'] == f"{OUTPUT_DIR}/path/to/dir1b/dir2b"
+        assert config['paths']['command1']['dir2b'] == f"{OUTPUT_DIR}/path/to/dir1b/dir2b"
 
     def test_expand_fields_referring_to_sample_metadata_run_params_and_other_paths(
             self, config):
@@ -162,8 +170,37 @@ class TestAssembleConfigVarsFn:
                 population=POPULATION,
                 name=SAMPLE_NAME,
                 run_parameter1=RUN_VALUE1))
-        assert (config['paths']['coverage_counts_p'] ==
+        assert (config['paths']['command1']['coverage_counts_p'] ==
                 expected_path_under_coverage_counts_p_key)
+
+    def test_only_expands_path_from_section_for_current_command(
+        self, default_config_file, user_config_file, command_line_args_dict):
+        """Just to make sure that I don't lose this feature
+        by tinkering with the config files defined above"""
+
+        additional_command_paths_str = textwrap.dedent("""\
+        [paths.command3]
+        bad_path = "{Unknown}_{fields}"
+        
+        """)
+        tmp_dir_path, ext_default_config_file = add_to_config_file(
+            default_config_file, additional_command_paths_str)
+
+        config = assemble_config_vars(command_line_args_dict,
+                                      ext_default_config_file,
+                                      command='command1',
+                                      user_config_file_path=user_config_file)
+
+        # assert path was not expanded (exception would be raised otherwise anyway,
+        # more as a documentation...)
+        assert config['paths']['command3']['bad_path'] == "{Unknown}_{fields}"
+
+        with pytest.raises(ValueError) as excinfo:
+            config = assemble_config_vars(command_line_args_dict,
+                                          ext_default_config_file,
+                                          command='command3',
+                                          user_config_file_path=user_config_file)
+
 
     def test_raises_when_base_config_file_contains_sample_or_run_section(
         self, default_config_file, user_config_file, command_line_args_dict):
@@ -178,6 +215,7 @@ class TestAssembleConfigVarsFn:
             assemble_config_vars(
                 command_line_args_dict,
                 default_config_file_path=illegal_default_config_file,
+                command='command1',
                 user_config_file_path=user_config_file)
         expected_err_msg = ("Config file may not contain reserved "
                             "sections 'run' and 'sample'")
@@ -209,6 +247,7 @@ class TestAssembleConfigVarsFn:
             assemble_config_vars(
                 command_line_args_dict,
                 default_config_file_path=new_default_config_file,
+                command='command1',
                 user_config_file_path=new_user_config_file)
 
         shutil.rmtree(tmp_dir_path1)

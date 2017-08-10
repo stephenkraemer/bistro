@@ -37,12 +37,13 @@ def collect_stats(config):
     mbias_counter: Counter = mbias_run.summed_up_counters['mbias_counter']
     mbias_df = mbias_counter.get_dataframe()
     # TODO-refactor: all dirs should be created at once in the beginning
-    os.makedirs(config['paths']['qc_stats_dir'], exist_ok=True, mode=0o777)
-    mbias_df.reset_index().to_csv(config['paths']['mbias_stats_tsv'],
+    os.makedirs(config['paths']['stats']['qc_stats_dir'], exist_ok=True, mode=0o777)
+    mbias_df.reset_index().to_csv(config['paths']['stats']['mbias_stats_tsv'],
                                   sep = "\t", header = True, index = False)
-    mbias_df.to_pickle(config['paths']['mbias_stats_p'])
+    mbias_df.to_pickle(config['paths']['stats']['mbias_stats_p'])
 
 def run_mcalling(config):
+
     """Conceptual draft of a function to perform methylation calling and QC"""
     # first_run = MbiasDeterminationRun(config, cutting_sites=None)
     # first_run.run_parallel()
