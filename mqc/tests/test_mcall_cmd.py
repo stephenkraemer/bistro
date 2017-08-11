@@ -1,12 +1,12 @@
 import gzip
-import shutil
-import tempfile
-from textwrap import dedent
+import os.path as op
+from itertools import product
 
 import pytest
-import os
-import os.path as op
+import shutil
 import subprocess
+import tempfile
+from textwrap import dedent
 
 from mqc.config import assemble_config_vars
 
@@ -15,45 +15,31 @@ from mqc.config import assemble_config_vars
 # __file__ = '/home/stephen2/projects/mqc/mqc/mqc/tests/blabla.py'
 TESTS_DIR = op.dirname(__file__)
 TEST_BAM = op.join(TESTS_DIR, 'test_files', 'test_mcall.sorted.bam')
+DEFAULT_CONFIG_FILE = op.join(TESTS_DIR, '../config.default.toml')
 SAMPLE_NAME = 'hsc_rep1'
 SAMPLE_META = 'population=hsc,rep=1,model=blk6'
-DEFAULT_CONFIG_FILE = op.join(TESTS_DIR, '../config.default.toml')
 TEST_FILES_DIR = op.join(TESTS_DIR, 'test_files')
-# TODO: add ref genome to index files to match standard index file path template
-INDEX_FILES = {
-    'CG': [op.join(TEST_FILES_DIR, 'test_mcall_CG_1.bed.gz'),
-           op.join(TEST_FILES_DIR, 'test_mcall_CG_2.bed.gz')],
-    'CG-CHG-CHH': [op.join(TEST_FILES_DIR, 'test_mcall_CG-CHG-CHH_1.bed.gz'),
-                   op.join(TEST_FILES_DIR, 'test_mcall_CG-CHG-CHH_2.bed.gz')]
-}
-USER_FLEN_MAX=300
+MIN_MAPQ = 20
+MIN_PHRED = 20
+
+@pytest.fixture(scope='module')
+def index_file_paths_dict():
+    # TODO: add ref genome to index files to match standard index file path template
+    return {
+        'CG': [op.join(TEST_FILES_DIR, 'test_mcall_CG_1.bed.gz'),
+               op.join(TEST_FILES_DIR, 'test_mcall_CG_2.bed.gz')],
+        'CG-CHG-CHH': [op.join(TEST_FILES_DIR, 'test_mcall_CG-CHG-CHH_1.bed.gz'),
+                       op.join(TEST_FILES_DIR, 'test_mcall_CG-CHG-CHH_2.bed.gz')]
+    }
 
 @pytest.fixture(scope='module')
 def expected_results_dict():
-    return {
-        'CG': {
-            '1': dedent(f"""\
-                #chrom	start	end	motif	score	strand	beta_value	n_meth	n_unmeth
-                1	11298399	11298400	CG	.	+	{7/8:.6f}	7	1
-                1	11298400	11298401	CG	.	-	{1:.6f}	3	0
-                1	11298418	11298419	CG	.	+	{1:.6f}	9	0
-                1	11298419	11298420	CG	.	-	{1:.6f}	4	0
-                """),
-                # 1	11298883	11298884	CG	.	+	{1:.6f}	12	0
-                # 1	11298884	11298885	CG	.	-	{1:.6f}	14	0
-                # 1	11299330	11299331	CG	.	+	{1:.6f}	4	0
-                # 1	11299331	11299332	CG	.	-	{6/9:.6f}	6	3
-            '2': dedent(f"""\
-                #chrom	start	end	motif	score	strand	beta_value	n_meth	n_unmeth
-                2	9042611	9042612	CG	.	+	{8/10:.6f}	8	2
-                2	9042612	9042613	CG	.	-	{7/8:.6f}	7	1
-                2	9042613	9042614	CG	.	+	{7/10:.6f}	7	3
-                2	9042614	9042615	CG	.	-	{7/8:.6f}	7	1
-                """)
-        },
-        'CG-CHG-CHH': {
-            '1': {'CG': dedent(f"""\
+    return {'1': {'CG': dedent(f"""\
                             #chrom	start	end	motif	score	strand	beta_value	n_meth	n_unmeth
+                            1	11298399	11298400	CG	.	+	{7/8:.6f}	7	1
+                            1	11298400	11298401	CG	.	-	{1:.6f}	3	0
+                            1	11299330	11299331	CG	.	+	{1:.6f}	4	0
+                            1	11299331	11299332	CG	.	-	{6/9:.6f}	6	3
                             """),
                   'CHG': dedent(f"""\
                             #chrom	start	end	motif	score	strand	beta_value	n_meth	n_unmeth
@@ -68,158 +54,146 @@ def expected_results_dict():
                   },
             '2': {'CG': dedent(f"""\
                             #chrom	start	end	motif	score	strand	beta_value	n_meth	n_unmeth
-                            2	3281429	3281430	CG	.	+	{1:.6f}	2	0
-                            2	3281430	3281431	CG	.	-	{1:.6f}	6	0
+                            2	9042611	9042612	CG	.	+	{8/10:.6f}	8	2
+                            2	9042612	9042613	CG	.	-	{7/8:.6f}	7	1
+                            2	9042613	9042614	CG	.	+	{7/10:.6f}	7	3
+                            2	9042614	9042615	CG	.	-	{7/8:.6f}	7	1
                             """),
                   'CHG': dedent(f"""\
+                            #chrom	start	end	motif	score	strand	beta_value	n_meth	n_unmeth
                             2	3281431	3281432	CHG	.	-	{0:.6f}	0	6
                             """),
                   'CHH': dedent(f"""\
+                            #chrom	start	end	motif	score	strand	beta_value	n_meth	n_unmeth
                             2	3281432	3281433	CHH	.	-	{0:.6f}	0	6
                             2	3281434	3281435	CHH	.	+	{0:.6f}	0	1
                             """),
                   }
-        },
-
-    }
+            }
 
 
 @pytest.fixture(scope='module')
-def output_dir():
-    tmpdir = tempfile.mkdtemp()
-    yield tmpdir
-    # TODO: is this safe against exceptions?
-    shutil.rmtree(tmpdir)
-
-# TODO: do with and without user config file
-@pytest.fixture(scope='module')
-def user_config_file():
-    tmpdir = tempfile.mkdtemp()
-    user_config_file_path = op.join(tmpdir, 'user_config.toml')
+def config_file_path():
+    config_file_dir = tempfile.mkdtemp()
+    user_config_file_path = op.join(config_file_dir, 'user_config.toml')
     with open(user_config_file_path, 'wt') as fobj:
         fobj.write(dedent(f"""\
-            [trimming]
-            max_flen_considered_for_trimming = {USER_FLEN_MAX}
-            
+            [basic_quality_filtering]
+              min_mapq = {MIN_MAPQ}
+              min_phred_score = {MIN_PHRED}
             """))
     yield user_config_file_path
-    # TODO: does this also remove after an exception occured?
-    shutil.rmtree(tmpdir)
+    shutil.rmtree(config_file_dir)
 
 @pytest.fixture(scope='module')
-def base_command_list(user_config_file):
-    # Note that this output dir does not exist before execution of
-    # mqc call. This should be fine and a common case!
+def base_command_list(config_file_path):
     return ['mqc', 'call',
             '--bam', TEST_BAM,
-            '--config_file', user_config_file,
+            '--config_file', config_file_path,
             '--sample_name', SAMPLE_NAME,
             '--sample_meta', SAMPLE_META,
             '--cores', '2']
 
+def get_text_of_call_files(output_dir, motifs_str, user_config_file):
+    config = assemble_config_vars(
+        command_line_args_dict=dict(output_dir=output_dir,
+                                    sample_name = SAMPLE_NAME,
+                                    sample_meta=SAMPLE_META,
+                                    motifs_str=motifs_str),
+        default_config_file_path=DEFAULT_CONFIG_FILE,
+        command='call',
+        user_config_file_path=user_config_file)
+
+    def read_calls(chrom, motif):
+        mcall_fp = (config['paths']['call']['meth_calls_basepath']
+                    + f"_{SAMPLE_NAME}_{motif}_{chrom}.bed.gz")
+        with gzip.open(mcall_fp, 'rt') as fobj:
+            file_content = fobj.read()
+        return file_content
+
+    motifs = motifs_str.split('-')
+    computed_calls = {(chrom, curr_motif): read_calls(chrom, curr_motif)
+                      for chrom, curr_motif in product(['1', '2'], motifs)}
+
+    return computed_calls
+
 @pytest.fixture(scope='module')
-def cg_only_mcall_run(output_dir, base_command_list):
-    cg_only_output_dir = op.join(output_dir, 'cg_only')
+def cg_run_file_contents(base_command_list, index_file_paths_dict, config_file_path):
+
+    # using a non-existent output dir is intentional
+    # mqc should create the output dir recursively
+    tmpdir = tempfile.mkdtemp()
+    cg_only_output_dir = op.join(tmpdir, 'hsc_1')
     subprocess.check_call(base_command_list
                           + ['--output_dir', cg_only_output_dir]
-                          + INDEX_FILES['CG'])
-    return cg_only_output_dir
+                          + index_file_paths_dict['CG'])
+    computed_calls = get_text_of_call_files(cg_only_output_dir,
+                                            motifs_str='CG',
+                                            user_config_file=config_file_path)
+    yield computed_calls
+    shutil.rmtree(tmpdir)
 
 @pytest.fixture(scope='module')
-def all_motifs_mcall_run(output_dir, base_command_list):
-    all_motifs_output_dir = op.join(output_dir, 'all_motifs')
+def all_motifs_run_file_contents(base_command_list, index_file_paths_dict, config_file_path):
+
+    # using a non-existent output dir is intentional
+    # mqc should create the output dir recursively
+    tmpdir = tempfile.mkdtemp()
+    all_motifs_output_dir = op.join(tmpdir, 'all-motifs')
     subprocess.check_call(base_command_list
                           + ['--output_dir', all_motifs_output_dir]
-                          + INDEX_FILES['CG-CHG-CHH'])
-    return all_motifs_output_dir
-
-@pytest.fixture(scope='module')
-def default_paths_cg_only_run(cg_only_mcall_run):
-    """Reconstructs config file used in mqc stats run to allow usage of config['paths']"""
-    config = assemble_config_vars(
-        command_line_args_dict=dict(output_dir=cg_only_mcall_run,
-                                    sample_name = SAMPLE_NAME,
-                                    sample_meta=SAMPLE_META,
-                                    # motifs_str is computed and supplied to
-                                    # assemble_config_vars within collect_stats
-                                    motifs_str='CG'),
-        default_config_file_path=DEFAULT_CONFIG_FILE,
-        command='call',
-        user_config_file_path='')
-    return config['paths']
-
-@pytest.fixture(scope='module')
-def default_paths_all_motifs_run(all_motifs_mcall_run):
-    """Reconstructs config file used in mqc stats run to allow usage of config['paths']"""
-    config = assemble_config_vars(
-        command_line_args_dict=dict(output_dir=all_motifs_mcall_run,
-                                    sample_name = SAMPLE_NAME,
-                                    sample_meta=SAMPLE_META,
-                                    # motifs_str is computed and supplied to
-                                    # assemble_config_vars within collect_stats
-                                    motifs_str='CG-CHG-CHH'),
-        default_config_file_path=DEFAULT_CONFIG_FILE,
-        command='call',
-        user_config_file_path='')
-    return config['paths']
-
-def read_calls(fp, end_line, start_line=0):
-    with gzip.open(fp, 'rt') as fobj:
-        lines = fobj.readlines()
-    text = ''.join(lines[start_line:end_line])
-    return text
+                          + index_file_paths_dict['CG-CHG-CHH'])
+    computed_calls = get_text_of_call_files(all_motifs_output_dir,
+                                            motifs_str='CG-CHG-CHH',
+                                            user_config_file=config_file_path)
+    yield computed_calls
+    shutil.rmtree(tmpdir)
 
 @pytest.mark.acceptance_test
-@pytest.mark.parametrize("motif_str,chrom",
+@pytest.mark.parametrize('motif_str,chrom',
                          (('CG', '1'),
                           ('CG', '2')))
 def test_makes_correct_calls_for_cg_only_run(
-        motif_str, chrom, cg_only_mcall_run,
-        default_paths_cg_only_run, expected_results_dict):
+        motif_str, chrom, cg_run_file_contents, expected_results_dict):
 
-    mcall_fp = (default_paths_cg_only_run['call']['meth_calls_basepath']
-                + f"_{SAMPLE_NAME}_{motif_str}_{chrom}.bed.gz")
-    computed_text = read_calls(mcall_fp, end_line=5)
-    expected_text = expected_results_dict[motif_str][chrom]
+    computed_calls = cg_run_file_contents[(chrom, motif_str)]
+    expected_calls = expected_results_dict[chrom][motif_str]
 
     msg = dedent(f"""\
     Computed
     --------
-    {computed_text}
+    {computed_calls}
     
     Expected
     --------
-    {expected_text}
+    {expected_calls}
     """)
 
-    assert expected_text == computed_text, msg
+    assert computed_calls == expected_calls, msg
 
 @pytest.mark.acceptance_test
-@pytest.mark.parametrize("motif_str,chrom,start_line,end_line",
-                         (('CG', '1', 0, 5),
-                         ('CHG', '1', 0, 3),
-                         ('CHH', '1', 0, 3),
-                          ('CG', '2', 0, 3),
-                          ('CHG', '2', 3, 4),
-                          ('CHH', '2', 24, 26)
-                          ))
-def test_makes_correct_calls_for_different_motifs(
-        motif_str, chrom, start_line, end_line, default_paths_all_motifs_run,
-        expected_results_dict):
+@pytest.mark.parametrize('motif_str,chrom',
+                         (('CG',  '1'),
+                          ('CG',  '2'),
+                          ('CHG', '1'),
+                          ('CHG', '2'),
+                          ('CHH', '1'),
+                          ('CHH', '2'),)
+                         )
+def test_makes_correct_calls_for_all_motifs_run(
+        motif_str, chrom, all_motifs_run_file_contents, expected_results_dict):
 
-    mcall_fp = (default_paths_all_motifs_run['call']['meth_calls_basepath']
-                + f"_{SAMPLE_NAME}_{motif_str}_{chrom}.bed.gz")
-    computed_text = read_calls(mcall_fp, start_line=start_line, end_line=end_line)
-    expected_text = expected_results_dict['CG-CHG-CHH'][chrom][motif_str]
+    computed_calls = all_motifs_run_file_contents[(chrom, motif_str)]
+    expected_calls = expected_results_dict[chrom][motif_str]
 
     msg = dedent(f"""\
     Computed
     --------
-    {computed_text}
+    {computed_calls}
     
     Expected
     --------
-    {expected_text}
+    {expected_calls}
     """)
 
-    assert expected_text == computed_text, msg
+    assert computed_calls == expected_calls, msg

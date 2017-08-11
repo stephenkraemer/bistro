@@ -11,10 +11,11 @@ snakemake \
 -n
 
 """
-
+# TODO: remove these lines and test again
 shell.executable("/bin/bash")
 shell.prefix("module load python/3.6.0; source /home/kraemers/programs/python_virtualenvs/mqc_test/bin/activate; echo loaded mqc_test; ")
 
+# TODO: improve benchmarks
 import os.path as op
 
 sandbox_dir = "/icgc/dkfzlsdf/analysis/B080/kraemers/projects/mcall_qc/2sandbox"

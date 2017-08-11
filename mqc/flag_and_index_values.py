@@ -17,3 +17,9 @@ methylation_status_flags = namedtuple('MethylationStatusFlags',
     is_snp=2,
     is_ref=1
 )
+
+qc_fail_flags = namedtuple('QcFailFlags', 'sam_flag_fail phred_score_fail mapq_fail')(
+    sam_flag_fail = 1,
+    phred_score_fail = 2,
+    mapq_fail = 4
+)
