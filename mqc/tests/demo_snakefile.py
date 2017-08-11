@@ -2,23 +2,29 @@
 
 How do I run this?
 -----------------
+
 snakemake \
 --snakefile /home/kraemers/projects/mqc/mqc/tests/demo_snakefile.py \
---cluster "qsub -l walltime={params.walltime},mem={params.mem},nodes=1:ppn={params.cores} -N {params.name}" \
+--cluster "qsub -S /bin/bash -l walltime={params.walltime},mem={params.mem},nodes=1:ppn={params.cores} -N {params.name}" \
 --jobs 20 \
+--jobscript /home/kraemers/projects/mqc/mqc/tests/jobscript.sh
 -n
+
 """
+
 shell.executable("/bin/bash")
 shell.prefix("module load python/3.6.0; source /home/kraemers/programs/python_virtualenvs/mqc_test/bin/activate; echo loaded mqc_test; ")
 
 import os.path as op
 
-sandbox_dir = "/icgc/dkfzlsdf/analysis/B080/kraemers/projects/mcall_qc/sandbox"
+sandbox_dir = "/icgc/dkfzlsdf/analysis/B080/kraemers/projects/mcall_qc/2sandbox"
 genome_dir = f"{sandbox_dir}/genomes/GRCm38mm10_PhiX_Lambda"
 grcm38_fa =  f"{genome_dir}/GRCm38mm10_PhiX_Lambda.fa"
 user_config_file = "/icgc/dkfzlsdf/analysis/B080/kraemers/projects/mcall_qc/sandbox/user_config.toml"
 hsc_rep1_dir = f"{sandbox_dir}/hsc_rep1"
+# hsc_rep1_dir = f"{sandbox_dir}/hsc_rep1_chr18-19-only"
 autosomes = [str(i) for i in range(1,20)]
+# autosomes = ['18', '19']
 other_chroms = ['X', 'Y', 'MT', 'phix', 'L']
 bam_template = "/icgc/dkfzlsdf/analysis/hs_ontogeny/results/wgbs/results_per_pid/hsc_rep1/alignment/blood_hsc_rep1_merged.mdup.bam"
 
@@ -35,15 +41,15 @@ rule all:
                              hsc_rep1_dir=hsc_rep1_dir,
                              motif_str=['CG', 'CG-CHG-CHH'], ext=['tsv', 'p']),
 
-        # cg_mcalls = expand("{hsc_rep1_dir}/mcalls/hsc_1_{motif_str}_{chrom}.bed.gz)",
-        #                    hsc_rep1_dir=hsc_rep1_dir,
-        #                    motif_str = 'CG',
-        #                    chrom=autosomes),
+        cg_mcalls = expand("{hsc_rep1_dir}/cg-only-test/meth_calls/mcalls_hsc_1_{motif_str}_{chrom}.bed.gz",
+                           hsc_rep1_dir=hsc_rep1_dir,
+                           motif_str = 'CG',
+                           chrom=autosomes),
 
-        # all_motif_mcalls = expand("{hsc_rep1_dir}/mcalls/hsc_1_{motif_str}_{chrom}.bed.gz)",
-        #                           hsc_rep1_dir=hsc_rep1_dir,
-        #                           motif_str=['CG', 'CHG', 'CHH'],
-        #                           chrom=autosomes),
+        all_motif_mcalls = expand("{hsc_rep1_dir}/all-motifs-test/meth_calls/mcalls_hsc_1_{motif_str}_{chrom}.bed.gz",
+                                  hsc_rep1_dir=hsc_rep1_dir,
+                                  motif_str=['CG', 'CHG', 'CHH'],
+                                  chrom=autosomes),
 
 rule make_all_motifs_index:
     input: grcm38_fa
@@ -88,7 +94,6 @@ rule make_cg_index:
         """
 
 # TODO: benchmark
-# benchmark: f"{hsc_rep1_dir}/index-mbias_stats_{{motif_str}}.txt"
 rule get_stats:
     input:
         bam=bam_template,
@@ -103,6 +108,7 @@ rule get_stats:
         mem = '12g',
         cores = '10',
         name = 'get_stats_{motif_str}',
+    benchmark: f"{hsc_rep1_dir}/benchmark_mbias-stats.txt"
     output:
         mbias_stats = expand("{hsc_rep1_dir}/qc_stats/hsc_1_mbias-stats_{{motif_str}}.{ext}",
                               hsc_rep1_dir = hsc_rep1_dir,
@@ -123,7 +129,6 @@ rule get_stats:
 
 common_meth_call_params = dict(
     config_file = user_config_file,
-    output_dir = hsc_rep1_dir,
     mem = '12g',
     cores = '10',
 )
@@ -143,43 +148,40 @@ rule call_meth_for_CG:
     input:
         bam=bam_template,
         #TODO: can expand deal with scalar strings?
-        index_files = expand("{genome_dir}/GRCm38mm10_PhiX_Lambda_{motif_str}_{chrom}.bed.gz",
+        index_files = expand("{genome_dir}/GRCm38mm10_PhiX_Lambda_CG_{chrom}.bed.gz",
                              genome_dir=genome_dir,
-                             motif_str='CG',
                              chrom=autosomes),
     params:
         **common_meth_call_params,
+        output_dir= f"{hsc_rep1_dir}/cg-only-test",
         walltime = '60:00:00',
         name = 'mcall_CG',
+    benchmark: f"{hsc_rep1_dir}/benchmark_mcall-cg-only.txt"
     output:
-        expand("{hsc_rep1_dir}/mcalls/hsc_1_{motif_str}_{chrom}.bed.gz)",
+        expand("{hsc_rep1_dir}/cg-only-test/meth_calls/mcalls_hsc_1_CG_{chrom}.bed.gz",
                hsc_rep1_dir=hsc_rep1_dir,
-               motif_str = 'CG',
                chrom=autosomes),
     shell: mcall_command
 
 
-## Calling rules for all motifs and CG are ambiguous,
-## can't both be active at the same time
-## could probably be handled with if blocks, but
-## good enough for now
-# rule call_meth_for_all_motifs:
-#     input:
-#         bam=bam_template,
-#         index_files = expand("{genome_dir}/GRCm38mm10_PhiX_Lambda_{motif_str}_{chrom}.bed.gz",
-#                              genome_dir=genome_dir,
-#                              motif_str='CG-CHG-CHH',
-#                              chrom=autosomes),
-#     params:
-#         **common_meth_call_params,
-#         walltime = '60:00:00',
-#         name = 'mcall_CG-CHG-CHH',
-#     output:
-#         expand("{hsc_rep1_dir}/mcalls/hsc_1_{motif_str}_{chrom}.bed.gz)",
-#                 hsc_rep1_dir=hsc_rep1_dir,
-#                 motif_str=['CG', 'CHG', 'CHH'],
-#                 chrom=autosomes),
-#     shell: mcall_command
+rule call_meth_for_all_motifs:
+    input:
+        bam=bam_template,
+        index_files = expand("{genome_dir}/GRCm38mm10_PhiX_Lambda_CG-CHG-CHH_{chrom}.bed.gz",
+                             genome_dir=genome_dir,
+                             chrom=autosomes),
+    params:
+        **common_meth_call_params,
+        output_dir = f"{hsc_rep1_dir}/all-motifs-test",
+        walltime = '60:00:00',
+        name = 'mcall_CG-CHG-CHH',
+    benchmark: f"{hsc_rep1_dir}/benchmark_mcall-all-motifs.txt"
+    output:
+        expand("{hsc_rep1_dir}/all-motifs-test/meth_calls/mcalls_hsc_1_{motif_str}_{chrom}.bed.gz",
+               hsc_rep1_dir=hsc_rep1_dir,
+               motif_str=['CG', 'CHG', 'CHH'],
+               chrom=autosomes),
+    shell: mcall_command
 
 ## Obsolete, because we are now using the reference genome in ngs share
 # which is also used by the pipeline
