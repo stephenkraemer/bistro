@@ -2,7 +2,7 @@
   max_number_of_unconv_cytosines = 2
 
 [basic_quality_filtering]
-  min_mapq = 20
+  min_mapq = 25
   min_phred_score = 25
 
 [trimming]

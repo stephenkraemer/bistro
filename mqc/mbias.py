@@ -82,6 +82,7 @@ class MbiasCounter(Counter):
 
         curr_read: BSSeqPileupRead
         for curr_read in motif_pileup.reads:
+                # TODO: currently this sorts out any qc_fail, including phred score fails, phred score fails should be kept here
                 if (curr_read.qc_fail_flag or
                     curr_read.bsseq_strand_ind == b_na_ind):
                     continue

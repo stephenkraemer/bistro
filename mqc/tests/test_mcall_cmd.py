@@ -19,8 +19,8 @@ DEFAULT_CONFIG_FILE = op.join(TESTS_DIR, '../config.default.toml')
 SAMPLE_NAME = 'hsc_rep1'
 SAMPLE_META = 'population=hsc,rep=1,model=blk6'
 TEST_FILES_DIR = op.join(TESTS_DIR, 'test_files')
-MIN_MAPQ = 20
-MIN_PHRED = 20
+MIN_MAPQ = 41
+MIN_PHRED = 35
 
 @pytest.fixture(scope='module')
 def index_file_paths_dict():
@@ -36,36 +36,36 @@ def index_file_paths_dict():
 def expected_results_dict():
     return {'1': {'CG': dedent(f"""\
                             #chrom	start	end	motif	score	strand	beta_value	n_meth	n_unmeth
-                            1	11298399	11298400	CG	.	+	{7/8:.6f}	7	1
-                            1	11298400	11298401	CG	.	-	{1:.6f}	3	0
+                            1	11298399	11298400	CG	.	+	{1:.6f}	5	0
+                            1	11298400	11298401	CG	.	-	{1:.6f}	1	0
                             1	11299330	11299331	CG	.	+	{1:.6f}	4	0
-                            1	11299331	11299332	CG	.	-	{6/9:.6f}	6	3
+                            1	11299331	11299332	CG	.	-	{4/5:.6f}	4	1
                             """),
                   'CHG': dedent(f"""\
                             #chrom	start	end	motif	score	strand	beta_value	n_meth	n_unmeth
-                            1	3258371	3258372	CHG	.	+	{0:.6f}	0	6
-                            1	3258373	3258374	CHG	.	-	{0:.6f}	0	4
+                            1	3258371	3258372	CHG	.	+	{0:.6f}	0	3
+                            1	3258373	3258374	CHG	.	-	{0:.6f}	0	3
                             """),
                   'CHH': dedent(f"""\
                             #chrom	start	end	motif	score	strand	beta_value	n_meth	n_unmeth
-                            1	3258374	3258375	CHH	.	-	{0:.6f}	0	4
-                            1	3258376	3258377	CHH	.	+	{0:.6f}	0	7
+                            1	3258374	3258375	CHH	.	-	{0:.6f}	0	3
+                            1	3258376	3258377	CHH	.	+	{0:.6f}	0	4
                             """),
                   },
             '2': {'CG': dedent(f"""\
                             #chrom	start	end	motif	score	strand	beta_value	n_meth	n_unmeth
-                            2	9042611	9042612	CG	.	+	{8/10:.6f}	8	2
-                            2	9042612	9042613	CG	.	-	{7/8:.6f}	7	1
-                            2	9042613	9042614	CG	.	+	{7/10:.6f}	7	3
-                            2	9042614	9042615	CG	.	-	{7/8:.6f}	7	1
+                            2	9042611	9042612	CG	.	+	{1:.6f}	5	0
+                            2	9042612	9042613	CG	.	-	{1/2:.6f}	1	1
+                            2	9042613	9042614	CG	.	+	{1:.6f}	6	0
+                            2	9042614	9042615	CG	.	-	{1:.6f}	1	0
                             """),
                   'CHG': dedent(f"""\
                             #chrom	start	end	motif	score	strand	beta_value	n_meth	n_unmeth
-                            2	3281431	3281432	CHG	.	-	{0:.6f}	0	6
+                            2	3281431	3281432	CHG	.	-	{0:.6f}	0	4
                             """),
                   'CHH': dedent(f"""\
                             #chrom	start	end	motif	score	strand	beta_value	n_meth	n_unmeth
-                            2	3281432	3281433	CHH	.	-	{0:.6f}	0	6
+                            2	3281432	3281433	CHH	.	-	{0:.6f}	0	4
                             2	3281434	3281435	CHH	.	+	{0:.6f}	0	1
                             """),
                   }

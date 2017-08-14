@@ -23,8 +23,13 @@ DEF IS_UNMETHYLATED = 4
 DEF IS_SNP = 2
 DEF IS_REF = 1
 
-cdef uint32_t min_phred = 0
-cdef uint8_t min_mapq = 1
+DEF QC_FAIL_SAM_FLAG = 1
+DEF QC_FAIL_PHRED_SCORE = 2
+DEF QC_FAIL_MAPQ = 4
+DEF QC_FAIL_MISSING_INFO = 8
+DEF QC_FAIL_SOFTCLIPPED = 16
+DEF QC_FAIL_POS_IN_READ_EXCEEDS_TLEN = 32
+
 cdef uint32_t flag_proper_pair_mask = 3
 cdef uint32_t flag_qc_fail_mask = 3852
 
@@ -68,21 +73,6 @@ cdef dict meth_dict = {W_BC_IND: {'C': {'C': IS_METHYLATED,
                                            'G': IS_SNP,
                                            'A': IS_SNP,
                                            'N': IS_NA}}}
-
-"""
-switch bs_seq_strand {
-    case W_BC {
-         if watson_ref_base == 'C':
-             switch observed_base {
-                   case 'C':
-
-
-}
-}
-}
-
-switch is the same implementatio as hash table on the assembly code level
-"""
 
 
 cdef class BSSeqPileupRead(PileupRead):
@@ -182,6 +172,7 @@ cdef inline make_bsseq_pileup_read(bam_pileup1_t * src,
     dest._is_refskip = src.is_refskip
     dest._overlap_flag = 0
     dest._trimm_flag = 0
+    dest._qc_fail_flag = 0
     dest._qpos = src.qpos
     dest._expected_watson_base = expected_watson_base
 
@@ -190,57 +181,28 @@ cdef inline make_bsseq_pileup_read(bam_pileup1_t * src,
     dest._bsseq_strand_ind = get_bsseq_strand_index(dest._alignment._delegate.core.flag)
 
 
-    if bam_line.core.l_qseq == 0:
-        dest._qc_fail_flag = 1
-        dest._pos_in_read = -1
-        return dest
-
     cdef uint8_t * qualities = pysam_bam_get_qual(bam_line)
-    if qualities[0] == 0xff:
-        dest._qc_fail_flag = 1
-        dest._pos_in_read = -1
-        return dest
-
-
+    cdef uint32_t * cigar_p = pysam_bam_get_cigar(src.b)
     # Discard reads without cigar info - we can't check for softclips, which
     # are necessary for calculation of the read position and to check that
     # we are not in a softclipped region
-    cdef uint32_t * cigar_p = pysam_bam_get_cigar(src.b)
-    if cigar_p == NULL:
-        dest._qc_fail_flag = 1
-        dest._pos_in_read = -1
+    if (bam_line.core.l_qseq == 0
+        or qualities[0] == 0xff
+        or cigar_p == NULL):
+        dest._qc_fail_flag |= QC_FAIL_MISSING_INFO
         return dest
 
-    cdef uint8_t mapq = pysam_get_qual(bam_line)
-    if mapq < min_mapq:
-        # print('Found bad mapq score')
-        # print('score ', mapq[0])
-        dest._qc_fail_flag = 1
-        dest._bad_mapq_flag = 1
-        dest._pos_in_read = -1
-        return dest
 
     cdef uint16_t flag = dest._alignment._delegate.core.flag
     if (flag & flag_proper_pair_mask != 3 or flag & flag_qc_fail_mask != 0):
-        # print('Found bad flag')
-        # print(flag)
-        dest._qc_fail_flag = 1
-        dest._pos_in_read = -1
+        dest._qc_fail_flag |= QC_FAIL_SAM_FLAG
         return dest
 
-
-    cdef uint8_t qual_at_pos = qualities[dest._qpos]
-    if qual_at_pos < min_phred:
-        # print('Found bad phred score')
-        # print('score ', qual_at_pos)
-        # print('pos', dest._qpos)
-        dest._qc_fail_flag = 1
-        dest._bad_phred_flag = 1
-
     # add meth status
-    if (dest._is_del or dest._is_refskip or
-                dest._observed_watson_base == 'N' or
-    dest._bsseq_strand_ind == NA_STRAND_IND):
+    if (dest._is_del
+        or dest._is_refskip
+        or dest._observed_watson_base == 'N'
+        or dest._bsseq_strand_ind == NA_STRAND_IND):
         dest._meth_status_flag = IS_NA
     else:
         dest._meth_status_flag = (meth_dict[dest._bsseq_strand_ind]
@@ -278,9 +240,7 @@ cdef inline make_bsseq_pileup_read(bam_pileup1_t * src,
         # print('qpos: ', dest._qpos)
 
     if not (softclips_start < dest._qpos + 1 < query_length - softclips_end + 1):
-        # print('Setting qc fail flag')
-        dest._qc_fail_flag = 1
-        dest._pos_in_read = -1
+        dest._qc_fail_flag |= QC_FAIL_SOFTCLIPPED
         return dest
 
     # Determine read position under the assumption that softclipped bases
@@ -323,15 +283,13 @@ cdef inline make_bsseq_pileup_read(bam_pileup1_t * src,
             print(cigar_p[i] & BAM_CIGAR_MASK)
             print(cigar_p[i] >> BAM_CIGAR_SHIFT)
         """
-        dest._qc_fail_flag = 1
-        dest._pos_in_read = -1
-
+        dest._qc_fail_flag |= QC_FAIL_POS_IN_READ_EXCEEDS_TLEN
 
     # print('softclips start', softclips_start)
     return dest
 
 
-cdef inline get_bsseq_strand_index(uint32_t flag):
+cdef inline get_bsseq_strand_index(int32_t flag):
     # TODO: are these flag fields always defined, or can they have arbitrary values in some situations?
     # TODO: smarter way of doing these tests
     if flag & C_BC_FLAG == C_BC_FLAG:
@@ -343,7 +301,7 @@ cdef inline get_bsseq_strand_index(uint32_t flag):
     elif flag & W_BC_RV_FLAG == W_BC_RV_FLAG:
         return W_BC_RV_IND
     else:  # BSSeq-strand not defined
-        return -1
+        return NA_STRAND_IND
 
 def pileups(PileupColumn pileup_column, str expected_watson_base):
     pileups = []

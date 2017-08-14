@@ -5,6 +5,7 @@ import mqc.flag_and_index_values as mfl
 b_inds = mfl.bsseq_strand_indices
 b_na_ind = mfl.bsseq_strand_na_index
 m_flags = mfl.methylation_status_flags
+qflags = mfl.qc_fail_flags
 
 class MotifPileupStub:
     def __init__(self, reads, beta_value=None):
@@ -48,10 +49,13 @@ class TestMethCaller:
              'bsseq_strand_ind'   : b_inds.c_bc},
             {'meth_status_flag'   : m_flags.is_methylated,
              'bsseq_strand_ind'   : b_inds.w_bc,
-             'qc_fail_flag'       : 1},
+             'qc_fail_flag'       : qflags.mapq_fail},
             {'meth_status_flag'   : m_flags.is_unmethylated,
              'bsseq_strand_ind'   : b_inds.c_bc_rv,
-             'qc_fail_flag'       : 1},
+             'qc_fail_flag'       : qflags.phred_score_fail},
+            {'meth_status_flag'   : m_flags.is_unmethylated,
+             'bsseq_strand_ind'   : b_inds.c_bc_rv,
+             'qc_fail_flag'       : qflags.sam_flag_fail},
         ]
         additional_reads = [PileupreadStub(**property_dict)
                             for property_dict in additional_read_properties]

@@ -35,4 +35,4 @@ cdef class BSSeqPileupRead(PileupRead):
 cdef inline make_bsseq_pileup_read(bam_pileup1_t * src, AlignmentFile alignment_file,
                                    str expected_watson_base)
 
-cdef inline get_bsseq_strand_index(uint32_t flag)
+cdef inline get_bsseq_strand_index(int32_t flag)

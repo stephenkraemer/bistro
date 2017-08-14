@@ -5,6 +5,8 @@ from itertools import product
 from mqc.mbias import MbiasCounter
 
 import mqc.flag_and_index_values as mfl
+
+#TODO: I currently test that any non-zero qc_fail_flag leads to discard from M-bias stats counting. When I update the behavior so that phred score fails are kept in the stats, the tests here also need to be updated accordingly
 b_inds = mfl.bsseq_strand_indices
 b_na_ind = mfl.bsseq_strand_na_index
 m_flags = mfl.methylation_status_flags
