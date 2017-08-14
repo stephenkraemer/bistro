@@ -1,8 +1,10 @@
 from collections import namedtuple, defaultdict
 from copy import deepcopy
 from itertools import product
+import pandas as pd
 
 from mqc.mbias import MbiasCounter
+from mqc.mbias import FixedRelativeCuttingSites
 
 import mqc.flag_and_index_values as mfl
 
@@ -118,4 +120,42 @@ class TestMbiasCounterMotifPileupProcessing:
         capped_flen_read_properties['tlen'] = MAX_FLEN
         capped_read_idx = tuple(bstub(**capped_flen_read_properties))
         assert mbias_counter.counter_array[(1,) + capped_read_idx] == 1
+
+def test_fixed_cutting_sites_are_computed_correctly():
+    config = defaultdict(defaultdict)
+    config['trimming']['relative_to_fragment_ends_dict'] = dict(
+        w_bc = [10, 10],
+        c_bc = [0, 10],
+        w_bc_rv = [10, 0],
+        c_bc_rv = [10, 10],
+    )
+    config['data_properties']['max_read_length_bp'] = 101
+    config['trimming']['max_flen_considered_for_trimming'] = 500
+    fixed_cutting_sites = FixedRelativeCuttingSites(config)
+    cutting_arr = fixed_cutting_sites.get_array()
+    cutting_df = fixed_cutting_sites.get_df()
+
+    expected_result = (pd.DataFrame([['w_bc', 70, 'left', 10],
+                                    ['c_bc_rv', 90, 'right', 79],
+                                    ['w_bc', 110, 'right', 99],
+                                    ['w_bc', 111, 'right', 100],
+                                    ['w_bc', 115, 'right', 100],
+                                    ['c_bc_rv', 300, 'left', 10]],
+                                   columns='bs_strand flen end inclusive_bound'.split())
+                       .set_index('bs_strand flen end'.split()))
+
+    computed_result = cutting_df.loc[expected_result.index, :]
+
+    msg = f"""
+    Expected result
+    ---------------
+    {expected_result}
+    
+    Computed result
+    ---------------
+    {computed_result}
+    
+    """
+
+    assert computed_result.equals(expected_result), msg
 

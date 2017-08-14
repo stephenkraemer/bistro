@@ -1,6 +1,6 @@
 from collections import namedtuple
 
-bsseq_strand_indices = namedtuple('BsseqIndex', 'w_bc c_bc w_bc_rv c_bc_rv')(
+bsseq_strand_indices = namedtuple('BsseqIndex', 'c_bc c_bc_rv w_bc w_bc_rv')(
     c_bc=0,
     c_bc_rv=1,
     w_bc=2,

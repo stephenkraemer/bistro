@@ -13,6 +13,7 @@ from typing import Dict
 from mqc.pileup.bsseq_pileup_read import BSSeqPileupRead
 from mqc.pileup.pileup import MotifPileup
 from mqc.visitors import Counter
+from mqc.utils import convert_array_to_df
 import mqc.flag_and_index_values as mfl
 
 b_inds = mfl.bsseq_strand_indices
@@ -403,19 +404,24 @@ class CuttingSites(metaclass=ABCMeta):
         pass
 
 
-class MinimalCuttingSites(CuttingSites):
+class FixedRelativeCuttingSites(CuttingSites):
     """Calculate and provide M-bias cutting sites in dataframe and array format"""
 
     def __init__(self, config):
+
+        self._minimal_cutting_sites_array = np.array([])
+        self._minimal_cutting_sites_df = pd.DataFrame()
+
         self.max_read_length_bp = config["data_properties"]["max_read_length_bp"]
         self.max_flen = config["trimming"]["max_flen_considered_for_trimming"]
         self.n_bp_to_discard_at_frag_ends = config["trimming"]["relative_to_fragment_ends_dict"]
-        self._minimal_cutting_sites_df = pd.DataFrame()
-        self._minimal_cutting_sites_array = np.array([])
 
+        self.dim_levels = [b_inds._fields,
+                           range(0, self.max_flen + 1),
+                           ['left', 'right']]
+        self.dim_names = 'bs_strand flen end'.split()
+        self.value_column_name = 'inclusive_bound'
     def get_array(self):
-        # TODO-algorithm: make sure that the computed absolute cutting sites provide the start and end of the plateau
-        # TODO-doublecheck
         """
         Given the number of bp to be removed from the 5' and 3' fragment ends,
         define cutting sites expressed as zero-based positions in the read.
@@ -446,8 +452,9 @@ class MinimalCuttingSites(CuttingSites):
         """
 
         if not self._minimal_cutting_sites_array.size:
+            # Flen is 1-based
             min_trimmsite_arr = np.zeros([
-                4, 2, self.max_flen], dtype=np.int32)
+                4, (self.max_flen + 1), 2], dtype=np.int32)
 
             for bsseq_strand_name, bsseq_strand_index in b_inds._asdict().items():
 
@@ -455,19 +462,17 @@ class MinimalCuttingSites(CuttingSites):
                 # Start position is the zero-based plateau start in the read
                 # the relative_cutting_site_dict gives the number of bases
                 # to be removed from the start of the read
-                min_trimmsite_arr[bsseq_strand_index, 0, :] = (
+                min_trimmsite_arr[bsseq_strand_index, :, 0] = (
                     self.n_bp_to_discard_at_frag_ends[bsseq_strand_name][0])
 
-                # Set end position
-                # all positions are zero-based
-                # TODO-format: use min_flen parameter?
+                # Set last included position (zero-based)
                 for curr_flen in range(0, self.max_flen):
                     max_allowed_pos_in_fragment = (
-                        curr_flen - self.n_bp_to_discard_at_frag_ends[bsseq_strand_name][1] + 1)
+                        curr_flen - self.n_bp_to_discard_at_frag_ends[bsseq_strand_name][1] - 1)
                     max_allow_pos_in_read = (max_allowed_pos_in_fragment
-                                             if max_allowed_pos_in_fragment <= self.max_read_length_bp
-                                             else self.max_read_length_bp)
-                    min_trimmsite_arr[bsseq_strand_index, 1, curr_flen] = max_allow_pos_in_read
+                                             if max_allowed_pos_in_fragment <= (self.max_read_length_bp - 1)
+                                             else (self.max_read_length_bp - 1) )
+                    min_trimmsite_arr[bsseq_strand_index, curr_flen, 1] = max_allow_pos_in_read
 
             # cache
             self._minimal_cutting_sites_array = min_trimmsite_arr
@@ -478,17 +483,14 @@ class MinimalCuttingSites(CuttingSites):
             return self._minimal_cutting_sites_array
 
     def get_df(self):
-        if not self._minimal_cutting_sites_df.empty:
-            return self._minimal_cutting_sites_df
-        else:
-            df = counter_array_to_dataframe(
-                    self._minimal_cutting_sites_array,
-                    labels=[b_inds._fields, ['start', 'end'], [], []],
-                    column_names=['bsseq_strand', 'start_or_end', 'flen', 'cutting_site'],
-                    increment_integer_labels=True)
-            # TODO: unstack dataframe
-            # This code is an unfinished draft
-            raise NotImplementedError
+        if self._minimal_cutting_sites_df.empty:
+            self._minimal_cutting_sites_df = convert_array_to_df(
+                arr=self.get_array(),
+                dim_levels=self.dim_levels,
+                dim_names=self.dim_names,
+                value_column_name=self.value_column_name
+            )
+        return self._minimal_cutting_sites_df
 
 
 class AdjustedMbiasCuttingSites(CuttingSites):
@@ -713,49 +715,3 @@ def cutting_sites_area_plot(mbias_cutting_sites: 'AdjustedMbiasCuttingSites', ou
 
 def cm_to_inch(cm):
     return cm / 2.54
-
-def counter_array_to_dataframe(arr, labels, column_names,
-                               increment_integer_labels=True):
-    """
-
-    Parameters
-    ----------
-    arr: multidimensional array
-    labels: List[List] one list per dimension of the array.
-        List can be empty (-> use integer labels for this dimension)
-        or list may contain N labels, where N is the size of the dimension
-
-    Returns
-    -------
-    pd.DataFrame
-
-    """
-    import itertools
-    import numpy as np
-    import pandas as pd
-
-
-    indices = [np.arange(x) for x in arr.shape]
-
-    if increment_integer_labels:
-        integer_labels = [np.arange(1, x+1) for x in arr.shape]
-    else:
-        integer_labels = [np.arange(x) for x in arr.shape]
-
-    filled_labels = [labels_for_dim if labels_for_dim else indices_for_dim
-                     for labels_for_dim, indices_for_dim in zip(labels, integer_labels)]
-
-    index_label_tuples = [list(zip(indices_for_dim, labels_for_dim))
-                          for indices_for_dim, labels_for_dim
-                          in zip(indices, filled_labels)]
-
-    rows = []
-    for idx_label_tuples in itertools.product(*index_label_tuples):
-        idx_tuple = tuple(i for i,l in idx_label_tuples)
-        labels = [l for i,l in idx_label_tuples]
-        curr_row = labels + [arr[idx_tuple]]
-        rows.append(curr_row)
-
-    df = pd.DataFrame(rows, columns=column_names)
-
-    return df
