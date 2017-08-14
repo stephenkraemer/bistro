@@ -14,7 +14,9 @@ class MotifPileupStub:
         # index position not required
 
 class PileupreadStub:
-    def __init__(self, meth_status_flag, bsseq_strand_ind, qc_fail_flag=0):
+    def __init__(self, meth_status_flag, bsseq_strand_ind,
+                 overlap_flag=0, qc_fail_flag=0):
+        self.overlap_flag = overlap_flag
         self.meth_status_flag = meth_status_flag
         self.bsseq_strand_ind = bsseq_strand_ind
         self.qc_fail_flag = qc_fail_flag
@@ -92,3 +94,31 @@ class TestMethCaller:
         assert motif_pileup_with_na_bsseq_strands.beta_value == 0.4
         assert motif_pileup_with_na_bsseq_strands.n_meth == 2
         assert motif_pileup_with_na_bsseq_strands.n_unmeth == 3
+
+    def test_discards_reads_with_overlap_flag(self):
+
+        additional_read_properties = [
+            {'meth_status_flag'   : m_flags.is_unmethylated,
+             'bsseq_strand_ind'   : b_inds.w_bc_rv},
+            {'meth_status_flag'   : m_flags.is_unmethylated,
+             'bsseq_strand_ind'   : b_inds.w_bc_rv,
+             'overlap_flag'       : 1},
+            {'meth_status_flag'   : m_flags.is_methylated,
+             'bsseq_strand_ind'   : b_inds.c_bc},
+            {'meth_status_flag'   : m_flags.is_methylated,
+             'bsseq_strand_ind'   : b_inds.c_bc,
+             'overlap_flag'       : 1},
+        ]
+
+        additional_reads = [PileupreadStub(**property_dict)
+                            for property_dict in additional_read_properties]
+        all_reads = BASE_READS + additional_reads
+
+        motif_pileup_with_overlap_flags = MotifPileupStub(reads=all_reads)
+
+        meth_caller = MethCaller()
+        meth_caller.process(motif_pileup_with_overlap_flags)
+
+        assert motif_pileup_with_overlap_flags.n_meth == 3
+        assert motif_pileup_with_overlap_flags.n_unmeth == 3
+        assert motif_pileup_with_overlap_flags.beta_value == 3/6

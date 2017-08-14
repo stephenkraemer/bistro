@@ -38,7 +38,7 @@ def expected_results_dict():
                             #chrom	start	end	motif	score	strand	beta_value	n_meth	n_unmeth
                             1	11298399	11298400	CG	.	+	{1:.6f}	5	0
                             1	11298400	11298401	CG	.	-	{1:.6f}	1	0
-                            1	11299330	11299331	CG	.	+	{1:.6f}	4	0
+                            1	11299330	11299331	CG	.	+	{1:.6f}	3	0
                             1	11299331	11299332	CG	.	-	{4/5:.6f}	4	1
                             """),
                   'CHG': dedent(f"""\
@@ -49,14 +49,14 @@ def expected_results_dict():
                   'CHH': dedent(f"""\
                             #chrom	start	end	motif	score	strand	beta_value	n_meth	n_unmeth
                             1	3258374	3258375	CHH	.	-	{0:.6f}	0	3
-                            1	3258376	3258377	CHH	.	+	{0:.6f}	0	4
+                            1	3258376	3258377	CHH	.	+	{0:.6f}	0	3
                             """),
                   },
             '2': {'CG': dedent(f"""\
                             #chrom	start	end	motif	score	strand	beta_value	n_meth	n_unmeth
-                            2	9042611	9042612	CG	.	+	{1:.6f}	5	0
+                            2	9042611	9042612	CG	.	+	{1:.6f}	4	0
                             2	9042612	9042613	CG	.	-	{1/2:.6f}	1	1
-                            2	9042613	9042614	CG	.	+	{1:.6f}	6	0
+                            2	9042613	9042614	CG	.	+	{1:.6f}	5	0
                             2	9042614	9042615	CG	.	-	{1:.6f}	1	0
                             """),
                   'CHG': dedent(f"""\

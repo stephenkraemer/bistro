@@ -24,6 +24,7 @@ from mqc.mbias import MbiasCounter
 from mqc.mcaller import MethCaller
 from mqc.writers import BedWriter
 from mqc.qc_filters import PhredFilter, MapqFilter
+from mqc.overlap import OverlapHandler
 
 
 # from mqc.mbias import MbiasData, AdjustedMbiasCuttingSites, MbiasCounter
@@ -264,9 +265,9 @@ class QcAndMethCallingRun(PileupRun):
     def _get_visitors(self, chrom) -> Dict[str, Visitor]:
         return OrderedDict(
             # trimmer=Trimmer(self.config, self.cutting_sites),
-            # ol_handler=OverlapHandler(self.config),
             mapq_filter = MapqFilter(self.config),
             phred_filter = PhredFilter(self.config),
+            overlap_handler=OverlapHandler(),
             meth_caller=MethCaller(),
             mcall_writer=BedWriter(self.config, chrom=chrom),
             # mcall_writer=BedMcallWriter(self.config),

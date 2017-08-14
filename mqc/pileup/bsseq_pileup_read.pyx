@@ -29,6 +29,7 @@ DEF QC_FAIL_MAPQ = 4
 DEF QC_FAIL_MISSING_INFO = 8
 DEF QC_FAIL_SOFTCLIPPED = 16
 DEF QC_FAIL_POS_IN_READ_EXCEEDS_TLEN = 32
+DEF QC_FAIL_OVERLAP = 64
 
 cdef uint32_t flag_proper_pair_mask = 3
 cdef uint32_t flag_qc_fail_mask = 3852
