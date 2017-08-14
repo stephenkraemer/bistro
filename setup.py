@@ -44,7 +44,7 @@ setup(name='mqc',
           'pysam',
           'ipywidgets',
           'matplotlib',
-          # 'magic'
+          'python-magic'
       ],
       ext_modules=cythonize(extensions)
       )

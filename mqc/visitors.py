@@ -8,6 +8,7 @@ from abc import ABCMeta, abstractmethod
 from typing import List, Union
 
 from mqc.pileup.pileup import MotifPileup
+from mqc.utils import convert_array_to_df
 from collections import Iterable
 
 
@@ -104,26 +105,10 @@ class Counter(metaclass=ABCMeta):
         return self._counter_dataframe
 
     def _compute_dataframe(self):
-        indices_per_dim = [np.arange(x) for x in self.counter_array.shape]
-        index_level_tuples = [
-            list(zip(curr_indices, curr_levels))
-            for curr_indices, curr_levels
-            in zip(indices_per_dim, self.dim_levels)]
+        return convert_array_to_df(arr=self.counter_array,
+                                   dim_levels=self.dim_levels,
+                                   dim_names=self.dim_names,
+                                   value_column_name='Counts')
 
-        rows = self._create_dataframe_rows(index_level_tuples)
-        column_names = self.dim_names + ['Counts']
-        df = (pd.DataFrame(rows, columns=column_names)
-                .set_index(self.dim_names)
-                # TODO: ensure that this is fully sorted
-                .sort_index(axis='index'))
-        return df
 
-    def _create_dataframe_rows(self, index_level_tuples):
-        rows = []
-        for idx_combi_with_levels in itertools.product(*index_level_tuples):
-            # must be tuple for np array indexing
-            idx_tuple = tuple(idx for idx, level in idx_combi_with_levels)
-            levels = [level for idx, level in idx_combi_with_levels]
-            curr_row = levels + [self.counter_array[idx_tuple]]
-            rows.append(curr_row)
-        return rows
+
