@@ -200,11 +200,13 @@ cdef inline make_bsseq_pileup_read(bam_pileup1_t * src,
         return dest
 
     # add meth status
+    # TODO: pull out is_del and is_refskip test in own logical block
     if (dest._is_del
         or dest._is_refskip
         or dest._observed_watson_base == 'N'
         or dest._bsseq_strand_ind == NA_STRAND_IND):
         dest._meth_status_flag = IS_NA
+        # TODO: return, we don't need to go on!
     else:
         dest._meth_status_flag = (meth_dict[dest._bsseq_strand_ind]
                                   [dest._expected_watson_base][dest._observed_watson_base])

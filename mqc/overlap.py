@@ -17,6 +17,7 @@ class OverlapHandler(Visitor):
     def process(self, motif_pileup: MotifPileup):
         read_hash = defaultdict(list)
         for curr_read in motif_pileup.reads:
+            # TODO: add check whether read has a usable meth status
             if not (curr_read.trimm_flag or curr_read.qc_fail_flag):
                 read_hash[curr_read.alignment.query_name].append(curr_read)
         for query_name, reads in read_hash.items():
