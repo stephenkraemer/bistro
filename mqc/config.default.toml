@@ -28,7 +28,7 @@
   kde_sigma = 4
 
 [data_properties]
-  max_read_length_bp = 130
+  max_read_length_bp = 101
   min_flen_considered_for_methylation_calling = 30
 
 [parallelization]

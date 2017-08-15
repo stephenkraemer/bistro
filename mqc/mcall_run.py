@@ -20,10 +20,11 @@ import pysam
 from mqc.index import IndexFile
 from mqc.pileup.pileup import stepwise_pileup_generator
 from mqc.visitors import Counter, Visitor
-from mqc.mbias import MbiasCounter
+from mqc.mbias import MbiasCounter, FixedRelativeCuttingSites
 from mqc.mcaller import MethCaller
 from mqc.writers import BedWriter
 from mqc.qc_filters import PhredFilter, MapqFilter
+from mqc.trimming import Trimmer
 from mqc.overlap import OverlapHandler
 
 
@@ -55,8 +56,9 @@ def run_mcalling(config):
     #     mbias_data, calling_mode='adjusted', config=config)
     # second_run = QcAndMethCallingRun(config,
     #                                  adjusted_cutting_sites.get_array())
+    fixed_cutting_sites =  FixedRelativeCuttingSites(config)
     second_run = QcAndMethCallingRun(config,
-                                     cutting_sites=None)
+                                     cutting_sites=fixed_cutting_sites)
     second_run.run_parallel()
     # beta_value_counter = second_run.summed_up_counters['beta_counter']
     # further processing
@@ -196,7 +198,6 @@ class PileupRun(metaclass=ABCMeta):
             combinations of visitors may be applied during the PileupRun,
             only counters will be returned for further processing.
         """
-        log_name = op.basename(index_file_path).replace('.bed.gz', '')
 
         # TODO: put the index file path template into one central place to be able to change it
         # TODO: solve this with regex?
@@ -213,8 +214,6 @@ class PileupRun(metaclass=ABCMeta):
             alignment_file=alignment_file)
 
         for motif_pileup in motif_pileup_generator:
-            if motif_pileup.idx_pos.start % 100_000 == 0:
-                print(f"{log_name}::{motif_pileup.idx_pos.start}")
             for curr_visitor in visitors.values():
                 curr_visitor.process(motif_pileup)
 
@@ -264,16 +263,12 @@ class QcAndMethCallingRun(PileupRun):
 
     def _get_visitors(self, chrom) -> Dict[str, Visitor]:
         return OrderedDict(
-            # trimmer=Trimmer(self.config, self.cutting_sites),
             mapq_filter = MapqFilter(self.config),
-            phred_filter = PhredFilter(self.config),
+            trimmer = Trimmer(self.config, self.cutting_sites),
             overlap_handler=OverlapHandler(),
+            phred_filter = PhredFilter(self.config),
             meth_caller=MethCaller(),
             mcall_writer=BedWriter(self.config, chrom=chrom),
-            # mcall_writer=BedMcallWriter(self.config),
-            # beta_counter=StratifiedBetaValueCounter(self.config),
-            # coverage_counter=CoverageCounter(self.config,
-            #                                  trimming_status='adjusted'),
         )
 
 

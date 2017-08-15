@@ -15,7 +15,8 @@ class MotifPileupStub:
 
 class PileupreadStub:
     def __init__(self, meth_status_flag, bsseq_strand_ind,
-                 overlap_flag=0, qc_fail_flag=0):
+                 trimm_flag=0, overlap_flag=0, qc_fail_flag=0):
+        self.trimm_flag = trimm_flag
         self.overlap_flag = overlap_flag
         self.meth_status_flag = meth_status_flag
         self.bsseq_strand_ind = bsseq_strand_ind
@@ -73,28 +74,6 @@ class TestMethCaller:
         assert motif_pileup_with_qc_fails.n_meth == 3
         assert motif_pileup_with_qc_fails.n_unmeth == 2
 
-    def test_discards_if_bsstrand_na(self):
-        additional_read_properties = [
-            {'meth_status_flag'   : m_flags.is_unmethylated,
-             'bsseq_strand_ind'   : b_inds.w_bc_rv},
-            {'meth_status_flag'   : m_flags.is_unmethylated,
-             'bsseq_strand_ind'   : b_na_ind},
-            {'meth_status_flag'   : m_flags.is_methylated,
-             'bsseq_strand_ind'   : b_na_ind},
-        ]
-        additional_reads = [PileupreadStub(**property_dict)
-                            for property_dict in additional_read_properties]
-        all_reads = BASE_READS + additional_reads
-
-        motif_pileup_with_na_bsseq_strands = MotifPileupStub(reads=all_reads)
-
-        meth_caller = MethCaller()
-        meth_caller.process(motif_pileup_with_na_bsseq_strands)
-
-        assert motif_pileup_with_na_bsseq_strands.beta_value == 0.4
-        assert motif_pileup_with_na_bsseq_strands.n_meth == 2
-        assert motif_pileup_with_na_bsseq_strands.n_unmeth == 3
-
     def test_discards_reads_with_overlap_flag(self):
 
         additional_read_properties = [
@@ -122,3 +101,58 @@ class TestMethCaller:
         assert motif_pileup_with_overlap_flags.n_meth == 3
         assert motif_pileup_with_overlap_flags.n_unmeth == 3
         assert motif_pileup_with_overlap_flags.beta_value == 3/6
+
+    def test_discards_unusable_meth_status_flags(self):
+
+        additional_read_properties = [
+            {'meth_status_flag'   : m_flags.is_na,
+             'bsseq_strand_ind'   : b_inds.w_bc_rv},
+            {'meth_status_flag'   : m_flags.is_ref,
+             'bsseq_strand_ind'   : b_inds.w_bc},
+            {'meth_status_flag'   : m_flags.is_snp,
+             'bsseq_strand_ind'   : b_inds.c_bc},
+            {'meth_status_flag'   : m_flags.is_methylated,
+             'bsseq_strand_ind'   : b_inds.c_bc}
+        ]
+
+        additional_reads = [PileupreadStub(**property_dict)
+                            for property_dict in additional_read_properties]
+        all_reads = BASE_READS + additional_reads
+
+        motif_pileup = MotifPileupStub(reads=all_reads)
+
+        meth_caller = MethCaller()
+        meth_caller.process(motif_pileup)
+
+        assert motif_pileup.n_meth == 3
+        assert motif_pileup.n_unmeth == 2
+        assert motif_pileup.beta_value == 3/5
+
+    def test_discards_trimmed_events(self):
+        additional_read_properties = [
+            {'meth_status_flag'   : m_flags.is_unmethylated,
+             'bsseq_strand_ind'   : b_inds.w_bc},
+            {'meth_status_flag'   : m_flags.is_unmethylated,
+             'bsseq_strand_ind'   : b_inds.c_bc},
+            {'meth_status_flag'   : m_flags.is_unmethylated,
+             'bsseq_strand_ind'   : b_inds.c_bc},
+            {'meth_status_flag'   : m_flags.is_methylated,
+             'bsseq_strand_ind'   : b_inds.c_bc,
+             'trimm_flag'         : 1},
+            {'meth_status_flag'   : m_flags.is_methylated,
+             'bsseq_strand_ind'   : b_inds.c_bc_rv,
+             'trimm_flag'         : 1},
+        ]
+
+        additional_reads = [PileupreadStub(**property_dict)
+                            for property_dict in additional_read_properties]
+        all_reads = BASE_READS + additional_reads
+
+        motif_pileup = MotifPileupStub(reads=all_reads)
+
+        meth_caller = MethCaller()
+        meth_caller.process(motif_pileup)
+
+        assert motif_pileup.n_meth == 2
+        assert motif_pileup.n_unmeth == 5
+        assert motif_pileup.beta_value == 2/7

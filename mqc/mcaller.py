@@ -15,12 +15,9 @@ class MethCaller(Visitor):
         n_meth = 0
         n_unmeth = 0
         for curr_read in motif_pileup.reads:
-            if (curr_read.overlap_flag
-                or curr_read.qc_fail_flag
-                # TODO: not necessary to check the bsseq strand (?)
-                #       this should be done implicitely when I read out the
-                #       meth status flag. Robust also for future to leave this out?
-                or curr_read.bsseq_strand_ind == b_na_ind):
+            if (curr_read.qc_fail_flag
+                or curr_read.trimm_flag
+                or curr_read.overlap_flag):
                 continue
 
             meth_status_flag = curr_read.meth_status_flag

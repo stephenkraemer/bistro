@@ -37,9 +37,9 @@ def expected_results_dict():
     return {'1': {'CG': dedent(f"""\
                             #chrom	start	end	motif	score	strand	beta_value	n_meth	n_unmeth
                             1	11298399	11298400	CG	.	+	{1:.6f}	5	0
-                            1	11298400	11298401	CG	.	-	{1:.6f}	1	0
+                            1	11298400	11298401	CG	.	-	nan	0	0
                             1	11299330	11299331	CG	.	+	{1:.6f}	3	0
-                            1	11299331	11299332	CG	.	-	{4/5:.6f}	4	1
+                            1	11299331	11299332	CG	.	-	{1:.6f}	4	0
                             """),
                   'CHG': dedent(f"""\
                             #chrom	start	end	motif	score	strand	beta_value	n_meth	n_unmeth
@@ -55,17 +55,17 @@ def expected_results_dict():
             '2': {'CG': dedent(f"""\
                             #chrom	start	end	motif	score	strand	beta_value	n_meth	n_unmeth
                             2	9042611	9042612	CG	.	+	{1:.6f}	4	0
-                            2	9042612	9042613	CG	.	-	{1/2:.6f}	1	1
+                            2	9042612	9042613	CG	.	-	{1:.6f}	1	0
                             2	9042613	9042614	CG	.	+	{1:.6f}	5	0
                             2	9042614	9042615	CG	.	-	{1:.6f}	1	0
                             """),
                   'CHG': dedent(f"""\
                             #chrom	start	end	motif	score	strand	beta_value	n_meth	n_unmeth
-                            2	3281431	3281432	CHG	.	-	{0:.6f}	0	4
+                            2	3281431	3281432	CHG	.	-	{0:.6f}	0	3
                             """),
                   'CHH': dedent(f"""\
                             #chrom	start	end	motif	score	strand	beta_value	n_meth	n_unmeth
-                            2	3281432	3281433	CHH	.	-	{0:.6f}	0	4
+                            2	3281432	3281433	CHH	.	-	{0:.6f}	0	3
                             2	3281434	3281435	CHH	.	+	{0:.6f}	0	1
                             """),
                   }
@@ -81,6 +81,17 @@ def config_file_path():
             [basic_quality_filtering]
               min_mapq = {MIN_MAPQ}
               min_phred_score = {MIN_PHRED}
+            
+            [trimming]
+              [trimming.relative_to_fragment_ends_dict]
+                w_bc    = [0, 20]
+                c_bc    = [0, 20]
+                w_bc_rv = [15, 0]
+                c_bc_rv = [15, 0]
+                
+            [data_properties]
+              max_read_length_bp = 101
+                
             """))
     yield user_config_file_path
     shutil.rmtree(config_file_dir)

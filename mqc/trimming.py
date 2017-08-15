@@ -1,3 +1,4 @@
+from mqc.mbias import CuttingSites
 from mqc.visitors import Visitor
 from mqc.pileup.pileup import MotifPileup
 from mqc.flag_and_index_values import bsseq_strand_indices, methylation_status_flags
@@ -22,7 +23,7 @@ class Trimmer(Visitor):
     are passed
     """
 
-    def __init__(self, config, cutting_sites):
+    def __init__(self, config, cutting_sites: CuttingSites):
         self.cutting_sites = cutting_sites
         self.cutting_sites_array = cutting_sites.get_array()
         self.max_flen = config["trimming"]["max_flen_considered_for_trimming"]
@@ -31,7 +32,7 @@ class Trimmer(Visitor):
         for read in motif_pileup.reads:
 
             if (read.meth_status_flag == mflags.is_na
-                or read.qc_fail_flag > 0):
+                or read.qc_fail_flag):
                 continue
 
             obs_tlen = abs(read.alignment.template_length)
