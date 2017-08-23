@@ -5,183 +5,213 @@ How do I run this?
 
 snakemake \
 --snakefile /home/kraemers/projects/mqc/mqc/tests/demo_snakefile.py \
+--config pids=mpp1_rep1,mpp1_rep2 \
 --cluster "qsub -S /bin/bash -l walltime={params.walltime},mem={params.mem},nodes=1:ppn={params.cores} -N {params.name}" \
---jobs 20 \
---jobscript /home/kraemers/projects/mqc/mqc/tests/jobscript.sh
--n
+--jobs 40 \
+--jobscript /home/kraemers/projects/mqc/mqc/tests/jobscript.sh \
+--dryrun
 
 """
 # TODO: remove these lines and test again
 shell.executable("/bin/bash")
 shell.prefix("module load python/3.6.0; source /home/kraemers/programs/python_virtualenvs/mqc_test/bin/activate; echo loaded mqc_test; ")
 
-# TODO: improve benchmarks
 import os.path as op
 
-sandbox_dir = "/icgc/dkfzlsdf/analysis/B080/kraemers/projects/mcall_qc/2sandbox"
-genome_dir = f"{sandbox_dir}/genomes/GRCm38mm10_PhiX_Lambda"
-grcm38_fa =  f"{genome_dir}/GRCm38mm10_PhiX_Lambda.fa"
-user_config_file = "/icgc/dkfzlsdf/analysis/B080/kraemers/projects/mcall_qc/sandbox/user_config.toml"
-hsc_rep1_dir = f"{sandbox_dir}/hsc_rep1"
-# hsc_rep1_dir = f"{sandbox_dir}/hsc_rep1_chr18-19-only"
-autosomes = [str(i) for i in range(1,20)]
-# autosomes = ['18', '19']
-other_chroms = ['X', 'Y', 'MT', 'phix', 'L']
-bam_template = "/icgc/dkfzlsdf/analysis/hs_ontogeny/results/wgbs/results_per_pid/hsc_rep1/alignment/blood_hsc_rep1_merged.mdup.bam"
+sandbox_dir = "/icgc/dkfzlsdf/analysis/B080/kraemers/projects/mcall_qc/sandbox"
+output_rpp_dir = f"{sandbox_dir}/results_per_pid"
+index_dir = f"{sandbox_dir}/genomes/GRCm38mm10_PhiX_Lambda"
+user_config_file = f"{sandbox_dir}/user_config.toml"
+alignment_rpp_dir = "/icgc/dkfzlsdf/analysis/hs_ontogeny/results/wgbs/results_per_pid"
+
+# autosomes = [str(i) for i in range(1,20)]
+# other_chroms = ['X', 'Y', 'MT', 'phix', 'L']
+
+autosomes = [str(i) for i in range(19,20)]
+other_chroms = ['L']
+
+config['pids'] = config['pids'].split(',')
+motifs_str_list = ['CG', 'CG-CHG-CHH']
 
 rule all:
     input:
-        index_files = expand("{genome_dir}/GRCm38mm10_PhiX_Lambda_{motif_str}_{chrom}.bed.gz",
-                             genome_dir=genome_dir,
-                             # Indices for other contigs will also be created
-                             # not referenced here, because unused
+        # mqc make_index
+        index_files = expand("{index_dir}/GRCm38mm10_PhiX_Lambda_{motifs_str}_{chrom}.bed.gz",
+                             index_dir=index_dir,
                              chrom=autosomes + other_chroms,
-                             motif_str=['CG', 'CG-CHG-CHH']),
+                             motifs_str=motifs_str_list),
 
-        mbias_stats = expand("{hsc_rep1_dir}/qc_stats/hsc_1_mbias-stats_{motif_str}.{ext}",
-                             hsc_rep1_dir=hsc_rep1_dir,
-                             motif_str=['CG', 'CG-CHG-CHH'], ext=['tsv', 'p']),
+        # mqc stats
+        mbias_counts = expand("{output_rpp_dir}/{pid}/meth/qc_stats/{pid}_mbias-counts_{motifs_str}.{ext}",
+                              output_rpp_dir=output_rpp_dir,
+                              pid=config['pids'],
+                              motifs_str=motifs_str_list,
+                              ext=['p', 'tsv']),
 
-        cg_mcalls = expand("{hsc_rep1_dir}/cg-only-test/meth_calls/mcalls_hsc_1_{motif_str}_{chrom}.bed.gz",
-                           hsc_rep1_dir=hsc_rep1_dir,
-                           motif_str = 'CG',
-                           chrom=autosomes),
+        # mqc evaluate_mbias
+        mbias_stats = expand(["{output_rpp_dir}/{pid}/meth/qc_stats/{pid}_mbias-stats_{motifs_str}.p",
+                              "{output_rpp_dir}/{pid}/meth/qc_stats/{pid}_mbias-stats_masked_{motifs_str}.p",
+                              "{output_rpp_dir}/{pid}/meth/qc_stats/{pid}_adjusted_cutting_sites_obj_{motifs_str}.p",
+                              "{output_rpp_dir}/{pid}/meth/qc_stats/{pid}_adjusted_cutting_sites_df_{motifs_str}.p",
+                              "{output_rpp_dir}/{pid}/meth/qc_stats/{pid}_adjusted-cutting-sites_barplot_{motifs_str}.png",
+                              "{output_rpp_dir}/{pid}/meth/qc_stats/.done_{motifs_str}_{pid}_mbias-line-plot",
+                              "{output_rpp_dir}/{pid}/meth/qc_stats/.done_{motifs_str}_{pid}_freq-line-plot",],
+                             output_rpp_dir=output_rpp_dir,
+                             pid=config['pids'],
+                             motifs_str=motifs_str_list),
 
-        all_motif_mcalls = expand("{hsc_rep1_dir}/all-motifs-test/meth_calls/mcalls_hsc_1_{motif_str}_{chrom}.bed.gz",
-                                  hsc_rep1_dir=hsc_rep1_dir,
-                                  motif_str=['CG', 'CHG', 'CHH'],
-                                  chrom=autosomes),
+        # mqc call
+        meth_calls = expand("{output_rpp_dir}/{pid}/meth/meth_calls/mcalls_{pid}_{single_motif}_{chrom}.bed.gz",
+                            output_rpp_dir=output_rpp_dir,
+                            pid=config['pids'],
+                            single_motif=['CG', 'CHG', 'CHH'],
+                            chrom=autosomes + other_chroms),
 
-rule make_all_motifs_index:
-    input: grcm38_fa
+        meth_calls_cg_only = expand("{output_rpp_dir}/{pid}_cg-only/meth/meth_calls/mcalls_{pid}_cg-only_CG_{chrom}.bed.gz",
+                                    output_rpp_dir=output_rpp_dir,
+                                    pid=config['pids'],
+                                    chrom=autosomes + other_chroms),
+
+rule make_index:
+    input: f"{index_dir}/GRCm38mm10_PhiX_Lambda.fa",
     params:
-        output_dir = genome_dir,
+        output_dir = index_dir,
         walltime = '08:00:00',
         mem = '8g',
         cores = '12',
-        name = 'make_all_motifs_index',
+        name = 'make_index_{motifs_str}',
+        motifs_flags = lambda wildcards: '--cg' if wildcards.motifs_str == 'CG' else '--cg --chg --chh',
     output:
-        index_files = expand("{genome_dir}/GRCm38mm10_PhiX_Lambda_CG-CHG-CHH_{chrom}.bed.gz",
-                             genome_dir=genome_dir,
-                             chrom=autosomes + other_chroms)
-    benchmark: f"{genome_dir}/index-benchmark_all-motifs.txt"
+        index_files = expand("{index_dir}/GRCm38mm10_PhiX_Lambda_{{motifs_str}}_{chrom}.bed.gz",
+                             index_dir=index_dir,
+                             chrom=autosomes + other_chroms),
     shell:
         """
         mqc make_index --genome_fasta {input} \
         --output_dir {params.output_dir} \
-        --cores 12 \
-        --cg --chg --chh
+        --cores {params.cores} \
+        {params.motifs_flags}
         """
 
-rule make_cg_index:
-    input: grcm38_fa
-    output:
-        index_files = expand("{genome_dir}/GRCm38mm10_PhiX_Lambda_CG_{chrom}.bed.gz",
-                             genome_dir=genome_dir,
-                             chrom=autosomes + other_chroms)
-    params:
-        output_dir = genome_dir,
-        walltime = '08:00:00',
-        mem = '8g',
-        cores = '12',
-        name = 'make_cg_motifs_index',
-    benchmark: f"{genome_dir}/index-benchmark_cg.txt"
-    shell:
-        """
-        mqc make_index --genome_fasta {input} \
-        --output_dir {params.output_dir} \
-        --cores 12 \
-        --cg
-        """
 
-# TODO: benchmark
 rule get_stats:
     input:
-        bam=bam_template,
-        index_files = expand("{genome_dir}/GRCm38mm10_PhiX_Lambda_{{motif_str}}_{chrom}.bed.gz",
-                             genome_dir=genome_dir,
+        bam=f"{alignment_rpp_dir}/{{pid}}/alignment/blood_{{pid}}_merged.mdup.bam",
+        index_files = expand("{index_dir}/GRCm38mm10_PhiX_Lambda_{{motifs_str}}_{chrom}.bed.gz",
+                             index_dir=index_dir,
                              chrom=autosomes),
     params:
         config_file = user_config_file,
-        output_dir = hsc_rep1_dir,
-        motif_csv = lambda wildcards: ','.join(wildcards.motif_str.split('-')),
-        walltime = '48:00:00',
-        mem = '12g',
-        cores = '10',
-        name = 'get_stats_{motif_str}',
-    benchmark: f"{hsc_rep1_dir}/benchmark_mbias-stats.txt"
+        output_dir = f"{output_rpp_dir}/{{pid}}/meth/",
+        motif_csv = lambda wildcards: ','.join(wildcards.motifs_str.split('-')),
+        walltime = lambda wildcards: '01:30:00' if wildcards.motifs_str == 'CG' else '08:00:00',
+        mem = '2g',
+        cores = '12',
+        name = 'get_stats_{pid}_{motifs_str}',
+        sample_meta = lambda wildcards: f"population={wildcards.pid.split('_')[0]},rep={wildcards.pid.split('_')[-1]}",
     output:
-        mbias_stats = expand("{hsc_rep1_dir}/qc_stats/hsc_1_mbias-stats_{{motif_str}}.{ext}",
-                              hsc_rep1_dir = hsc_rep1_dir,
-                              ext=['tsv', 'p']),
+        mbias_counts_p = f"{output_rpp_dir}/{{pid}}/meth/qc_stats/{{pid}}_mbias-counts_{{motifs_str}}.p",
+        mbias_counts_tsv = f"{output_rpp_dir}/{{pid}}/meth/qc_stats/{{pid}}_mbias-counts_{{motifs_str}}.tsv",
     shell:
         """
         mqc stats \
             --bam {input.bam} \
             --config_file {params.config_file} \
             --output_dir {params.output_dir} \
-            --sample_name hsc_1 \
-            --sample_meta population=HSC,rep=rep1 \
-            --cores 10 \
+            --sample_name {wildcards.pid} \
+            --sample_meta {params.sample_meta} \
+            --cores {params.cores} \
             --motifs {params.motif_csv} \
             {input.index_files}
         """
 
 
-common_meth_call_params = dict(
-    config_file = user_config_file,
-    mem = '12g',
-    cores = '10',
-)
+
+rule evaluate_mbias:
+    input:
+        mbias_counts_p = f"{output_rpp_dir}/{{pid}}/meth/qc_stats/{{pid}}_mbias-counts_{{motifs_str}}.p",
+    output:
+        mbias_stats_p                = f"{output_rpp_dir}/{{pid}}/meth/qc_stats/{{pid}}_mbias-stats_{{motifs_str}}.p",
+        mbias_stats_masked_p         = f"{output_rpp_dir}/{{pid}}/meth/qc_stats/{{pid}}_mbias-stats_masked_{{motifs_str}}.p",
+        adjusted_cutting_sites_obj_p = f"{output_rpp_dir}/{{pid}}/meth/qc_stats/{{pid}}_adjusted_cutting_sites_obj_{{motifs_str}}.p",
+        adjusted_cutting_sites_df_p  = f"{output_rpp_dir}/{{pid}}/meth/qc_stats/{{pid}}_adjusted_cutting_sites_df_{{motifs_str}}.p",
+        adj_cutting_sites_plot_done  = f"{output_rpp_dir}/{{pid}}/meth/qc_stats/{{pid}}_adjusted-cutting-sites_barplot_{{motifs_str}}.png",
+        mbias_line_plots_done        = touch(f"{output_rpp_dir}/{{pid}}/meth/qc_stats/.done_{{motifs_str}}_{{pid}}_mbias-line-plot"),
+        freq_line_plot_done          = touch(f"{output_rpp_dir}/{{pid}}/meth/qc_stats/.done_{{motifs_str}}_{{pid}}_freq-line-plot"),
+    params:
+        config_file = user_config_file,
+        output_dir = f"{output_rpp_dir}/{{pid}}/meth/",
+        motif_csv = lambda wildcards: ','.join(wildcards.motifs_str.split('-')),
+        walltime = '00:30:00',
+        mem = '6g',
+        cores = '2',
+        name = 'evalute_mbias_{pid}_{motifs_str}',
+        sample_meta = lambda wildcards: f"population={wildcards.pid.split('_')[0]},rep={wildcards.pid.split('_')[-1]}",
+    shell:
+        """
+        mqc evaluate_mbias \
+        --config_file {params.config_file} \
+        --motifs {params.motif_csv} \
+        --sample_name {wildcards.pid} \
+        --sample_meta {params.sample_meta} \
+        --output_dir {params.output_dir}
+        """
+
+
 
 mcall_command = (
     'mqc call'
     ' --bam {input.bam}'
     ' --config_file {params.config_file}'
     ' --output_dir {params.output_dir}'
-    ' --sample_name hsc_1'
-    ' --sample_meta population=HSC,rep=rep1'
-    ' --cores 10'
+    ' --sample_name {params.pid}'
+    ' --sample_meta {params.sample_meta}'
+    ' --cores {params.cores}'
     ' {input.index_files}'
 )
 
 rule call_meth_for_CG:
     input:
-        bam=bam_template,
-        #TODO: can expand deal with scalar strings?
-        index_files = expand("{genome_dir}/GRCm38mm10_PhiX_Lambda_CG_{chrom}.bed.gz",
-                             genome_dir=genome_dir,
-                             chrom=autosomes),
+        bam=f"{alignment_rpp_dir}/{{pid}}/alignment/blood_{{pid}}_merged.mdup.bam",
+        index_files = expand("{index_dir}/GRCm38mm10_PhiX_Lambda_CG_{chrom}.bed.gz",
+                             index_dir=index_dir,
+                             chrom=autosomes + other_chroms)
     params:
-        **common_meth_call_params,
-        output_dir= f"{hsc_rep1_dir}/cg-only-test",
-        walltime = '60:00:00',
-        name = 'mcall_CG',
-    benchmark: f"{hsc_rep1_dir}/benchmark_mcall-cg-only.txt"
+        config_file = user_config_file,
+        mem = '8g',
+        cores = '12',
+        walltime = '04:00:00',
+        output_dir = f"{output_rpp_dir}/{{pid}}_cg-only/meth/",
+        name = 'mcall_CG_{pid}_cg-only',
+        sample_meta = lambda wildcards: f"population={wildcards.pid.split('_')[0]},rep={wildcards.pid.split('_')[-1]}",
+        pid = "{pid}_cg-only",
     output:
-        expand("{hsc_rep1_dir}/cg-only-test/meth_calls/mcalls_hsc_1_CG_{chrom}.bed.gz",
-               hsc_rep1_dir=hsc_rep1_dir,
-               chrom=autosomes),
+        expand("{output_rpp_dir}/{{pid}}_cg-only/meth/meth_calls/mcalls_{{pid}}_cg-only_CG_{chrom}.bed.gz",
+               output_rpp_dir=output_rpp_dir,
+               chrom=autosomes + other_chroms),
     shell: mcall_command
 
 
 rule call_meth_for_all_motifs:
     input:
-        bam=bam_template,
-        index_files = expand("{genome_dir}/GRCm38mm10_PhiX_Lambda_CG-CHG-CHH_{chrom}.bed.gz",
-                             genome_dir=genome_dir,
-                             chrom=autosomes),
+        bam=f"{alignment_rpp_dir}/{{pid}}/alignment/blood_{{pid}}_merged.mdup.bam",
+        index_files = expand("{index_dir}/GRCm38mm10_PhiX_Lambda_CG-CHG-CHH_{chrom}.bed.gz",
+                             index_dir=index_dir,
+                             chrom=autosomes + other_chroms)
     params:
-        **common_meth_call_params,
-        output_dir = f"{hsc_rep1_dir}/all-motifs-test",
-        walltime = '60:00:00',
-        name = 'mcall_CG-CHG-CHH',
-    benchmark: f"{hsc_rep1_dir}/benchmark_mcall-all-motifs.txt"
+        config_file = user_config_file,
+        mem = '8g',
+        cores = '12',
+        output_dir = f"{output_rpp_dir}/{{pid}}/meth/",
+        walltime = '42:00:00',
+        name = 'mcall_CG-CHG-CHH_{pid}',
+        sample_meta = lambda wildcards: f"population={wildcards.pid.split('_')[0]},rep={wildcards.pid.split('_')[-1]}",
+        pid = "{pid}",
     output:
-        expand("{hsc_rep1_dir}/all-motifs-test/meth_calls/mcalls_hsc_1_{motif_str}_{chrom}.bed.gz",
-               hsc_rep1_dir=hsc_rep1_dir,
-               motif_str=['CG', 'CHG', 'CHH'],
-               chrom=autosomes),
+        expand("{output_rpp_dir}/{{pid}}/meth/meth_calls/mcalls_{{pid}}_{single_motif}_{chrom}.bed.gz",
+               output_rpp_dir=output_rpp_dir,
+               chrom=autosomes + other_chroms,
+               single_motif=['CG', 'CHG', 'CHH']),
     shell: mcall_command
 
 ## Obsolete, because we are now using the reference genome in ngs share
