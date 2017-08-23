@@ -2,13 +2,17 @@ import gzip
 import os.path as op
 from itertools import product
 
+import pickle
 import pytest
 import shutil
 import subprocess
 import tempfile
 from textwrap import dedent
 
+import pytoml
+
 from mqc.config import assemble_config_vars
+from mqc.mbias import FixedRelativeCuttingSites
 
 """ All motifs test
 """
@@ -71,18 +75,11 @@ def expected_results_dict():
                   }
             }
 
-
-@pytest.fixture(scope='module')
-def config_file_path():
-    config_file_dir = tempfile.mkdtemp()
-    user_config_file_path = op.join(config_file_dir, 'user_config.toml')
-    with open(user_config_file_path, 'wt') as fobj:
-        fobj.write(dedent(f"""\
-            [basic_quality_filtering]
-              min_mapq = {MIN_MAPQ}
-              min_phred_score = {MIN_PHRED}
-            
+@pytest.fixture(scope="module")
+def cutting_sites_obj_fp():
+    config_stub = pytoml.loads(dedent("""
             [trimming]
+              max_flen_considered_for_trimming = 500
               [trimming.relative_to_fragment_ends_dict]
                 w_bc    = [0, 20]
                 c_bc    = [0, 20]
@@ -91,19 +88,76 @@ def config_file_path():
                 
             [data_properties]
               max_read_length_bp = 101
-                
-            """))
+    """))
+    fixed_cutting_sites = FixedRelativeCuttingSites(config_stub)
+    tmpdir = tempfile.mkdtemp()
+    fixed_cutting_sites_fp = op.join(tmpdir, 'cutting_sites.p')
+    with open(fixed_cutting_sites_fp, 'wb') as fout:
+        pickle.dump(fixed_cutting_sites, fout)
+    yield fixed_cutting_sites_fp
+    shutil.rmtree(tmpdir)
+
+@pytest.fixture(scope='module',
+                params=['correct_fixed_cut_sites', 'all_zero_fixed_cut_sites'])
+def config_file_path(request, cutting_sites_obj_fp):
+
+    config_file_dir = tempfile.mkdtemp()
+    user_config_file_path = op.join(config_file_dir, f"{request.param}.toml")
+
+    config_file_text = dedent(f"""
+            [basic_quality_filtering]
+              min_mapq = {MIN_MAPQ}
+              min_phred_score = {MIN_PHRED}
+            
+            [data_properties]
+              max_read_length_bp = 101
+            """)
+
+    if request.param == 'correct_fixed_cut_sites':
+        config_file_text += dedent("""
+            [trimming]
+              [trimming.relative_to_fragment_ends_dict]
+                w_bc    = [0, 20]
+                c_bc    = [0, 20]
+                w_bc_rv = [15, 0]
+                c_bc_rv = [15, 0]
+                """)
+    else:
+        config_file_text += dedent(f"""
+            [trimming]
+              [trimming.relative_to_fragment_ends_dict]
+                w_bc    = [0, 0]
+                c_bc    = [0, 0]
+                w_bc_rv = [0, 0]
+                c_bc_rv = [0, 0]
+            
+            [paths]
+              adjusted_cutting_sites_obj_p  = "{cutting_sites_obj_fp}"
+              
+            """)
+
+    with open(user_config_file_path, "wt") as fobj:
+        fobj.write(config_file_text)
+
     yield user_config_file_path
+
     shutil.rmtree(config_file_dir)
 
-@pytest.fixture(scope='module')
+@pytest.fixture(scope="module")
 def base_command_list(config_file_path):
-    return ['mqc', 'call',
-            '--bam', TEST_BAM,
-            '--config_file', config_file_path,
-            '--sample_name', SAMPLE_NAME,
-            '--sample_meta', SAMPLE_META,
-            '--cores', '2']
+
+    base_command_list = ['mqc', 'call',
+                         '--bam', TEST_BAM,
+                         '--config_file', config_file_path,
+                         '--sample_name', SAMPLE_NAME,
+                         '--sample_meta', SAMPLE_META,
+                         '--cores', '2']
+
+    if 'all_zero_fixed_cut_sites' in config_file_path:
+        base_command_list += ['--use_mbias_fit']
+
+    return base_command_list
+
 
 def get_text_of_call_files(output_dir, motifs_str, user_config_file):
     config = assemble_config_vars(

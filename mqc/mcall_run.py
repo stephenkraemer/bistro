@@ -1,31 +1,19 @@
-"""Manage runs across a set of index positions
-
-Implementation notes
---------------------
-- no OrderedDict type available for type annotation, using Dict
-"""
+"""Manage runs across a set of index positions"""
 
 import multiprocessing as mp
-import re
 from abc import abstractmethod, ABCMeta
 from collections import OrderedDict
 from copy import deepcopy
 from typing import Dict, List
-import os.path as op
 import os
-import pwd
 import pickle
-import pandas as pd
-import numpy as np
 
 import pysam
 
 from mqc.index import IndexFile
 from mqc.pileup.pileup import stepwise_pileup_generator
 from mqc.visitors import Counter, Visitor
-from mqc.mbias import MbiasCounter, FixedRelativeCuttingSites, \
-    AdjustedCuttingSites, compute_mbias_stats_df, mask_mbias_stats_df, \
-    create_mbias_stats_plots, analyze_mbias_counts
+from mqc.mbias import MbiasCounter, FixedRelativeCuttingSites
 from mqc.mcaller import MethCaller
 from mqc.writers import BedWriter
 from mqc.qc_filters import PhredFilter, MapqFilter
@@ -55,22 +43,14 @@ def collect_stats(config):
 
 
 def run_mcalling(config):
-
-    """Conceptual draft of a function to perform methylation calling and QC"""
-    # first_run = MbiasDeterminationRun(config, cutting_sites=None)
-    # first_run.run_parallel()
-    # mbias_counter = first_run.summed_up_counters['mbias_counter']
-    # mbias_data = MbiasData(mbias_counter, config)
-    # adjusted_cutting_sites = AdjustedMbiasCuttingSites(
-    #     mbias_data, calling_mode='adjusted', config=config)
-    # second_run = QcAndMethCallingRun(config,
-    #                                  adjusted_cutting_sites.get_array())
-    fixed_cutting_sites =  FixedRelativeCuttingSites(config)
+    if config['run']['use_mbias_fit']:
+        with open(config['paths']['adjusted_cutting_sites_obj_p'], 'rb') as fin:
+            cutting_sites = pickle.load(fin)
+    else:
+        cutting_sites =  FixedRelativeCuttingSites(config)
     second_run = QcAndMethCallingRun(config,
-                                     cutting_sites=fixed_cutting_sites)
+                                     cutting_sites=cutting_sites)
     second_run.run_parallel()
-    # beta_value_counter = second_run.summed_up_counters['beta_counter']
-    # further processing
 
 
 class PileupRun(metaclass=ABCMeta):

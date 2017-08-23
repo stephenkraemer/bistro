@@ -68,7 +68,7 @@ def stats(ctx, bam, index_files,
 #==============================================================================
 #                             mqc evaluate_mbias
 #==============================================================================
-from mqc.mcall_run import analyze_mbias_counts
+from mqc.mbias import analyze_mbias_counts
 @mqc.command()
 @click.option('--config_file', type=input_click_path, help='[optional]')
 @click.option('--motifs', help='e.g. CG or CG,CHG,CHH')
@@ -112,10 +112,11 @@ def evaluate_mbias(ctx, config_file, motifs, output_dir, sample_name, sample_met
               help="Pass additional metadata as"
                    " 'key=value,key2=value2' [optional]")
 @click.option('--cores', default=1)
+@click.option('--use_mbias_fit', is_flag=True)
 @click.pass_context
 def call(ctx, bam, index_files,
           output_dir, config_file,
-          sample_name, sample_meta, cores):
+          sample_name, sample_meta, cores, use_mbias_fit):
     """Methylation calling"""
 
     package_top_level_dir = op.abspath(op.dirname(__file__))

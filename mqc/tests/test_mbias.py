@@ -22,7 +22,7 @@ from mqc.mbias import fit_normalvariate_plateau
 from mqc.mbias import AdjustedCuttingSites
 from mqc.mbias import mask_mbias_stats_df
 from mqc.mbias import convert_cutting_sites_df_to_array
-from mqc.mcall_run import analyze_mbias_counts
+from mqc.mbias import analyze_mbias_counts
 
 import mqc.flag_and_index_values as mfl
 
@@ -153,14 +153,15 @@ def test_fixed_cutting_sites_are_computed_correctly():
     cutting_arr = fixed_cutting_sites.get_array()
     cutting_df = fixed_cutting_sites.get_df()
 
-    expected_result = (pd.DataFrame([['w_bc', 70, 'left', 10],
-                                    ['c_bc_rv', 90, 'right', 79],
-                                    ['w_bc', 110, 'right', 99],
-                                    ['w_bc', 111, 'right', 100],
-                                    ['w_bc', 115, 'right', 100],
-                                    ['c_bc_rv', 300, 'left', 10]],
-                                   columns='bs_strand flen end inclusive_bound'.split())
-                       .set_index('bs_strand flen end'.split()))
+    expected_result = (pd.DataFrame([['w_bc', 70, 'left_cut_end', 10],
+                                    ['c_bc_rv', 90, 'right_cut_end', 79],
+                                    ['w_bc', 110, 'right_cut_end', 99],
+                                    ['w_bc', 111, 'right_cut_end', 100],
+                                    ['w_bc', 115, 'right_cut_end', 100],
+                                    ['c_bc_rv', 300, 'left_cut_end', 10]],
+                                   columns=['bs_strand', 'flen', 'cut_end', 'cut_pos'])
+                       .set_index(['bs_strand', 'flen', 'cut_end'])
+                       )
 
     computed_result = cutting_df.loc[expected_result.index, :]
 
