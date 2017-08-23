@@ -11,7 +11,7 @@ class BedWriter(Visitor):
 
         #TODO: avoid hard coding
         meth_calls_path_template = (
-            config['paths']['call']['meth_calls_basepath']
+            config['paths']['meth_calls_basepath']
             + f"_{config['sample']['name']}_{{motif}}_{chrom}.bed.gz")
 
         os.makedirs(op.dirname(meth_calls_path_template), exist_ok=True, mode=0o770)

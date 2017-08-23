@@ -98,7 +98,7 @@ class Counter(metaclass=ABCMeta):
 
             Dataframe with one column per array dimension, named after
             :attr:`~mqc.Counter.dim_names`, and an additional column
-            for the counts, named 'Counts'
+            for the counts, named 'counts'
         """
         if self._counter_dataframe.empty:
             self._counter_dataframe = self._compute_dataframe()
@@ -108,7 +108,7 @@ class Counter(metaclass=ABCMeta):
         return convert_array_to_df(arr=self.counter_array,
                                    dim_levels=self.dim_levels,
                                    dim_names=self.dim_names,
-                                   value_column_name='Counts')
+                                   value_column_name='counts')
 
 
 

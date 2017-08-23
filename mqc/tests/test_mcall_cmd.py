@@ -112,11 +112,10 @@ def get_text_of_call_files(output_dir, motifs_str, user_config_file):
                                     sample_meta=SAMPLE_META,
                                     motifs_str=motifs_str),
         default_config_file_path=DEFAULT_CONFIG_FILE,
-        command='call',
         user_config_file_path=user_config_file)
 
     def read_calls(chrom, motif):
-        mcall_fp = (config['paths']['call']['meth_calls_basepath']
+        mcall_fp = (config['paths']['meth_calls_basepath']
                     + f"_{SAMPLE_NAME}_{motif}_{chrom}.bed.gz")
         with gzip.open(mcall_fp, 'rt') as fobj:
             file_content = fobj.read()

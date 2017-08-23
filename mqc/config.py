@@ -9,7 +9,6 @@ from collections import OrderedDict
 
 def assemble_config_vars(command_line_args_dict: dict,
                          default_config_file_path: str,
-                         command: str,
                          user_config_file_path: str = '', ):
     """Assemble configuration variables in one dict and expand paths
 
@@ -103,29 +102,29 @@ def assemble_config_vars(command_line_args_dict: dict,
     output_dir = config['run']['output_dir']
     if not os.path.isabs(output_dir):
         raise ValueError("The output_dir path must be absolute.")
-    config['paths'][command]['output_dir'] = output_dir
+    config['paths']['output_dir'] = output_dir
 
     # Expand braced fields in paths
-    path_names = list(config['paths'][command].keys())
+    path_names = list(config['paths'].keys())
     for curr_path_name in path_names:
-        config['paths'][command][curr_path_name] = _expand_path(config, curr_path_name, command)
+        config['paths'][curr_path_name] = _expand_path(config, curr_path_name)
 
     # Prepend output dir to paths if they are relative
     for curr_path_name in path_names:
-        if not os.path.isabs(config['paths'][command][curr_path_name]):
-            config['paths'][command][curr_path_name] = os.path.join(
-                config['paths'][command]['output_dir'], config['paths'][command][curr_path_name])
+        if not os.path.isabs(config['paths'][curr_path_name]):
+            config['paths'][curr_path_name] = os.path.join(
+                config['paths']['output_dir'], config['paths'][curr_path_name])
 
     return config
 
 
-def _expand_path(config, path_name, command):
+def _expand_path(config, path_name):
     """Expand single path
 
     Path expansion is explained in the docstring for assemble_config_vars
     """
     field_pattern = r'{(.*?)}'
-    path_to_expand = config['paths'][command][path_name]
+    path_to_expand = config['paths'][path_name]
     field_names_unexpanded_path = re.findall(field_pattern,
                                              path_to_expand)
     for curr_field_name in field_names_unexpanded_path:
@@ -133,11 +132,11 @@ def _expand_path(config, path_name, command):
             curr_field_value = config['sample'][curr_field_name]
         elif curr_field_name in config['run']:
             curr_field_value = config['run'][curr_field_name]
-        elif curr_field_name in config['paths'][command]:
-            curr_field_value = config['paths'][command][curr_field_name]
+        elif curr_field_name in config['paths']:
+            curr_field_value = config['paths'][curr_field_name]
             if re.search(field_pattern, curr_field_value):
-                curr_field_value = _expand_path(config, curr_field_name, command)
-                config['paths'][command][curr_field_name] = curr_field_value
+                curr_field_value = _expand_path(config, curr_field_name)
+                config['paths'][curr_field_name] = curr_field_value
         else:
             raise ValueError(f"Can't expand path {path_to_expand}")
         path_to_expand = path_to_expand.replace(

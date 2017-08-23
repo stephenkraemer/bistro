@@ -6,15 +6,10 @@
   min_phred_score = 25
 
 [trimming]
+  min_plateau_perc = 0.8
   max_flen_considered_for_trimming = 600
-  required_n_events_for_cutting_site_determination = 5000
-  max_window_size_for_smoothing = 30
-  min_plateau_length = 60
-  max_std_within_plateau = 0.1
-  # Don't use out-of-bounds fragment lengths! (see max_flen/min_flen params)
-  flens_to_show_in_plots = [
-    50, 70, 80, 90, 100, 110, 130, 150, 200, 250, 300, 350
-  ]
+  min_flen_considered_for_trimming = 50
+  max_std_within_plateau = 0.05
 
   # for customization, you have to give a *complete* new dict
   [trimming.relative_to_fragment_ends_dict]
@@ -22,6 +17,10 @@
     c_bc = [0, 9]
     w_bc_rv = [9, 0]
     c_bc_rv = [9, 0]
+
+[plots]
+  mbias_flens_to_display = [60, 75, 90, 100, 120, 150, 200, 300, 500]
+  mbias_phreds_to_display = [0, 5, 10, 15, 20, 25, 30, 35, 40]
 
 [beta_value_dist_stats]
   min_cov = 10
@@ -42,10 +41,18 @@
 
 # Paths section must be at end of file!
 [paths]
-  [paths.stats]
-      qc_stats_dir = "qc_stats"
-      mbias_stats_tsv = "{qc_stats_dir}/{name}_mbias-stats_{motifs_str}.tsv"
-      mbias_stats_p = "{qc_stats_dir}/{name}_mbias-stats_{motifs_str}.p"
-  [paths.call]
-      meth_calls_basepath = "meth_calls/mcalls"
+  qc_stats_dir                  = 'qc_stats'
+  mbias_counts_p                = "{qc_stats_dir}/{name}_mbias-counts_{motifs_str}.p"
+  mbias_counts_tsv              = "{qc_stats_dir}/{name}_mbias-counts_{motifs_str}.tsv"
+  mbias_stats_p                 = "{qc_stats_dir}/{name}_mbias-stats_{motifs_str}.p"
+  mbias_stats_tsv               = "{qc_stats_dir}/{name}_mbias-stats_{motifs_str}.tsv"
+  mbias_stats_masked_p          = "{qc_stats_dir}/{name}_mbias-stats_masked_{motifs_str}.p"
+  mbias_stats_masked_tsv        = "{qc_stats_dir}/{name}_mbias-stats_masked_{motifs_str}.tsv"
+  adjusted_cutting_sites_obj_p  = "{qc_stats_dir}/{name}_adjusted_cutting_sites_obj_{motifs_str}.p"
+  adjusted_cutting_sites_df_p   = "{qc_stats_dir}/{name}_adjusted_cutting_sites_df_{motifs_str}.p"
+  adjusted_cutting_sites_df_tsv = "{qc_stats_dir}/{name}_adjusted_cutting_sites_df_{motifs_str}.tsv"
+  mbias_plots_trunk             = "{qc_stats_dir}/{name}_mbias-line-plot_{motifs_str}"
+  cg_occurence_plot_trunk       = "{qc_stats_dir}/{name}_freq-line-plot_{motifs_str}"
+  adj_cutting_sites_plot        = "{qc_stats_dir}/{name}_adjusted-cutting-sites_barplot_{motifs_str}.png"
+  meth_calls_basepath           = "meth_calls/mcalls"
 

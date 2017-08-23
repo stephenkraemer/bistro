@@ -78,7 +78,7 @@ def test_bed_writer_computes_bed_lines_and_writes_to_one_file_per_motif(mocker):
         n_meth = 5,
         n_unmeth = 0
     )
-    config_stub = {'paths': {'call': {'meth_calls_basepath': 'does/not/matter'}},
+    config_stub = {'paths': {'meth_calls_basepath': 'does/not/matter'},
                    'sample': {'name': 'hsc_1'},
                    'run': {'motifs': 'CG CHG CHH'.split()}}
 

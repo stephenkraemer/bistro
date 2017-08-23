@@ -14,18 +14,24 @@ from typing import Dict, List
 import os.path as op
 import os
 import pwd
+import pickle
+import pandas as pd
+import numpy as np
 
 import pysam
 
 from mqc.index import IndexFile
 from mqc.pileup.pileup import stepwise_pileup_generator
 from mqc.visitors import Counter, Visitor
-from mqc.mbias import MbiasCounter, FixedRelativeCuttingSites
+from mqc.mbias import MbiasCounter, FixedRelativeCuttingSites, \
+    AdjustedCuttingSites, compute_mbias_stats_df, mask_mbias_stats_df, \
+    create_mbias_stats_plots, analyze_mbias_counts
 from mqc.mcaller import MethCaller
 from mqc.writers import BedWriter
 from mqc.qc_filters import PhredFilter, MapqFilter
 from mqc.trimming import Trimmer
 from mqc.overlap import OverlapHandler
+
 
 
 # from mqc.mbias import MbiasData, AdjustedMbiasCuttingSites, MbiasCounter
@@ -37,13 +43,16 @@ def collect_stats(config):
 
     mbias_run = MbiasDeterminationRun(config, cutting_sites=None)
     mbias_run.run_parallel()
-    mbias_counter: Counter = mbias_run.summed_up_counters['mbias_counter']
-    mbias_df = mbias_counter.get_dataframe()
+    mbias_counter: MbiasCounter = mbias_run.summed_up_counters['mbias_counter']
+    mbias_counts_df = mbias_counter.get_dataframe()
+
     # TODO-refactor: all dirs should be created at once in the beginning
-    os.makedirs(config['paths']['stats']['qc_stats_dir'], exist_ok=True, mode=0o777)
-    mbias_df.reset_index().to_csv(config['paths']['stats']['mbias_stats_tsv'],
+    os.makedirs(config['paths']['qc_stats_dir'], exist_ok=True, mode=0o777)
+    mbias_counts_df.reset_index().to_csv(config['paths']['mbias_counts_tsv'],
                                   sep = "\t", header = True, index = False)
-    mbias_df.to_pickle(config['paths']['stats']['mbias_stats_p'])
+    mbias_counts_df.to_pickle(config['paths']['mbias_counts_p'])
+
+
 
 def run_mcalling(config):
 

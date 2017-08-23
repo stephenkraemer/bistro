@@ -21,7 +21,7 @@ TESTS_DIR = op.dirname(__file__)
 SAMPLE_NAME = 'hsc_rep1'
 SAMPLE_META = 'population=hsc,rep=1,model=blk6'
 DEFAULT_CONFIG_FILE = op.join(TESTS_DIR, '../config.default.toml')
-columns = 'Motif BS_strand Flen Pos Meth_status Counts'.split()
+columns = ['motif', 'bs_strand', 'flen', 'pos', 'meth_status', 'counts']
 index_cols = columns[0:-1]
 USER_FLEN_MAX = 200
 
@@ -91,7 +91,6 @@ def default_paths(filled_mbias_stats_results_dir):
                                     # assemble_config_vars within collect_stats
                                     motifs_str='CG-CHG'),
         default_config_file_path=DEFAULT_CONFIG_FILE,
-        command='stats',
         user_config_file_path='')
     return config['paths']
 
@@ -100,22 +99,22 @@ def mbias_stats_df(default_paths):
     """columns.name provides info about user config file presence"""
     # function scope is necessary because I modify this dataframe
     # in some tests
-    mbias_stats_p_path = default_paths['stats']['mbias_stats_p']
+    mbias_stats_p_path = default_paths['mbias_counts_p']
     df = pd.read_pickle(mbias_stats_p_path)
     df.columns.name = 'with_user_config' if 'with_user_config' in mbias_stats_p_path else 'no_user_config'
     return df
 
 
 expected_counts_df = (pd.DataFrame(
-    [('CHG', 'W_BC',    116, 24, 'u', 2),
-     ('CHG', 'W_BC_RV', 116, 93, 'u', 2),
-     ('CG',  'C_BC_RV', 146, 81, 'm', 2),
-     ('CG',  'W_BC',    116, 25, 'm', 2),
-     ('CG',  'W_BC_RV', 116, 92, 'm', 2),
-     ('CG',  'C_BC',    146, 66, 'm', 2),
-     ('CG',  'W_BC',    116, 64, 'u', 2),
-     ('CG',  'W_BC_RV', 116, 53, 'm', 2),
-     ('CG',  'C_BC',    146, 27, 'm', 2),],
+    [('CHG', 'w_bc',    116, 24, 'n_unmeth', 2),
+     ('CHG', 'w_bc_rv', 116, 93, 'n_unmeth', 2),
+     ('CG',  'c_bc_rv', 146, 81, 'n_meth', 2),
+     ('CG',  'w_bc',    116, 25, 'n_meth', 2),
+     ('CG',  'w_bc_rv', 116, 92, 'n_meth', 2),
+     ('CG',  'c_bc',    146, 66, 'n_meth', 2),
+     ('CG',  'w_bc',    116, 64, 'n_unmeth', 2),
+     ('CG',  'w_bc_rv', 116, 53, 'n_meth', 2),
+     ('CG',  'c_bc',    146, 27, 'n_meth', 2),],
     columns = columns)
                       .set_index(columns[:-1])
                       .sort_index())
@@ -127,22 +126,22 @@ expected_counts_df = (pd.DataFrame(
 @pytest.mark.parametrize("stratum_idx,values",
                          expected_counts_df.iterrows())
 def test_stats_generation_on_small_bam_with_undefined_properties(stratum_idx, values, mbias_stats_df):
-    assert mbias_stats_df.loc[stratum_idx, 'Counts'] == values['Counts'], repr(stratum_idx)
+    assert mbias_stats_df.loc[stratum_idx, 'counts'] == values['counts'], repr(stratum_idx)
 
 
 @pytest.mark.acceptance_test
 def test_no_counts_in_strata_not_hit_by_bam(mbias_stats_df):
 
-    mbias_stats_df.loc[expected_counts_df.index, 'Counts'] = 0
-    false_counts = str(mbias_stats_df.loc[mbias_stats_df['Counts'] > 0, :])
+    mbias_stats_df.loc[expected_counts_df.index, 'counts'] = 0
+    false_counts = str(mbias_stats_df.loc[mbias_stats_df['counts'] > 0, :])
     message = "The following events are unexpected counts:\n" + false_counts
-    assert (mbias_stats_df['Counts'] == 0).all(), message
+    assert (mbias_stats_df['counts'] == 0).all(), message
 
 @pytest.mark.acceptance_test
 def test_provides_strat_mbias_counts_as_pickle_and_tsv(
         mbias_stats_df, filled_mbias_stats_results_dir, default_paths):
     # TODO: FutureWarning: elementwise comparison failed; returning scalar instead, but in the future will perform elementwise comparison mask |= (ar1 == a)
-    mbias_stats_tsv = default_paths['stats']['mbias_stats_tsv']
+    mbias_stats_tsv = default_paths['mbias_counts_tsv']
     mbias_stats_df_from_tsv = pd.read_csv(mbias_stats_tsv,
                                           sep='\t', header=0,
                                           dtype=None,
@@ -167,7 +166,7 @@ def test_provides_strat_mbias_counts_as_pickle_and_tsv(
 
 @pytest.mark.acceptance_test
 def test_user_config_is_used(mbias_stats_df: pd.DataFrame):
-    computed_max_flen = mbias_stats_df.index.get_level_values('Flen').max()
+    computed_max_flen = mbias_stats_df.index.get_level_values('flen').max()
 
     if mbias_stats_df.columns.name == 'with_user_config':
         expected_max_flen = USER_FLEN_MAX
