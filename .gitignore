@@ -1,7 +1,7 @@
-bsseq_pileup_read.c
-bsseq_pileup_read.so
+**/__pycache__/
+*.prof
+**/*.c
+**/*.so
 doc/_build
 mqc.egg-info/
 build
-**.so
-**/.#*.py

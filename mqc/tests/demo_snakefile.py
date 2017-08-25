@@ -24,11 +24,11 @@ index_dir = f"{sandbox_dir}/genomes/GRCm38mm10_PhiX_Lambda"
 user_config_file = f"{sandbox_dir}/user_config.toml"
 alignment_rpp_dir = "/icgc/dkfzlsdf/analysis/hs_ontogeny/results/wgbs/results_per_pid"
 
-# autosomes = [str(i) for i in range(1,20)]
-# other_chroms = ['X', 'Y', 'MT', 'phix', 'L']
+autosomes = [str(i) for i in range(1,20)]
+other_chroms = ['X', 'Y', 'MT', 'phix', 'L']
 
-autosomes = [str(i) for i in range(10,20)]
-other_chroms = ['L']
+# autosomes = [str(i) for i in range(10,20)]
+# other_chroms = ['L']
 
 config['pids'] = config['pids'].split(',')
 motifs_str = config['motifs']
@@ -41,7 +41,7 @@ rule all:
         index_files = expand("{index_dir}/GRCm38mm10_PhiX_Lambda_{motifs_str}_{chrom}.bed.gz",
                              index_dir=index_dir,
                              chrom=autosomes + other_chroms,
-                             motifs_str=['CG', 'CG-CHG-CHH']),
+                             motifs_str=motifs_str),
 
         # mqc stats
         mbias_counts = expand("{output_rpp_dir}/{pid}/meth/qc_stats/{pid}_mbias-counts_{motifs_str}.{ext}",
@@ -77,12 +77,13 @@ rule make_index:
         walltime = '08:00:00',
         mem = '8g',
         cores = '12',
-        name = 'make_index_{motifs_str}',
+        name = f'make_index_{motifs_str}',
         motifs_flags = '--cg' if motifs_str == 'CG' else '--cg --chg --chh',
     output:
-        index_files = expand("{index_dir}/GRCm38mm10_PhiX_Lambda_{{motifs_str}}_{chrom}.bed.gz",
+        index_files = expand("{index_dir}/GRCm38mm10_PhiX_Lambda_{motifs_str}_{chrom}.bed.gz",
                              index_dir=index_dir,
-                             chrom=autosomes + other_chroms),
+                             chrom=autosomes + other_chroms,
+                             motifs_str=motifs_str),
     shell:
         """
         mqc make_index --genome_fasta {input} \

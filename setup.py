@@ -25,7 +25,7 @@ setup(name='mqc',
       author='Stephen Kraemer',
       author_email='stephenkraemer@gmail.com',
       license='MIT',
-      packages=['mqc'],
+      packages=find_packages(),
 
       entry_points = {
           'console_scripts': ['mqc=mqc.cli:mqc'],
