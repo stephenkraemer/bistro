@@ -34,9 +34,10 @@ from collections import namedtuple
 from unittest.mock import mock_open, MagicMock, call
 
 from mqc.writers import BedWriter
+from mqc.utils import get_resource_abspath
 
 TESTS_DIR = op.dirname(__file__)
-DEFAULT_CONFIG_FILE = op.join(TESTS_DIR, '../config.default.toml')
+DEFAULT_CONFIG_FILE = get_resource_abspath('config.default.toml')
 SAMPLE_NAME = 'hsc_rep1'
 SAMPLE_META = 'population=hsc,rep=1,model=blk6'
 

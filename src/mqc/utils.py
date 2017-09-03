@@ -5,6 +5,7 @@ import gzip
 
 import numpy as np
 import pandas as pd
+from pkg_resources import resource_filename
 
 
 def convert_array_to_df(arr, dim_levels, dim_names, value_column_name):
@@ -87,3 +88,7 @@ def open_gzip_or_plain_file(filepath, mode='rt'):
             raise OSError(f"Can't open {filepath}")
 
     return fobj
+
+def get_resource_abspath(basename):
+    return resource_filename('mqc.resources', basename)
+

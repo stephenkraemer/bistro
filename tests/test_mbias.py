@@ -23,6 +23,7 @@ from mqc.mbias import AdjustedCuttingSites
 from mqc.mbias import mask_mbias_stats_df
 from mqc.mbias import convert_cutting_sites_df_to_array
 from mqc.mbias import analyze_mbias_counts
+from mqc.utils import get_resource_abspath
 
 import mqc.flag_and_index_values as mfl
 
@@ -322,8 +323,7 @@ def run_evaluate_mbias(motifs_str, output_dir):
                            '--output_dir', output_dir])
 
 def get_evaluate_mbias_config(motif_str, output_dir):
-    test_dir = op.abspath(op.dirname(__file__))
-    default_config_file = op.join(test_dir, '../config.default.toml')
+    default_config_file = get_resource_abspath('config.default.toml')
     user_config_file = op.join(output_dir, 'user_config.toml')
     cli_params = {'motifs_str': motif_str,
                   'sample_name': 'hsc_1',

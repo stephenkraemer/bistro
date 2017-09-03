@@ -13,13 +13,14 @@ import pytoml
 
 from mqc.config import assemble_config_vars
 from mqc.mbias import FixedRelativeCuttingSites
+from mqc.utils import get_resource_abspath
 
 """ All motifs test
 """
 # __file__ = '/home/stephen2/projects/mqc/mqc/mqc/tests/blabla.py'
 TESTS_DIR = op.dirname(__file__)
 TEST_BAM = op.join(TESTS_DIR, 'test_files', 'test_mcall.sorted.bam')
-DEFAULT_CONFIG_FILE = op.join(TESTS_DIR, '../config.default.toml')
+DEFAULT_CONFIG_FILE = get_resource_abspath('config.default.toml')
 SAMPLE_NAME = 'hsc_rep1'
 SAMPLE_META = 'population=hsc,rep=1,model=blk6'
 TEST_FILES_DIR = op.join(TESTS_DIR, 'test_files')

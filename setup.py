@@ -1,57 +1,104 @@
-from os.path import join
+"""An extensible and flexible WGBS data parser built upon pysam and htslib"""
+
+import sys
+import os.path as op
+
+import os
 from setuptools import setup, find_packages
 from setuptools.extension import Extension
-from Cython.Build import cythonize
+from setuptools.command.build_ext import build_ext
 from distutils import sysconfig
-import sys
+
+
+def no_cythonize(extensions, **_ignore):
+    for extension in extensions:
+        sources = []
+        for sfile in extension.sources:
+            path, ext = op.splitext(sfile)
+            if ext in ('.pyx', '.py'):
+                if extension.language == 'c++':
+                    ext = '.cpp'
+                else:
+                    ext = '.c'
+                sfile = path + ext
+            sources.append(sfile)
+        extension.sources[:] = sources
+    return extensions
+
+
+try:
+    from Cython.Build import cythonize
+    print("Cython is available, cythonizing where necessary.")
+    prepare_extensions = cythonize
+    # will proceed to compile pyx to C
+except ModuleNotFoundError:
+    print("Cython is not available, using precompiled C extension modules.")
+    prepare_extensions = no_cythonize
+    # Test whether we are in a sdist obtained from pypi, where we have c files
+    # or whether this is code retrieved from github, where we don't have c files
+    # and can't install without cython
+    # print(os.listdir("mqc/pileup"))
+    # print(os.getcwd())
+    # print(__file__)
+    if not op.exists("src/mqc/pileup/bsseq_pileup_read.c"):
+        raise ImportError("Can't install because cython is not available"
+                          "and neither are C extension modules."
+                          "Are you trying to install from the git repo without"
+                          "cython? Please install through pypi if you don't"
+                          "want to install cython")
+
 
 python_lib = sysconfig.get_python_lib()
 extensions = [
     Extension(
         "mqc.pileup.bsseq_pileup_read",
-        ["mqc/pileup/bsseq_pileup_read.pyx"],
+        ["src/mqc/pileup/bsseq_pileup_read.pyx"],
         include_dirs = [sysconfig.get_python_inc(prefix=sys.prefix),
-                        join(python_lib, 'pysam'),
-                        join(python_lib, 'pysam/include/htslib')],
-        # libraries=['fftw3', 'fftw3f', 'fftw3l', 'fftw3_threads', 'fftw3f_threads', 'fftw3l_threads'],
-        # library_dirs=['/some/path/to/include/'], # not needed for fftw unless it is installed in an unusual place
+                        op.join(python_lib, 'pysam'),
+                        op.join(python_lib, 'pysam/include/htslib')],
     ),
 ]
 
 setup(name='mqc',
       version='0.2',
       description='WGBS parser with highly configurable QC functions',
+      long_description=__doc__,
       url='http://github.com/sjkv/mqc',
       author='Stephen Kraemer',
       author_email='stephenkraemer@gmail.com',
       license='MIT',
-      packages=find_packages(),
+
+      packages=find_packages(where='src'),
+      package_dir={'': 'src'},
 
       entry_points = {
           'console_scripts': ['mqc=mqc.cli:mqc'],
       },
+
       install_requires=[
-          'cython (>=0.25)',
           'pandas',
+          'pysam',
           'numpy',
           'seaborn',
-          'pytoml',
+          'pytoml==0.1.11',
           'click',
           'joblib',
           'python-magic (>=0.4.13)',
-          'pytest',
-          'pytest-mock',
           'pysam',
           'ipywidgets',
           'matplotlib',
-          'python-magic'
       ],
-      ext_modules=cythonize(extensions)
+
+      extras_require={
+          'dev': [
+              'pytest',
+              'pytest-mock',
+              'cython (>=0.25)',
+          ]
+      },
+
+      cmdclass = {'build_ext': build_ext},
+      ext_modules=prepare_extensions(extensions),
+
+      package_data={'mqc.resources': ['*']},
       )
-
-
-
-# setup(
-    # packages = find_packages(),
-    # ext_modules = cythonize(extensions)
-# )

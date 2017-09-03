@@ -14,13 +14,14 @@ import pytoml
 
 import mqc.flag_and_index_values as mfl
 from mqc.config import assemble_config_vars
+from mqc.utils import get_resource_abspath
 
 b_inds = mfl.bsseq_strand_indices
 
 TESTS_DIR = op.dirname(__file__)
 SAMPLE_NAME = 'hsc_rep1'
 SAMPLE_META = 'population=hsc,rep=1,model=blk6'
-DEFAULT_CONFIG_FILE = op.join(TESTS_DIR, '../config.default.toml')
+DEFAULT_CONFIG_FILE = get_resource_abspath('config.default.toml')
 columns = ['motif', 'bs_strand', 'flen', 'pos', 'meth_status', 'counts']
 index_cols = columns[0:-1]
 USER_FLEN_MAX = 200
