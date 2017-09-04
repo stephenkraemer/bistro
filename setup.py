@@ -4,6 +4,8 @@ import sys
 import os.path as op
 
 import os
+from pathlib import Path
+
 from setuptools import setup, find_packages
 from setuptools.extension import Extension
 from setuptools.command.build_ext import build_ext
@@ -31,9 +33,15 @@ try:
     print("Cython is available, cythonizing where necessary.")
     prepare_extensions = cythonize
     # will proceed to compile pyx to C
+    required_pysam_str = 'pysam'
 except ModuleNotFoundError:
     print("Cython is not available, using precompiled C extension modules.")
     prepare_extensions = no_cythonize
+    requirements_path = Path(__file__).parent / 'requirements.txt'
+    with requirements_path.open() as fin:
+        required_pysam_str = [s.strip()
+                              for s in fin.readlines()
+                              if s.startswith('pysam')][0]
     # Test whether we are in a sdist obtained from pypi, where we have c files
     # or whether this is code retrieved from github, where we don't have c files
     # and can't install without cython
@@ -77,7 +85,7 @@ setup(name='mqc',
 
       install_requires=[
           'pandas',
-          'pysam',
+          required_pysam_str,
           'numpy',
           'seaborn',
           'pytoml==0.1.11',
@@ -93,7 +101,7 @@ setup(name='mqc',
           'dev': [
               'pytest',
               'pytest-mock',
-              'cython (>=0.25)',
+              # 'cython (>=0.25)',
           ]
       },
 

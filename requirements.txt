@@ -1,0 +1,3 @@
+# Used for sdist and wheels
+pysam==0.11.2.2
+cython==0.26
