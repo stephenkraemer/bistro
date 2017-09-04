@@ -1,0 +1,14 @@
+language: python
+
+python:
+  - 3.6
+
+env:
+  - "PIP_DEPENDENCIES='cython pysam'"
+  - "PIP_DEPENDENCIES='pysam'"
+
+install:
+  - pip install $PIP_DEPENDENCIES
+  - pip install .[dev]
+
+script: pytest
