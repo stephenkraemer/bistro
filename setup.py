@@ -1,5 +1,66 @@
 """An extensible and flexible WGBS data parser built upon pysam and htslib"""
 
+"""
+fix develop install
+-------------------
+
+- if cython and/or pysam are missing, and the C files are not there (i.e. we are in the distribution): abort and say: for develop install. pysam and cython must be installed before calling setup.py
+- i would not make cython and pysam build requirements. rather, by default, the 'recommended pysam version' should be used on the already cythonized ext. modules
+- if cython and pysam are already present, we compile against them, because the user obviously wants to use them
+- if only cython is present, I would just use the precompiled files, because the user does not enforce a pysam version - so can just take ours, and then we can take the C extension modules from us
+- common case: download repo, develop. Dev. wants to user 'working' pysam and cython versions.
+  - requirements.txt is associated with 'deployment config'. This is what we need here: record the config of the deployment done with this tagged version. An extern dev checking out the repo can then use the deployment config we used when testing or deploying a commit
+
+ToDo
+####
+
+- implement these cases
+	case1: pysam only installed, not cython
+	if pysam version == requirements.txt version:
+	    log message
+            from precompiled_ext_modules
+	else:
+	    raise: cython needed to comply with pysam version
+
+	case2: pysam and cython installed:    
+	   re-cythonize
+	   log message
+
+	case3: no pysam version given
+	   use precompiled extension modules
+	   log message
+
+- implement these cases
+   case 1: pysam installed, not cython
+	if pysam version == requirements.txt version:
+	    log message
+            from precompiled_ext_modules
+	else:
+	    raise
+   case 2: pysam not installed
+	   use precompiled extension modules
+	   log message
+   case 3: pysam and cython
+       # need to distinguish this case from pysam presence only to allow for recythonizing code during development when cython version changes, but not pysam version
+       force recythonize
+
+- function use precompiled extension modules
+  - raise if extension modules are not there.  write warning message when installing from repo: pysam and cython need to be installed before. To get versions of last release, use requirements.txt or use new versions.
+- recythonize function:
+  - raise if no cython available
+- check logic
+- commit
+- test local
+- test on cluster
+- push to github
+- push to phabricator
+
+Done
+####
+- transfer cython and pysam versions to requirements.txt
+- re-establish reading pysam version from requirements.txt
+"""
+
 import sys
 import os.path as op
 
@@ -10,7 +71,11 @@ from setuptools import setup, find_packages
 from setuptools.extension import Extension
 from setuptools.command.build_ext import build_ext
 from distutils import sysconfig
+from functools import partial
+from pkg_resources import get_distribution, DistributionNotFound
 
+TESTED_PYSAM_VERSIONS=['0.11.2.2']
+TESTED_CYTHON_VERSIONS=['0.26']
 
 def no_cythonize(extensions, **_ignore):
     for extension in extensions:
@@ -29,19 +94,27 @@ def no_cythonize(extensions, **_ignore):
 
 
 try:
+    # get_distribution raises DistributionNotFound if package not installed
+    if (get_distribution('cython').version not in TESTED_CYTHON_VERSIONS
+        or get_distribution('pysam').version not in TESTED_PYSAM_VERSIONS):
+        print('\033[1;101mYou are using untested cython and pysam version,'
+              ' trying to cythonize without guarantee \033[0m')
+
     from Cython.Build import cythonize
-    print("Cython is available, cythonizing where necessary.")
-    prepare_extensions = cythonize
-    # will proceed to compile pyx to C
-    required_pysam_str = 'pysam'
-except ModuleNotFoundError:
-    print("Cython is not available, using precompiled C extension modules.")
+
+    prepare_extensions = partial(cythonize, force=True)
+    required_pysam = []
+    print("Cython and pysam are available, cythonizing where necessary.")
+
+except (ModuleNotFoundError, DistributionNotFound):
+    print("Cython or pysam not available,"
+          " using precompiled C extension modules.")
     prepare_extensions = no_cythonize
     requirements_path = Path(__file__).parent / 'requirements.txt'
     with requirements_path.open() as fin:
-        required_pysam_str = [s.strip()
-                              for s in fin.readlines()
-                              if s.startswith('pysam')][0]
+        required_pysam = [s.strip()
+                          for s in fin.readlines()
+                          if s.startswith('pysam')]
     # Test whether we are in a sdist obtained from pypi, where we have c files
     # or whether this is code retrieved from github, where we don't have c files
     # and can't install without cython
@@ -67,6 +140,7 @@ extensions = [
     ),
 ]
 
+
 setup(name='mqc',
       version='0.2',
       description='WGBS parser with highly configurable QC functions',
@@ -85,17 +159,15 @@ setup(name='mqc',
 
       install_requires=[
           'pandas',
-          required_pysam_str,
           'numpy',
           'seaborn',
           'pytoml==0.1.11',
           'click',
           'joblib',
-          'python-magic (>=0.4.13)',
-          'pysam',
+          'python-magic>=0.4.13',
           'ipywidgets',
           'matplotlib',
-      ],
+      ] + required_pysam,
 
       extras_require={
           'dev': [
