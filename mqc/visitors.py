@@ -3,6 +3,8 @@
 import itertools
 import numpy as np
 import pandas as pd
+import os.path as op
+from os import makedirs
 
 from abc import ABCMeta, abstractmethod
 from typing import List, Union
@@ -110,5 +112,22 @@ class Counter(metaclass=ABCMeta):
                                    dim_names=self.dim_names,
                                    value_column_name='counts')
 
+    def save_dataframe(self, save_location: str):
+        """
+        Saves the counter's dataframe to a specified location.
+        File type is determined by given path.
+        :param save_location: Dataframe save location for pickle, tsv or csv file.
+        """
+        ft = save_location.split('.')[-1]
 
+        makedirs(op.dirname(save_location), exist_ok=True, mode=0o777)
+
+        if ft == 'p':
+            self.get_dataframe().to_pickle(save_location)
+        elif ft == 'csv':
+            self.get_dataframe().reset_index().to_csv(save_location, header=True, index=False)
+        elif ft == 'tsv':
+            self.get_dataframe().reset_index().to_csv(save_location, sep='\t', header=True, index=False)
+        else:
+            print(f"Unsupported file type: \"{save_location}\"")
 

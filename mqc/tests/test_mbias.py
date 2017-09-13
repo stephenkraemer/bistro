@@ -309,7 +309,7 @@ def test_compute_mbias_stats_df_converts_mbias_counts_to_mbias_stats_df():
 def run_evaluate_mbias(motifs_str, output_dir):
     user_config_file_fp = op.join(output_dir, 'user_config.toml')
 
-    user_config = {'paths': {'mbias_counts_p': f"/home/stephen2/projects/mqc/mqc/mqc/tests/test_files/hsc_1_mbias-counts_{motifs_str}.p", }}
+    user_config = {'paths': {'mbias_counts_p': f"{op.dirname(__file__)}/test_files/hsc_1_mbias-counts_{motifs_str}.p", }}
 
     with open(user_config_file_fp, 'wt') as fout:
         pytoml.dump(fout, user_config)

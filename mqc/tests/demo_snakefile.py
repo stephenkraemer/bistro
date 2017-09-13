@@ -18,14 +18,14 @@ shell.prefix("module load python/3.6.0; source /home/kraemers/programs/python_vi
 
 import os.path as op
 
-sandbox_dir = "/icgc/dkfzlsdf/analysis/B080/kraemers/projects/mcall_qc/sandbox"
+sandbox_dir = "/icgc/dkfzlsdf/analysis/B080/kraemers/projects/mcall_qc/sandbox/temp"
 output_rpp_dir = f"{sandbox_dir}/results_per_pid"
 index_dir = f"{sandbox_dir}/genomes/GRCm38mm10_PhiX_Lambda"
 user_config_file = f"{sandbox_dir}/user_config.toml"
 alignment_rpp_dir = "/icgc/dkfzlsdf/analysis/hs_ontogeny/results/wgbs/results_per_pid"
 
-autosomes = [str(i) for i in range(1,20)]
-other_chroms = ['X', 'Y', 'MT', 'phix', 'L']
+autosomes = ['19']#[str(i) for i in range(1,20)]
+other_chroms = [] #['X', 'Y', 'MT', 'phix', 'L']
 
 # autosomes = [str(i) for i in range(10,20)]
 # other_chroms = ['L']
@@ -50,6 +50,7 @@ rule all:
                               motifs_str=motifs_str,
                               ext=['p', 'tsv']),
 
+
         # mqc evaluate_mbias
         mbias_stats = expand(["{output_rpp_dir}/{pid}/meth/qc_stats/{pid}_mbias-stats_{motifs_str}.p",
                               "{output_rpp_dir}/{pid}/meth/qc_stats/{pid}_mbias-stats_masked_{motifs_str}.p",
@@ -61,6 +62,12 @@ rule all:
                              output_rpp_dir=output_rpp_dir,
                              pid=config['pids'],
                              motifs_str=motifs_str),
+
+        # mqc evaluate_calls
+        coverage_hist = expand("{output_rpp_dir}/{pid}/meth/qc_stats/{pid}_coverage-hist_{motifs_str}.png",
+                            output_rpp_dir=output_rpp_dir,
+                            pid=config['pids'],
+                            motifs_str=motifs_str),
 
         # mqc call
         meth_calls = expand("{output_rpp_dir}/{pid}/meth/meth_calls/mcalls_{pid}_{single_motif}_{chrom}.bed.gz",
@@ -157,6 +164,29 @@ rule evaluate_mbias:
         --output_dir {params.output_dir}
         """
 
+rule evaluate_calls:
+    input:
+        coverage_counts = f"{output_rpp_dir}/{{pid}}/meth/qc_stats/{{pid}}_coverage-counts_{motifs_str}.p",
+    output:
+        coverage_hist  = f"{output_rpp_dir}/{{pid}}/meth/qc_stats/{{pid}}_coverage-hist_{motifs_str}.png",
+    params:
+        config_file = user_config_file,
+        output_dir = f"{output_rpp_dir}/{{pid}}/meth/",
+        motif_csv = motif_csv,
+        walltime = '00:30:00',
+        mem = '6g',
+        cores = '2',
+        name = f'evaluate_calls_{{pid}}_{motifs_str}',
+        sample_meta = lambda wildcards: f"population={wildcards.pid.split('_')[0]},rep={wildcards.pid.split('_')[-1]}",
+    shell:
+        """
+        mqc evaluate_calls \
+        --config_file {params.config_file} \
+        --motifs {params.motif_csv} \
+        --sample_name {wildcards.pid} \
+        --output_dir {params.output_dir}
+        """
+
 
 
 mcall_command = (
@@ -189,8 +219,12 @@ rule call:
         name = f'mcall_{motifs_str}_{{pid}}',
         sample_meta = lambda wildcards: f"population={wildcards.pid.split('_')[0]},rep={wildcards.pid.split('_')[-1]}",
     output:
-        expand("{output_rpp_dir}/{{pid}}/meth/meth_calls/mcalls_{{pid}}_{single_motif}_{chrom}.bed.gz",
-               output_rpp_dir=output_rpp_dir,
-               chrom=autosomes + other_chroms,
-               single_motif=single_motifs),
+        mbias_files = expand("{output_rpp_dir}/{{pid}}/meth/meth_calls/mcalls_{{pid}}_{single_motif}_{chrom}.bed.gz",
+                            output_rpp_dir=output_rpp_dir,
+                            chrom=autosomes + other_chroms,
+                            single_motif=single_motifs),
+        coverage_counts = expand("{output_rpp_dir}/{{pid}}/meth/qc_stats/{{pid}}_coverage-counts_{motifs_str}.{ext}",
+                            output_rpp_dir=output_rpp_dir,
+                            motifs_str=motifs_str,
+                            ext=['p', 'tsv']),
     shell: mcall_command

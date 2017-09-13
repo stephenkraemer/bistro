@@ -37,7 +37,7 @@
     distance_between_displayed_flen = 30
 
 [coverage_analysis]
-  max_per_cpg_cov = 80
+  max_per_motif_cov = 80
 
 # Paths section must be at end of file!
 [paths]
@@ -54,5 +54,8 @@
   mbias_plots_trunk             = "{qc_stats_dir}/{name}_mbias-line-plot_{motifs_str}"
   cg_occurence_plot_trunk       = "{qc_stats_dir}/{name}_freq-line-plot_{motifs_str}"
   adj_cutting_sites_plot        = "{qc_stats_dir}/{name}_adjusted-cutting-sites_barplot_{motifs_str}.png"
+  cov_counts_p                  = "{qc_stats_dir}/{name}_coverage-counts_{motifs_str}.p"
+  cov_counts_tsv                = "{qc_stats_dir}/{name}_coverage-counts_{motifs_str}.tsv"
+  coverage_hist                 = "{qc_stats_dir}/{name}_coverage-hist_{motifs_str}.png"
   meth_calls_basepath           = "meth_calls/mcalls"
 

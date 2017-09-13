@@ -182,3 +182,30 @@ def make_index(genome_fasta, output_dir, cores,
                                     annotations=annotations,
                                     cores=cores)
 
+#==============================================================================
+#                             mqc evaluate_calls
+#==============================================================================
+from mqc.coverage import analyze_coverage
+@mqc.command()
+@click.option('--config_file', type=input_click_path, help='[optional]')
+@click.option('--motifs', help='e.g. CG or CG,CHG,CHH')
+@click.option('--output_dir', required=True,
+              type=click.Path(exists=False, file_okay=False,
+                              writable=True, resolve_path=True))
+@click.option('--sample_name', required=True)
+@click.option('--sample_meta',
+              help="Pass additional metadata as"
+                   " 'key=value,key2=value2' [optional]")
+@click.pass_context
+def evaluate_calls(ctx, config_file, motifs, output_dir, sample_name, sample_meta):
+
+    package_top_level_dir = op.abspath(op.dirname(__file__))
+    default_config_file = op.join(package_top_level_dir, 'config.default.toml')
+    user_config_file = config_file if config_file else ''
+    cli_params = copy.deepcopy(ctx.params)
+    cli_params['motifs'] =  motifs.split(',')
+    cli_params['motifs_str'] = '-'.join(cli_params['motifs'])
+    config = assemble_config_vars(cli_params,
+                                  default_config_file_path=default_config_file,
+                                  user_config_file_path=user_config_file)
+    analyze_coverage(config)

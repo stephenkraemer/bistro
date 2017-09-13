@@ -19,6 +19,7 @@ from mqc.writers import BedWriter
 from mqc.qc_filters import PhredFilter, MapqFilter
 from mqc.trimming import Trimmer
 from mqc.overlap import OverlapHandler
+from mqc.coverage import CoverageCounter
 
 
 
@@ -51,7 +52,8 @@ def run_mcalling(config):
     second_run = QcAndMethCallingRun(config,
                                      cutting_sites=cutting_sites)
     second_run.run_parallel()
-
+    second_run.summed_up_counters['coverage_counter'].save_dataframe(config['paths']['cov_counts_p'])
+    second_run.summed_up_counters['coverage_counter'].save_dataframe(config['paths']['cov_counts_tsv'])
 
 class PileupRun(metaclass=ABCMeta):
     """ABC for classes managing individual data collection runs
@@ -257,6 +259,7 @@ class QcAndMethCallingRun(PileupRun):
             overlap_handler=OverlapHandler(),
             phred_filter = PhredFilter(self.config),
             meth_caller=MethCaller(),
+            coverage_counter=CoverageCounter(self.config),
             mcall_writer=BedWriter(self.config, chrom=chrom),
         )
 
