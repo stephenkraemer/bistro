@@ -194,11 +194,11 @@ from mqc.coverage import analyze_coverage
 @click.pass_context
 def evaluate_calls(ctx, config_file, motifs, output_dir, sample_name, sample_meta):
 
-    package_top_level_dir = op.abspath(op.dirname(__file__))
-    default_config_file = op.join(package_top_level_dir, 'config.default.toml')
+    default_config_file = get_resource_abspath('config.default.toml')
     user_config_file = config_file if config_file else ''
+
     cli_params = copy.deepcopy(ctx.params)
-    cli_params['motifs'] =  motifs.split(',')
+    cli_params['motifs'] = motifs.split(',')
     cli_params['motifs_str'] = '-'.join(cli_params['motifs'])
     config = assemble_config_vars(cli_params,
                                   default_config_file_path=default_config_file,
