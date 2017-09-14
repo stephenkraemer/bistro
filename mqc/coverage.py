@@ -20,6 +20,7 @@ class CoverageCounter(Counter):
     def __init__(self, config: Dict):
 
         motifs = config['run']['motifs']
+        save_stem = config['paths']['cov_counts']
         self.max_coverage = config['coverage_analysis']['max_per_motif_cov']
         dim_names = ['motif', 'coverage']
 
@@ -33,7 +34,8 @@ class CoverageCounter(Counter):
 
         super().__init__(dim_names=dim_names,
                          dim_levels=dim_levels,
-                         counter_array=counter_array)
+                         counter_array=counter_array,
+                         save_stem=save_stem)
 
     def process(self, motif_pileup: MotifPileup):
         if (motif_pileup.n_meth + motif_pileup.n_unmeth) > self.max_coverage:
@@ -56,7 +58,7 @@ def coverage_hist(coverage_df, config):
 
 def analyze_coverage(config):
     os.makedirs(config['paths']['qc_stats_dir'], exist_ok=True, mode=0o770)
-    coverage_df = pd.read_pickle(config['paths']['cov_counts_p'])
+    coverage_df = pd.read_pickle(config['paths']['cov_counts']+'.p')
     coverage_hist(coverage_df, config)
     plt.close('all')
 

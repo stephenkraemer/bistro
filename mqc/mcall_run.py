@@ -32,15 +32,8 @@ def collect_stats(config):
 
     mbias_run = MbiasDeterminationRun(config, cutting_sites=None)
     mbias_run.run_parallel()
-    mbias_counter: MbiasCounter = mbias_run.summed_up_counters['mbias_counter']
-    mbias_counts_df = mbias_counter.get_dataframe()
-
-    # TODO-refactor: all dirs should be created at once in the beginning
-    os.makedirs(config['paths']['qc_stats_dir'], exist_ok=True, mode=0o777)
-    mbias_counts_df.reset_index().to_csv(config['paths']['mbias_counts_tsv'],
-                                  sep = "\t", header = True, index = False)
-    mbias_counts_df.to_pickle(config['paths']['mbias_counts_p'])
-
+    for counter in mbias_run.summed_up_counters.values():
+        counter.save_dataframe()
 
 
 def run_mcalling(config):
@@ -52,8 +45,9 @@ def run_mcalling(config):
     second_run = QcAndMethCallingRun(config,
                                      cutting_sites=cutting_sites)
     second_run.run_parallel()
-    second_run.summed_up_counters['coverage_counter'].save_dataframe(config['paths']['cov_counts_p'])
-    second_run.summed_up_counters['coverage_counter'].save_dataframe(config['paths']['cov_counts_tsv'])
+
+    for counter in second_run.summed_up_counters.values():
+        counter.save_dataframe()
 
 class PileupRun(metaclass=ABCMeta):
     """ABC for classes managing individual data collection runs

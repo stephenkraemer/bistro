@@ -113,10 +113,12 @@ def evaluate_mbias(ctx, config_file, motifs, output_dir, sample_name, sample_met
                    " 'key=value,key2=value2' [optional]")
 @click.option('--cores', default=1)
 @click.option('--use_mbias_fit', is_flag=True)
+@click.option('--strat_beta_dist', is_flag=True)
+
 @click.pass_context
 def call(ctx, bam, index_files,
           output_dir, config_file,
-          sample_name, sample_meta, cores, use_mbias_fit):
+          sample_name, sample_meta, cores, use_mbias_fit, strat_beta_dist):
     """Methylation calling"""
 
     package_top_level_dir = op.abspath(op.dirname(__file__))

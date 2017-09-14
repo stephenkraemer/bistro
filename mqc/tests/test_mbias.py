@@ -36,6 +36,7 @@ CONFIG = defaultdict(dict)
 CONFIG['data_properties']['max_read_length_bp'] = 101
 CONFIG['trimming']['max_flen_considered_for_trimming'] = MAX_FLEN
 CONFIG['run']['motifs'] = ['cg', 'chg']
+CONFIG['paths']['mbias_counts'] = None
 
 AlignmentStub = namedtuple('AlignmentStub',
                            'template_length')
@@ -309,7 +310,7 @@ def test_compute_mbias_stats_df_converts_mbias_counts_to_mbias_stats_df():
 def run_evaluate_mbias(motifs_str, output_dir):
     user_config_file_fp = op.join(output_dir, 'user_config.toml')
 
-    user_config = {'paths': {'mbias_counts_p': f"{op.dirname(__file__)}/test_files/hsc_1_mbias-counts_{motifs_str}.p", }}
+    user_config = {'paths': {'mbias_counts': f"{op.dirname(__file__)}/test_files/hsc_1_mbias-counts_{motifs_str}", }}
 
     with open(user_config_file_fp, 'wt') as fout:
         pytoml.dump(fout, user_config)
@@ -336,7 +337,7 @@ def get_evaluate_mbias_config(motif_str, output_dir):
 @pytest.fixture(scope='module')
 def evaluate_mbias_run_all_motifs():
     """
-    mbias_counts_df = pd.read_pickle(config['paths']['mbias_counts_p'])
+    mbias_counts_df = pd.read_pickle(config['paths']['mbias_counts']+'.p')
     mbias_counts_df = mbias_counts_df.rename(columns={'Counts': 'counts'})
     mbias_counts_df.index.names = 'motif bs_strand flen pos meth_status'.split()
     mbias_counts_df = mbias_counts_df.reset_index()

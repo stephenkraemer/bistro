@@ -99,7 +99,7 @@ def mbias_stats_df(default_paths):
     """columns.name provides info about user config file presence"""
     # function scope is necessary because I modify this dataframe
     # in some tests
-    mbias_stats_p_path = default_paths['mbias_counts_p']
+    mbias_stats_p_path = default_paths['mbias_counts']+'.p'
     df = pd.read_pickle(mbias_stats_p_path)
     df.columns.name = 'with_user_config' if 'with_user_config' in mbias_stats_p_path else 'no_user_config'
     return df
@@ -141,7 +141,7 @@ def test_no_counts_in_strata_not_hit_by_bam(mbias_stats_df):
 def test_provides_strat_mbias_counts_as_pickle_and_tsv(
         mbias_stats_df, filled_mbias_stats_results_dir, default_paths):
     # TODO: FutureWarning: elementwise comparison failed; returning scalar instead, but in the future will perform elementwise comparison mask |= (ar1 == a)
-    mbias_stats_tsv = default_paths['mbias_counts_tsv']
+    mbias_stats_tsv = default_paths['mbias_counts']+'.tsv'
     mbias_stats_df_from_tsv = pd.read_csv(mbias_stats_tsv,
                                           sep='\t', header=0,
                                           dtype=None,

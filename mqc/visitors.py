@@ -1,6 +1,5 @@
 """Visitor base classes"""
 
-import itertools
 import numpy as np
 import pandas as pd
 import os.path as op
@@ -11,7 +10,7 @@ from typing import List, Union
 
 from mqc.pileup.pileup import MotifPileup
 from mqc.utils import convert_array_to_df
-from collections import Iterable
+
 
 
 class Visitor(metaclass=ABCMeta):
@@ -45,7 +44,8 @@ class Counter(metaclass=ABCMeta):
     def __init__(self,
                  dim_names: List[str],
                  dim_levels: List[List[Union[str, int]]],
-                 counter_array: np.ndarray):
+                 counter_array: np.ndarray,
+                 save_stem: str):
         """ Initialization of attributes common to all Counters
 
         Every subclass should use its init function to:
@@ -68,6 +68,9 @@ class Counter(metaclass=ABCMeta):
         self.dim_levels = dim_levels
         self.counter_array = counter_array
         self._counter_dataframe: pd.DataFrame = pd.DataFrame()
+
+        self.save_stem = save_stem
+
 
     @abstractmethod
     def process(self, motif_pileup: MotifPileup):
@@ -112,22 +115,12 @@ class Counter(metaclass=ABCMeta):
                                    dim_names=self.dim_names,
                                    value_column_name='counts')
 
-    def save_dataframe(self, save_location: str):
+    def save_dataframe(self):
         """
-        Saves the counter's dataframe to a specified location.
-        File type is determined by given path.
-        :param save_location: Dataframe save location for pickle, tsv or csv file.
+        Saves the counter's dataframe as tsv and pickle to the stem specified in __init__.
+
         """
-        ft = save_location.split('.')[-1]
+        makedirs(op.dirname(self.save_stem), exist_ok=True, mode=0o770)
 
-        makedirs(op.dirname(save_location), exist_ok=True, mode=0o777)
-
-        if ft == 'p':
-            self.get_dataframe().to_pickle(save_location)
-        elif ft == 'csv':
-            self.get_dataframe().reset_index().to_csv(save_location, header=True, index=False)
-        elif ft == 'tsv':
-            self.get_dataframe().reset_index().to_csv(save_location, sep='\t', header=True, index=False)
-        else:
-            print(f"Unsupported file type: \"{save_location}\"")
-
+        self.get_dataframe().to_pickle(self.save_stem+'.p')
+        self.get_dataframe().reset_index().to_csv(self.save_stem+'.tsv', sep='\t', header=True, index=False)

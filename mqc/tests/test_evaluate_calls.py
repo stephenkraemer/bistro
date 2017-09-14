@@ -23,7 +23,7 @@ def test_evaluate_calls_cmd(motifs):
             config_fobj.write(dedent(f"""\
             [paths]
             qc_stats_dir = 'qc_stats'
-            cov_counts_p = '{TEST_FILES_DIR}/test_coverage-counts_{motifs}.p'
+            cov_counts = '{TEST_FILES_DIR}/test_coverage-counts_{motifs}'
             """))
 
         ret_code = subprocess.run(['mqc',

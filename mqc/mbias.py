@@ -43,6 +43,7 @@ class MbiasCounter(Counter):
             config['trimming']['max_flen_considered_for_trimming'])
         idx_motif_tuples = enumerate(config['run']['motifs'], start=0)
         self.motif_idx_dict = {motif: i for i, motif in idx_motif_tuples}
+        save_stem = config['paths']['mbias_counts']
 
         dim_names = ['motif', 'bs_strand', 'flen', 'pos', 'meth_status']
         # Note: 1-based position labels in dataframe, 0-based position indices
@@ -62,7 +63,8 @@ class MbiasCounter(Counter):
 
         super().__init__(dim_names=dim_names,
                          dim_levels=dim_levels,
-                         counter_array=counter_array)
+                         counter_array=counter_array,
+                         save_stem=save_stem)
 
     def process(self, motif_pileup: MotifPileup):
         """Extract M-bias stats from MotifPileup
@@ -444,7 +446,7 @@ def analyze_mbias_counts(config):
     # TODO: create paths subdirs in separate logical unit
     os.makedirs(mbias_evaluate_paths['qc_stats_dir'], exist_ok=True, mode=0o770)
 
-    mbias_counts_df = pd.read_pickle(config['paths']['mbias_counts_p'])
+    mbias_counts_df = pd.read_pickle(config['paths']['mbias_counts']+'.p')
 
     mbias_stats_df = compute_mbias_stats_df(mbias_counts_df)
     mbias_stats_df.to_pickle(mbias_evaluate_paths['mbias_stats_p'])

@@ -11,6 +11,7 @@ import pandas as pd
 CONFIG = defaultdict(dict)
 CONFIG['run']['motifs'] = ['cg', 'chg']
 CONFIG['coverage_analysis']['max_per_motif_cov'] = 20
+CONFIG['paths']['cov_counts'] = None
 
 TESTS_DIR = op.dirname(__file__)
 TEST_BAM = op.join(TESTS_DIR, 'test_files', 'test_mcall.sorted.bam')

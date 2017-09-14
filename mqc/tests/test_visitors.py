@@ -1,5 +1,7 @@
 import numpy as np
 import pandas as pd
+import tempfile
+import os.path as op
 
 from mqc.visitors import Counter
 from mqc.pileup.pileup import MotifPileup
@@ -7,10 +9,11 @@ import pytest
 
 
 class CounterStub(Counter):
-    def __init__(self, dim_levels, dim_names, arr):
+    def __init__(self, dim_levels, dim_names, arr, save_stem=None):
         super().__init__(dim_levels=dim_levels,
                          dim_names=dim_names,
-                         counter_array=arr)
+                         counter_array=arr,
+                         save_stem=save_stem)
 
     def process(self, motif_pileup: MotifPileup):
         pass
@@ -21,6 +24,22 @@ def df_not_correct_message(computed_df, expected_df):
             f"Expected dataframe: \n{repr(computed_df)}\n"
             f"Computed dataframe: \n{repr(expected_df)}\n")
 
+def test_dataframe_saving():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        df_file_stem = 'df_file'
+
+        arr = np.array([[1, 2],
+                        [3, 4]])
+        dim_names = ['str_index_var', 'int_index']
+        dim_levels = ['b a'.split(), range(2, 4)]
+
+        counter_stub = CounterStub(dim_names=dim_names,
+                                   dim_levels=dim_levels,
+                                   arr=arr,
+                                   save_stem=op.join(tmpdir, df_file_stem))
+        counter_stub.save_dataframe()
+
+        assert op.exists(op.join(tmpdir, df_file_stem+'.p')) and op.exists(op.join(tmpdir, df_file_stem+'.tsv'))
 
 class TestArrayToDataFrameConversion:
     def test_converts_multidim_arr_to_df_with_sorted_index_variables(self):
