@@ -1,26 +1,23 @@
 """Manage runs across a set of index positions"""
 
 import multiprocessing as mp
+import pickle
 from abc import abstractmethod, ABCMeta
 from collections import OrderedDict
 from copy import deepcopy
 from typing import Dict, List
-import os
-import pickle
 
 import pysam
-
+from mqc.coverage import CoverageCounter
 from mqc.index import IndexFile
-from mqc.pileup.pileup import stepwise_pileup_generator
-from mqc.visitors import Counter, Visitor
 from mqc.mbias import MbiasCounter, FixedRelativeCuttingSites
 from mqc.mcaller import MethCaller
-from mqc.writers import BedWriter
+from mqc.overlap import OverlapHandler
+from mqc.pileup.pileup import stepwise_pileup_generator
 from mqc.qc_filters import PhredFilter, MapqFilter
 from mqc.trimming import Trimmer
-from mqc.overlap import OverlapHandler
-from mqc.coverage import CoverageCounter
-
+from mqc.visitors import Counter, Visitor
+from mqc.writers import BedWriter
 
 
 # from mqc.mbias import MbiasData, AdjustedMbiasCuttingSites, MbiasCounter

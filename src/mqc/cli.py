@@ -1,15 +1,10 @@
-import re
-
-import click
+import copy
 import os.path as op
-
 from collections import OrderedDict
 
-import copy
-
-
-from mqc.index import start_parallel_index_generation
+import click
 from mqc.config import assemble_config_vars
+from mqc.index import start_parallel_index_generation
 from mqc.mcall_run import collect_stats, run_mcalling
 from mqc.utils import get_resource_abspath
 

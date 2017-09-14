@@ -1,12 +1,12 @@
-import pytest
-from unittest.mock import MagicMock
-from collections import defaultdict
-from mqc.coverage import CoverageCounter
 import os.path as op
-import tempfile
 import subprocess
-import shutil
+import tempfile
+from collections import defaultdict
+from unittest.mock import MagicMock
+
 import pandas as pd
+import pytest
+from mqc.coverage import CoverageCounter
 
 CONFIG = defaultdict(dict)
 CONFIG['run']['motifs'] = ['cg', 'chg']
