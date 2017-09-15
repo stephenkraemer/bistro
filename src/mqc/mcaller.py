@@ -1,4 +1,4 @@
-from mqc.visitors import Visitor
+from mqc.visitors import Visitor, Counter
 from mqc.pileup.pileup import MotifPileup
 import mqc.flag_and_index_values as mfl
 import numpy as np
@@ -13,7 +13,7 @@ class MethCaller(Visitor):
     def process(self, motif_pileup: MotifPileup):
 
         n_meth = 0
-        n_unmeth = 0
+        n_total = 0
         for curr_read in motif_pileup.reads:
             if (curr_read.qc_fail_flag
                 or curr_read.trimm_flag
@@ -23,16 +23,24 @@ class MethCaller(Visitor):
             meth_status_flag = curr_read.meth_status_flag
             if meth_status_flag == m_flags.is_methylated:
                 n_meth += 1
+                n_total += 1
             elif meth_status_flag == m_flags.is_unmethylated:
-                n_unmeth += 1
+                n_total += 1
             else:  # SNP, Ref, NA
                 continue
 
         motif_pileup.n_meth = n_meth
-        motif_pileup.n_unmeth = n_unmeth
+        motif_pileup.n_total = n_total
 
         try:
-            motif_pileup.beta_value = n_meth / (n_meth + n_unmeth)
+            motif_pileup.beta_value = n_meth / n_total
         except ZeroDivisionError:
             motif_pileup.beta_value = np.nan
+
+
+class StratifiedMethCaller(Visitor):
+    pass
+
+class StratifiedBetaCounter():
+    pass
 

@@ -43,7 +43,7 @@ class TestMethCaller:
         meth_caller.process(BASE_MOTIF_PILEUP)
         assert BASE_MOTIF_PILEUP.beta_value == 0.5
         assert BASE_MOTIF_PILEUP.n_meth == 2
-        assert BASE_MOTIF_PILEUP.n_unmeth == 2
+        assert BASE_MOTIF_PILEUP.n_total == 4
 
     def test_discards_qc_fail_flag(self):
 
@@ -72,7 +72,7 @@ class TestMethCaller:
 
         assert motif_pileup_with_qc_fails.beta_value == 0.6
         assert motif_pileup_with_qc_fails.n_meth == 3
-        assert motif_pileup_with_qc_fails.n_unmeth == 2
+        assert motif_pileup_with_qc_fails.n_total == 5
 
     def test_discards_reads_with_overlap_flag(self):
 
@@ -99,7 +99,7 @@ class TestMethCaller:
         meth_caller.process(motif_pileup_with_overlap_flags)
 
         assert motif_pileup_with_overlap_flags.n_meth == 3
-        assert motif_pileup_with_overlap_flags.n_unmeth == 3
+        assert motif_pileup_with_overlap_flags.n_total == 6
         assert motif_pileup_with_overlap_flags.beta_value == 3/6
 
     def test_discards_unusable_meth_status_flags(self):
@@ -125,7 +125,7 @@ class TestMethCaller:
         meth_caller.process(motif_pileup)
 
         assert motif_pileup.n_meth == 3
-        assert motif_pileup.n_unmeth == 2
+        assert motif_pileup.n_total == 5
         assert motif_pileup.beta_value == 3/5
 
     def test_discards_trimmed_events(self):
@@ -154,5 +154,5 @@ class TestMethCaller:
         meth_caller.process(motif_pileup)
 
         assert motif_pileup.n_meth == 2
-        assert motif_pileup.n_unmeth == 5
+        assert motif_pileup.n_total == 7
         assert motif_pileup.beta_value == 2/7

@@ -36,11 +36,11 @@ class TestCoverageCounterProcessing:
         motif_idx_dict = {motif: i for i, motif in idx_motif_tuples}
         coverage_counter = CoverageCounter(CONFIG)
 
-        for n_meth, n_unmeth, motif in ([3, 2, 'cg'],
-                                        [4, 1, 'cg'],
-                                        [3, 7, 'chg'],
-                                        [20, 20, 'chg']):
-            motif_pileup = MagicMock(n_meth=n_meth, n_unmeth=n_unmeth)
+        for n_meth, n_total, motif in ([3, 5, 'cg'],
+                                        [4, 5, 'cg'],
+                                        [3, 10, 'chg'],
+                                        [20, 40, 'chg']):
+            motif_pileup = MagicMock(n_meth=n_meth, n_total=n_total)
             motif_pileup.idx_pos.motif = motif
             coverage_counter.process(motif_pileup)
 
@@ -55,7 +55,7 @@ class TestCoverageCounterProcessing:
         motif_idx_dict = {motif: i for i, motif in idx_motif_tuples}
         coverage_counter = CoverageCounter(CONFIG)
 
-        motif_pileup = MagicMock(n_meth=20, n_unmeth=20)
+        motif_pileup = MagicMock(n_meth=20, n_total=40)
         motif_pileup.idx_pos.motif = 'chg'
         coverage_counter.process(motif_pileup)
 

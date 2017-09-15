@@ -22,7 +22,7 @@ class BedWriter(Visitor):
 
         header_no_endl = '\t'.join(['#chrom', 'start', 'end',
                                     'motif', 'score', 'strand',
-                                    'beta_value', 'n_meth', 'n_unmeth'])
+                                    'beta_value', 'n_meth', 'n_total'])
         for fobj in self.meth_calls_fobj_dict.values():
             fobj.write(header_no_endl + '\n')
 
@@ -37,7 +37,7 @@ class BedWriter(Visitor):
             motif_pileup.idx_pos.strand,
             f"{motif_pileup.beta_value:.6f}",
             str(motif_pileup.n_meth),
-            str(motif_pileup.n_unmeth),
+            str(motif_pileup.n_total),
         ])
         self.meth_calls_fobj_dict[motif].write(line_no_endl + '\n')
 

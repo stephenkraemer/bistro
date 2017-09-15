@@ -38,10 +38,10 @@ class CoverageCounter(Counter):
                          save_stem=save_stem)
 
     def process(self, motif_pileup: MotifPileup):
-        if (motif_pileup.n_meth + motif_pileup.n_unmeth) > self.max_coverage:
+        if (motif_pileup.n_total) > self.max_coverage:
             coverage = self.max_coverage
         else:
-            coverage = motif_pileup.n_meth + motif_pileup.n_unmeth
+            coverage = motif_pileup.n_total
         event_class = (self.motif_idx_dict[motif_pileup.idx_pos.motif], coverage)
         self.counter_array[event_class] += 1
 

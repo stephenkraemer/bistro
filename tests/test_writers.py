@@ -6,7 +6,7 @@ MotifPileupStub
 idx_pos: IndexPositionStub
 beta_value
 n_meth
-n_unmeth
+n_total
 
 IndexPositionStub
 -----------------
@@ -57,11 +57,11 @@ def test_bed_writer_computes_bed_lines_and_writes_to_one_file_per_motif(mocker):
     )
 
     # TODO: switch to n_total
-    motif_pileup_stub_cg = namedtuple('MotifPileupStub', 'idx_pos beta_value n_meth n_unmeth')(
+    motif_pileup_stub_cg = namedtuple('MotifPileupStub', 'idx_pos beta_value n_meth n_total')(
         idx_pos = index_pos_stub_cg,
         beta_value = 0.6,
         n_meth = 3,
-        n_unmeth = 2
+        n_total = 5
     )
 
     index_pos_stub_chg = namedtuple('IndexPositionStub', 'chrom start motif strand end')(
@@ -73,11 +73,11 @@ def test_bed_writer_computes_bed_lines_and_writes_to_one_file_per_motif(mocker):
     )
 
     # TODO: switch to n_total
-    motif_pileup_stub_chg = namedtuple('MotifPileupStub', 'idx_pos beta_value n_meth n_unmeth')(
+    motif_pileup_stub_chg = namedtuple('MotifPileupStub', 'idx_pos beta_value n_meth n_total')(
         idx_pos = index_pos_stub_chg,
         beta_value = 1,
         n_meth = 5,
-        n_unmeth = 0
+        n_total = 5
     )
     config_stub = {'paths': {'meth_calls_basepath': 'does/not/matter'},
                    'sample': {'name': 'hsc_1'},
@@ -92,12 +92,12 @@ def test_bed_writer_computes_bed_lines_and_writes_to_one_file_per_motif(mocker):
     writer.process(motif_pileup_stub_cg)
     writer.process(motif_pileup_stub_chg)
 
-    expected_line_cg = f"1 10 11 CG . + {3/5:.6f} 3 2\n".replace(' ', '\t')
-    expected_line_chg = f"1 10 11 CHG . + {1:.6f} 5 0\n".replace(' ', '\t')
+    expected_line_cg = f"1 10 11 CG . + {3/5:.6f} 3 5\n".replace(' ', '\t')
+    expected_line_chg = f"1 10 11 CHG . + {1:.6f} 5 5\n".replace(' ', '\t')
 
     expected_header_no_endl = '\t'.join(['#chrom', 'start', 'end',
                                  'motif', 'score', 'strand',
-                                 'beta_value', 'n_meth', 'n_unmeth'])
+                                 'beta_value', 'n_meth', 'n_total'])
     order_of_file_openening = [re.search(r'(CG|CHG|CHH)', x[0][0]).group(1)
                                for x in mock_open.call_args_list]
     file_mock_motif_mapping = {x: file_mocks[i]

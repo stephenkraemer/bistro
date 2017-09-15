@@ -11,7 +11,7 @@ import pysam
 from mqc.coverage import CoverageCounter
 from mqc.index import IndexFile
 from mqc.mbias import MbiasCounter, FixedRelativeCuttingSites
-from mqc.mcaller import MethCaller
+from mqc.mcaller import MethCaller, StratifiedMethCaller, StratifiedBetaCounter
 from mqc.overlap import OverlapHandler
 from mqc.pileup.pileup import stepwise_pileup_generator
 from mqc.qc_filters import PhredFilter, MapqFilter
@@ -244,15 +244,23 @@ class QcAndMethCallingRun(PileupRun):
     """Methylation calling with QC filtering and stats collection"""
 
     def _get_visitors(self, chrom) -> Dict[str, Visitor]:
-        return OrderedDict(
-            mapq_filter = MapqFilter(self.config),
-            trimmer = Trimmer(self.config, self.cutting_sites),
+        visitors = OrderedDict(
+            mapq_filter=MapqFilter(self.config),
+            trimmer=Trimmer(self.config, self.cutting_sites),
             overlap_handler=OverlapHandler(),
-            phred_filter = PhredFilter(self.config),
-            meth_caller=MethCaller(),
-            coverage_counter=CoverageCounter(self.config),
-            mcall_writer=BedWriter(self.config, chrom=chrom),
+            phred_filter=PhredFilter(self.config),
         )
+
+        if self.config['run']['strat_beta_dist']:
+            visitors['meth_caller'] = StratifiedMethCaller()
+            visitors['beta_counter'] = StratifiedBetaCounter()
+        else:
+            visitors['meth_caller'] = MethCaller()
+
+        visitors['mcall_writer'] = BedWriter(self.config, chrom=chrom)
+        visitors['coverage_counter'] = CoverageCounter(self.config)
+
+        return visitors
 
 
 def _filter_for_counters(visitors) -> Dict:
