@@ -1,3 +1,11 @@
+[stats]
+  max_flen = 500
+  max_flen_with_single_flen_resolution = 150
+  flen_bin_size = 10
+  max_phred = 40
+  phred_bin_size = 5
+  seq_context_size = 5
+
 [conversion_error_calling]
   max_number_of_unconv_cytosines = 2
 

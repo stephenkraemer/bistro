@@ -7,15 +7,21 @@ from textwrap import dedent
 from unittest.mock import MagicMock
 import os.path as op
 import pytoml
-
+from itertools import product
 
 import pandas as pd
+
+idxs = pd.IndexSlice
 import numpy as np
+from numpy.testing import assert_array_equal
 import pytest
 import subprocess
 
 from mqc.config import assemble_config_vars
-from mqc.mbias import MbiasCounter
+# from mqc.mbias import MbiasCounter
+from mqc.new_mbias_counter_design import MbiasCounter
+from mqc.new_mbias_counter_design import \
+    get_sequence_context_to_array_index_table, map_seq_ctx_to_motif
 from mqc.mbias import FixedRelativeCuttingSites
 from mqc.mbias import convert_cutting_sites_df_to_array
 from mqc.mbias import fit_normalvariate_plateau
@@ -27,33 +33,48 @@ from mqc.utils import get_resource_abspath
 
 import mqc.flag_and_index_values as mfl
 
-#TODO: I currently test that any non-zero qc_fail_flag leads to discard from M-bias stats counting. When I update the behavior so that phred score fails are kept in the stats, the tests here also need to be updated accordingly
+# TODO: I currently test that any non-zero qc_fail_flag leads to discard from M-bias stats counting. When I update the behavior so that phred score fails are kept in the stats, the tests here also need to be updated accordingly
 b_inds = mfl.bsseq_strand_indices
 b_na_ind = mfl.bsseq_strand_na_index
 m_flags = mfl.methylation_status_flags
+qc_flags = mfl.qc_fail_flags
 
-MAX_FLEN = 500
 CONFIG = defaultdict(dict)
-CONFIG['data_properties']['max_read_length_bp'] = 101
-CONFIG['trimming']['max_flen_considered_for_trimming'] = MAX_FLEN
-CONFIG['run']['motifs'] = ['cg', 'chg']
 CONFIG['paths']['mbias_counts'] = None
+CONFIG['data_properties']['max_read_length_bp'] = 101
+CONFIG['stats']['max_flen'] = 500
+CONFIG['stats']['max_flen_with_single_flen_resolution'] = 150
+CONFIG['stats']['flen_bin_size'] = 10
+CONFIG['stats']['max_phred'] = 40
+CONFIG['stats']['phred_bin_size'] = 5
+CONFIG["stats"]["seq_context_size"] = 5
 
 AlignmentStub = namedtuple('AlignmentStub',
                            'template_length')
 
 IndexPositionStub = namedtuple('IndexPositionStub',
-                               'motif')
+                               'seq_context')
+
+SEQ_CONTEXT_TO_IDX_MAPPING = {
+    'CCCCC': 0,
+    'AACAA': 1,
+    'GGCGG': 2
+}
+
 
 class BSSeqPileupReadStub:
-    def __init__(self, strand_idx, tlen, pos, mflag, fail):
+    def __init__(self, strand_idx, flen, pos, mflag,
+                 fail, phred, expected_flen_bin, expected_phred_bin):
         self.qc_fail_flag = fail
         self.bsseq_strand_ind = strand_idx
         self.meth_status_flag = mflag
-        self.alignment = AlignmentStub(template_length = tlen)
+        self.alignment = AlignmentStub(template_length=flen)
         self.pos_in_read = pos
-    # TODO: change to method
-    def __iter__(self):
+        self.baseq_at_pos = phred
+        self.expected_phred_bin = expected_phred_bin
+        self.expected_flen_bin = expected_flen_bin
+
+    def get_idx_tuple(self):
         if self.meth_status_flag == m_flags.is_methylated:
             meth_status_index = 0
         elif self.meth_status_flag == m_flags.is_unmethylated:
@@ -62,92 +83,361 @@ class BSSeqPileupReadStub:
             raise ValueError("This is a failed read, "
                              "can't give event_class indices")
 
-        return iter((self.bsseq_strand_ind,
-                     self.alignment.template_length,
-                     self.pos_in_read,
-                     meth_status_index))
+        return (self.bsseq_strand_ind,
+                self.expected_flen_bin,
+                self.expected_phred_bin,
+                self.pos_in_read,
+                meth_status_index)
+
 
 bstub = BSSeqPileupReadStub
 
+
+def bstub_with(**kwargs):
+    event_class = dict(strand_idx=b_inds.c_bc,
+                       flen=180,
+                       expected_flen_bin=153,
+                       pos=10,
+                       mflag=m_flags.is_methylated,
+                       fail=0,
+                       phred=30,
+                       expected_phred_bin=6)
+    event_class.update(kwargs)
+    return bstub(**event_class)
+
+
 class MotifPileupStub:
-    def __init__(self, motif, reads):
-        self.idx_pos = IndexPositionStub(motif=motif)
+    def __init__(self, seq_context, reads):
+        self.idx_pos = IndexPositionStub(seq_context)
         self.reads = reads
 
-class TestMbiasCounterMotifPileupProcessing:
 
-    def test_updates_counter_array(self):
-        reads = [
-            bstub(strand_idx=b_inds.w_bc, tlen=100, pos=50,
-                  mflag=m_flags.is_methylated, fail=0),
-            bstub(strand_idx=b_inds.c_bc_rv, tlen=120, pos=50,
-                  mflag=m_flags.is_unmethylated, fail=0)
-        ]
+class TestSeqContextToBinMapping():
+    def test_even_number_motif_sizes_are_not_allowed(self):
+        with pytest.raises(ValueError):
+            get_sequence_context_to_array_index_table(4)
+
+    @pytest.mark.parametrize("N", [3, 5])
+    def test_seq_ctxs_are_mapped_to_idxs_in_alpha_order_of_binned_motifs(self,
+                                                                         N):
+        """Sequence contexts are mapped to bin numbers, and bin numbers
+        are given according to the alphabetical order of the binned
+        representations of the sequence contexts"""
+
+        n_possible_cgw_motifs = 3 ** (N - 1)
+        mapping = get_sequence_context_to_array_index_table(N)
+        if N == 3:
+            motif_start = "CCC"
+            motif_end = "TCT"
+        else:  # N == 5
+            motif_start = "CCCCC"  # binned: "CCCCC"
+            motif_end = "TTCTT"  # binned: "WWCWW"
+        assert mapping[motif_start] == 0
+        assert mapping[motif_end] == n_possible_cgw_motifs - 1
+
+    @pytest.mark.parametrize("N", [3, 5])
+    def test_seq_context_does_not_map_illegal_motifs(self, N):
+        mapping = get_sequence_context_to_array_index_table(N)
+        if N == 3:
+            bad_motif = "NCT"
+        else:  # N == 5
+            bad_motif = "ANCTA"
+        with pytest.raises(KeyError):
+            assert mapping[bad_motif]
+
+    def test_equivalent_motifs_are_mapped_to_the_same_bin(self):
+        mapping = get_sequence_context_to_array_index_table(5)
+        assert mapping["AACAA"] == mapping["TTCAA"]
+        assert mapping["AACAA"] == mapping["ATCAT"]
+
+
+@pytest.mark.parametrize("seq_ctx,  use_classical, exp_motif",
+                         [
+                             ("ACA", True, "CH"),
+                             ("ACA", False, "CW"),
+                             ("TCG", True, "CG"),
+                             ("TCG", False, "CG"),
+                             ("TCC", True, "CH"),
+                             ("TCC", False, "CC"),
+                             ("TCW", False, "CW"),
+                             ("GGCGG", True, "CG"),
+                             ("GGCGG", False, "CG"),
+                             ("AACAA", True, "CHH"),
+                             ("AACAA", False, "CWW"),
+                             ("AACAG", True, "CHG"),
+                             ("AACAG", False, "CWG"),
+                             ("AACCG", True, "CHG"),
+                             ("AACCG", False, "CCG"),
+                             ("AACWW", True, "CHH"),
+                             ("AACWW", False, "CWW"),
+                             ("AACWG", False, "CWG"),
+                             ("AACWG", True, "CHG"),
+                             ("TACCW", True, "CHH"),
+                             ("TACCW", False, "CCW"),
+                             ("CGGCGGA", True, "CG"),
+                             ("AAACAGA", True, "CHG"),
+                             ("AAACAGA", False, "CWG"),
+                         ])
+def test_seq_ctx_to_motif_mapping(seq_ctx, use_classical, exp_motif):
+    mapped_motif = map_seq_ctx_to_motif(seq_ctx, use_classical=use_classical)
+    assert mapped_motif == exp_motif
+
+
+def test_mbias_counter_get_dataframe(mocker):
+    """This  is a test against the combination of MbiasCounter.__init__
+    and get_dataframe, since they are closely coupled"""
+
+    config = defaultdict(dict)
+    config["data_properties"]["max_read_length_bp"] = 10
+    config["paths"]["mbias_counts"] = None
+    config["stats"]["max_flen"] = 10
+    config["stats"]["max_flen_with_single_flen_resolution"] = 5
+    config["stats"]["flen_bin_size"] = 2
+    config["stats"]["max_phred"] = 10
+    config["stats"]["phred_bin_size"] = 5
+    config["stats"]["seq_context_size"] = 5
+
+    map_fn = mocker.patch('mqc.new_mbias_counter_design.'
+                          'get_sequence_context_to_array_index_table')
+    map_fn.return_value = SEQ_CONTEXT_TO_IDX_MAPPING
+
+    flen_levels = pd.IntervalIndex.from_breaks(
+        [0, 1, 2, 3, 4, 5, 6, 8, 10, 11],
+        closed="left")
+    phred_levels = pd.IntervalIndex.from_breaks(
+        [0, 5, 10, 11], closed='left')
+    idx = pd.MultiIndex.from_product([
+        ["AACAA", "CCCCC", "GGCGG"],
+        ["c_bc", "c_bc_rv", "w_bc", "w_bc_rv"],
+        flen_levels,
+        phred_levels,
+        list(range(1, 11)),
+        ["n_meth", "n_unmeth"]
+    ], names=["seq_context", "bs_strand", "flen", "phred", "pos",
+              "meth_status"])
+    exp_df = pd.DataFrame(index=idx).sort_index()
+    exp_df["counts"] = 0
+    # random middle values
+    exp_df.loc[idxs["AACAA", "w_bc", 7, 2, 5, "n_meth":"n_meth"], "counts"] = 1
+    exp_df.loc[idxs["CCCCC", "c_bc", 9, 6, 3, "n_unmeth":"n_unmeth"],
+               "counts"] = 2
+    # max values
+    exp_df.loc[idxs["CCCCC", "c_bc_rv", 10, 10, 10, "n_unmeth":"n_unmeth"],
+               "counts"] = 1
+    # min values
+    exp_df.loc[idxs["GGCGG", "w_bc_rv", 0, 0, 1, "n_meth":"n_meth"],
+               "counts"] = 1
+
+
+    mbias_counter = MbiasCounter(config)
+    # mbias_counter.seq_ctx_idx_dict = SEQ_CONTEXT_TO_IDX_MAPPING
+    mbias_counter.counter_array[1, 2, 6, 0, 4, 0] = 1
+    mbias_counter.counter_array[0, 0, 7, 1, 2, 1] = 2
+    mbias_counter.counter_array[0, 1, -1, -1, -1, 1] = 1
+    mbias_counter.counter_array[2, 3, 0, 0, 0, 0] = 1
+    computed_df = mbias_counter.get_dataframe()
+
+    pd.testing.assert_frame_equal(exp_df, computed_df)
+
+
+class TestMbiasCounterMotifPileupProcessing:
+    def test_phred_flen_seqcontext_in_allowed_range_are_binned(
+            self, mocker):
+        reads = [bstub(strand_idx=b_inds.w_bc,
+                       flen=100,
+                       expected_flen_bin=100,
+                       pos=10,
+                       mflag=m_flags.is_methylated,
+                       fail=0,
+                       phred=20,
+                       expected_phred_bin=4),
+                 bstub(strand_idx=b_inds.c_bc,
+                       flen=180,
+                       expected_flen_bin=153,
+                       pos=10,
+                       mflag=m_flags.is_methylated,
+                       fail=0,
+                       phred=30,
+                       expected_phred_bin=6), ]
+
+        map_fn = mocker.patch('mqc.new_mbias_counter_design.'
+                              'get_sequence_context_to_array_index_table')
+        map_fn.return_value = SEQ_CONTEXT_TO_IDX_MAPPING
 
         mbias_counter = MbiasCounter(CONFIG)
+        mbias_counter.seq_ctx_idx_dict = SEQ_CONTEXT_TO_IDX_MAPPING
 
-        # add reads to CG and CHG motif stratum
-        for motif_ind, curr_read in product([0,1], reads):
-                mbias_counter.counter_array[(motif_ind,) + tuple(curr_read)] = 2
+        seq_context1 = 'CCCCC'
+        seq_context1_idx = SEQ_CONTEXT_TO_IDX_MAPPING[seq_context1]
+        seq_context2 = 'GGCGG'
+        seq_context2_idx = SEQ_CONTEXT_TO_IDX_MAPPING[seq_context2]
 
-        motif_pileup_cg = MotifPileupStub(motif = 'cg',
-                                          reads=reads)
-        motif_pileup_chg = MotifPileupStub(motif = 'chg',
-                                           reads=reads)
-        mbias_counter.process(motif_pileup_cg)
-        mbias_counter.process(motif_pileup_chg)
+        motif_pileup1 = MotifPileupStub(seq_context=seq_context1,
+                                        reads=reads)
+        motif_pileup2 = MotifPileupStub(seq_context=seq_context2,
+                                        reads=reads)
+        mbias_counter.process(motif_pileup1)
+        mbias_counter.process(motif_pileup2)
 
-        # assert counts for CG
-        assert mbias_counter.counter_array[(0,) + tuple(reads[0])] == 3
-        assert mbias_counter.counter_array[(0,) + tuple(reads[1])] == 3
+        read_strata_for_advanced_indexing = [
+            read.get_idx_tuple() for read in reads]
 
-        # assert counts for CHG
-        assert mbias_counter.counter_array[(1,) + tuple(reads[0])] == 3
-        assert mbias_counter.counter_array[(1,) + tuple(reads[1])] == 3
+        full = [(curr_seq_ctx,) + read_tuple
+                for curr_seq_ctx in [seq_context1_idx, seq_context2_idx]
+                for read_tuple in read_strata_for_advanced_indexing]
 
-    def test_discards_reads_w_bad_qcflag_or_na_bsstrand_or_mcall_fail_ref_snp(self):
+        full2 = list(zip(*full))
+
+        target_subarray = mbias_counter.counter_array[full2]
+        assert (target_subarray == 1).all()
+        mbias_counter.counter_array[full2] = 0
+        assert (mbias_counter.counter_array == 0).all()
+
+    def test_unusable_reads_are_discarded(self, mocker):
         """ Reads are discarded if
 
             - they have a qc_fail_flag
-            - their bsseq strand could not be determined
-            - they have methylation calling status: NA, SNP or Ref
+            - they have no methylation calling status: NA, SNP or Ref
         """
-        reads = [
-            bstub(strand_idx=b_inds.w_bc, tlen=100, pos=50, mflag=m_flags.is_methylated, fail=1),  # qc fail
-            bstub(strand_idx=b_na_ind,    tlen=100, pos=50, mflag=m_flags.is_methylated, fail=0), # bsseq strand not identifiable
-            bstub(strand_idx=b_inds.w_bc, tlen=100, pos=50, mflag=m_flags.is_na, fail=0), # na meth
-            bstub(strand_idx=b_inds.w_bc, tlen=100, pos=50, mflag=m_flags.is_snp, fail=0),  # snp meth
-            bstub(strand_idx=b_inds.w_bc, tlen=100, pos=50, mflag=m_flags.is_ref, fail=0),  # ref meth
-            bstub(strand_idx=b_inds.c_bc, tlen=200, pos=90, mflag=m_flags.is_unmethylated, fail=0),  # this one should count
-        ]
-        motif_pileup = MotifPileupStub(motif = 'cg', reads=reads)
+
+        map_fn = mocker.patch('mqc.new_mbias_counter_design.'
+                              'get_sequence_context_to_array_index_table')
+        map_fn.return_value = SEQ_CONTEXT_TO_IDX_MAPPING
+
+        reads = [bstub_with(),
+                 bstub_with(mflag=m_flags.is_ref),
+                 bstub_with(mflag=m_flags.is_snp),
+                 bstub_with(mflag=m_flags.is_na),
+                 bstub_with(fail=qc_flags.overlap_fail),
+                 bstub_with(fail=qc_flags.sam_flag_fail),
+                 bstub_with(fail=qc_flags.phred_score_fail),
+                 bstub_with(fail=qc_flags.mapq_fail),
+                 ]
+
+        motif_pileup = MotifPileupStub(seq_context='CCCCC',
+                                       reads=reads)
+
         mbias_counter = MbiasCounter(CONFIG)
+
         mbias_counter.process(motif_pileup)
-        assert mbias_counter.counter_array[(0,) + tuple(reads[-1])] == 1
-        mbias_counter.counter_array[(0,) + tuple(reads[-1])] = 0
+
+        base_event_class = ((SEQ_CONTEXT_TO_IDX_MAPPING['CCCCC'],)
+                            + bstub_with().get_idx_tuple())
+        assert mbias_counter.counter_array[base_event_class] == 1
+        mbias_counter.counter_array[base_event_class] = 0
         assert (mbias_counter.counter_array == 0).all()
 
-    def test_threshold_exceeding_flens_are_added_to_max_flen_bin(self):
-        too_long_flen_read_properties = dict(
-            strand_idx=b_inds.w_bc_rv, tlen=MAX_FLEN + 200, pos=20,
-            mflag=m_flags.is_methylated, fail=0)
-        reads = [bstub(**too_long_flen_read_properties)]
-        motif_pileup = MotifPileupStub(motif = 'chg', reads=reads)
+    def test_flen_and_phred_are_pooled_in_highest_bin_if_above_max(
+            self, mocker):
+        map_fn = mocker.patch('mqc.new_mbias_counter_design.'
+                              'get_sequence_context_to_array_index_table')
+        map_fn.return_value = SEQ_CONTEXT_TO_IDX_MAPPING
+
+        reads = [bstub_with(),
+                 bstub_with(flen=1000),
+                 bstub_with(phred=70)]
+
+        motif_pileup = MotifPileupStub(seq_context='GGCGG',
+                                       reads=reads)
+
         mbias_counter = MbiasCounter(CONFIG)
         mbias_counter.process(motif_pileup)
 
-        capped_flen_read_properties = deepcopy(too_long_flen_read_properties)
-        capped_flen_read_properties['tlen'] = MAX_FLEN
-        capped_read_idx = tuple(bstub(**capped_flen_read_properties))
-        assert mbias_counter.counter_array[(1,) + capped_read_idx] == 1
+        base_event_class = ((SEQ_CONTEXT_TO_IDX_MAPPING['GGCGG'],)
+                            + bstub_with().get_idx_tuple())
+
+        flen_dim = mbias_counter.dim_names.index('flen')
+        phred_dim = mbias_counter.dim_names.index('phred')
+        max_flen_bin = mbias_counter.counter_array.shape[flen_dim] - 1
+        max_phred_bin = mbias_counter.counter_array.shape[phred_dim] - 1
+        pooled_flen_event = (base_event_class[0:flen_dim]
+                             + (max_flen_bin,) + base_event_class[
+                                                 flen_dim + 1:])
+        pooled_phred_event = (base_event_class[0:phred_dim]
+                              + (max_phred_bin,) + base_event_class[
+                                                   phred_dim + 1:])
+        exp_counts_idx = list(zip(base_event_class, pooled_flen_event,
+                                  pooled_phred_event))
+        assert (mbias_counter.counter_array[exp_counts_idx] == 1).all()
+        mbias_counter.counter_array[exp_counts_idx] = 0
+        assert (mbias_counter.counter_array == 0).all()
+
+    def test_undefined_seq_contexts_are_discarded(
+            self, mocker):
+        """Undefined seq_contexts are given if the seq_context
+        is unknown, i.e. not contained in MbiasCounter.seq_ctx_idx_dict
+
+        This may happen because the seq_context
+           - is shorter than the expected size (at ends of chromosomes)
+           - contains Ns
+           - in some cases, not all possible seq_context of a given length
+             may be intended to be counted, and therefore will not be
+             present in seq_ctx_idx_dict defined by the user
+        """
+
+        map_fn = mocker.patch('mqc.new_mbias_counter_design.'
+                              'get_sequence_context_to_array_index_table')
+        # we are only interested in these three motifs
+        map_fn.return_value = SEQ_CONTEXT_TO_IDX_MAPPING
+
+        reads = [bstub_with()]
+
+        motif_pileups = [
+            MotifPileupStub('GGCGG', reads),  # ok
+            MotifPileupStub('NGCGG', reads),  # N
+            MotifPileupStub('GCGG', reads),  # too short
+            MotifPileupStub('TTCTT', reads),  # this context not of interest
+        ]
+
+        mbias_counter = MbiasCounter(CONFIG)
+        for mp in motif_pileups:
+            mbias_counter.process(mp)
+
+        assert mbias_counter.counter_array[
+                   (SEQ_CONTEXT_TO_IDX_MAPPING['GGCGG'],)
+                   + bstub_with().get_idx_tuple()] == 1
+        assert (mbias_counter.counter_array > 0).sum() == 1
+
+    def test_motif_pileups_are_added_incrementally(
+            self, mocker):
+        map_fn = mocker.patch('mqc.new_mbias_counter_design.'
+                              'get_sequence_context_to_array_index_table')
+        # we are only interested in these three motifs
+        map_fn.return_value = SEQ_CONTEXT_TO_IDX_MAPPING
+
+        reads = [bstub_with(flen=400,
+                            expected_flen_bin=175,
+                            phred=38,
+                            expected_phred_bin=7),
+                 bstub_with(flen=300,
+                            expected_flen_bin=165,
+                            phred=8,
+                            expected_phred_bin=1)]
+
+        motif_pileup = MotifPileupStub('AACAA', reads)
+
+        event_classes_adv_idx = list(zip(*[
+            (SEQ_CONTEXT_TO_IDX_MAPPING['AACAA'],) + curr_read.get_idx_tuple()
+            for curr_read in reads]))
+
+        mbias_counter = MbiasCounter(CONFIG)
+        mbias_counter.counter_array[event_classes_adv_idx] += 1
+
+        mbias_counter.process(MotifPileupStub('AACAA', reads))
+        mbias_counter.process(MotifPileupStub('AACAA', reads))
+
+        assert (mbias_counter.counter_array[event_classes_adv_idx] == 3).all()
+        mbias_counter.counter_array[event_classes_adv_idx] = 0
+        assert (mbias_counter.counter_array == 0).all()
+
 
 def test_fixed_cutting_sites_are_computed_correctly():
     config = defaultdict(defaultdict)
     config['trimming']['relative_to_fragment_ends_dict'] = dict(
-        w_bc = [10, 10],
-        c_bc = [0, 10],
-        w_bc_rv = [10, 0],
-        c_bc_rv = [10, 10],
+        w_bc=[10, 10],
+        c_bc=[0, 10],
+        w_bc_rv=[10, 0],
+        c_bc_rv=[10, 10],
     )
     config['data_properties']['max_read_length_bp'] = 101
     config['trimming']['max_flen_considered_for_trimming'] = 500
@@ -156,12 +446,13 @@ def test_fixed_cutting_sites_are_computed_correctly():
     cutting_df = fixed_cutting_sites.get_df()
 
     expected_result = (pd.DataFrame([['w_bc', 70, 'left_cut_end', 10],
-                                    ['c_bc_rv', 90, 'right_cut_end', 79],
-                                    ['w_bc', 110, 'right_cut_end', 99],
-                                    ['w_bc', 111, 'right_cut_end', 100],
-                                    ['w_bc', 115, 'right_cut_end', 100],
-                                    ['c_bc_rv', 300, 'left_cut_end', 10]],
-                                   columns=['bs_strand', 'flen', 'cut_end', 'cut_pos'])
+                                     ['c_bc_rv', 90, 'right_cut_end', 79],
+                                     ['w_bc', 110, 'right_cut_end', 99],
+                                     ['w_bc', 111, 'right_cut_end', 100],
+                                     ['w_bc', 115, 'right_cut_end', 100],
+                                     ['c_bc_rv', 300, 'left_cut_end', 10]],
+                                    columns=['bs_strand', 'flen', 'cut_end',
+                                             'cut_pos'])
                        .set_index(['bs_strand', 'flen', 'cut_end'])
                        )
 
@@ -180,9 +471,10 @@ def test_fixed_cutting_sites_are_computed_correctly():
 
     assert computed_result.equals(expected_result), msg
 
+
 def test_cutting_site_df_to_cutting_site_array_conversion():
     df = pd.DataFrame([
-        ['w_bc', 100, 'left_cut_end',  10],
+        ['w_bc', 100, 'left_cut_end', 10],
         ['c_bc', 110, 'right_cut_end', 20],
     ], columns=['bs_strand', 'flen', 'cut_end', 'cut_pos']).set_index(
         ['bs_strand', 'flen', 'cut_end'])
@@ -200,40 +492,50 @@ def config_fit_normal_variate_plateau():
     config["trimming"]["min_flen_considered_for_trimming"] = 50
     return config
 
+
 class TestFitNormalVariatePlateau:
-    def test_left_gap_nucleotides_are_recognized(self, config_fit_normal_variate_plateau):
+    def test_left_gap_nucleotides_are_recognized(self,
+                                                 config_fit_normal_variate_plateau):
         df_stub = pd.DataFrame({'beta_value': np.ones(101) * 0.75})
         df_stub.loc[0:8, 'beta_value'] = 0
-        res_ser = fit_normalvariate_plateau(df_stub, config_fit_normal_variate_plateau)
+        res_ser = fit_normalvariate_plateau(df_stub,
+                                            config_fit_normal_variate_plateau)
         assert res_ser.left_cut_end == 9
         assert res_ser.right_cut_end == 100
 
-    def test_right_gap_nucleotides_are_recognized(self, config_fit_normal_variate_plateau):
+    def test_right_gap_nucleotides_are_recognized(self,
+                                                  config_fit_normal_variate_plateau):
         df_stub = pd.DataFrame({'beta_value': np.ones(101) * 0.75})
         df_stub.loc[92:100, 'beta_value'] = 0
-        res_ser = fit_normalvariate_plateau(df_stub, config_fit_normal_variate_plateau)
+        res_ser = fit_normalvariate_plateau(df_stub,
+                                            config_fit_normal_variate_plateau)
         assert res_ser.left_cut_end == 0
         assert res_ser.right_cut_end == 92
 
-    def test_hill_curves_are_recognized(self, config_fit_normal_variate_plateau):
+    def test_hill_curves_are_recognized(self,
+                                        config_fit_normal_variate_plateau):
         df_stub = pd.DataFrame({'beta_value': np.ones(101) * 0.75})
         df_stub.loc[0:19, 'beta_value'] = np.linspace(0, 0.75, 20)
-        res_ser = fit_normalvariate_plateau(df_stub, config_fit_normal_variate_plateau)
+        res_ser = fit_normalvariate_plateau(df_stub,
+                                            config_fit_normal_variate_plateau)
         print(res_ser)
         assert 10 < res_ser.left_cut_end < 20
         assert res_ser.right_cut_end == 100
 
-    def test_plateaus_on_less_than_T_percent_of_the_read_length_are_discarded(self, config_fit_normal_variate_plateau):
+    def test_plateaus_on_less_than_T_percent_of_the_read_length_are_discarded(
+            self, config_fit_normal_variate_plateau):
         df_stub = pd.DataFrame({'beta_value': np.ones(80) * 0.75})
         df_stub.loc[0:19, 'beta_value'] = np.linspace(0, 0.3, 20)
-        res_ser = fit_normalvariate_plateau(df_stub, config_fit_normal_variate_plateau)
+        res_ser = fit_normalvariate_plateau(df_stub,
+                                            config_fit_normal_variate_plateau)
         print(res_ser)
         assert res_ser.left_cut_end == 0.0
         assert res_ser.right_cut_end == 0.0
 
-class TestAdjustedCuttingSites:
-    def test_compute_df_provides_df_in_standard_cutting_sites_df_format(self, mocker):
 
+class TestAdjustedCuttingSites:
+    def test_compute_df_provides_df_in_standard_cutting_sites_df_format(self,
+                                                                        mocker):
         mbias_df_stub = pd.DataFrame([
             ['CG', 'w_bc', 100, 1, 0.8],
             ['CG', 'w_bc', 100, 2, 0.8],
@@ -241,13 +543,14 @@ class TestAdjustedCuttingSites:
             ['CG', 'c_bc', 101, 2, 0.7],
             ['CG', 'w_bc', 101, 1, 0.8],
             ['CG', 'w_bc', 101, 2, 0.8],
-        ], columns=['motif', 'bs_strand', 'flen', 'pos', 'beta_value']).set_index(
+        ], columns=['motif', 'bs_strand', 'flen', 'pos',
+                    'beta_value']).set_index(
             ['motif', 'bs_strand', 'flen', 'pos'])
 
-        fit_mock = MagicMock(side_effect = [
-            pd.Series([10,11], index=['left_cut_end', 'right_cut_end']),
-            pd.Series([10,11], index=['left_cut_end', 'right_cut_end']),
-            pd.Series([10,11], index=['left_cut_end', 'right_cut_end']),
+        fit_mock = MagicMock(side_effect=[
+            pd.Series([10, 11], index=['left_cut_end', 'right_cut_end']),
+            pd.Series([10, 11], index=['left_cut_end', 'right_cut_end']),
+            pd.Series([10, 11], index=['left_cut_end', 'right_cut_end']),
         ])
         mocker.patch('mqc.mbias.fit_normalvariate_plateau', fit_mock)
 
@@ -267,30 +570,33 @@ class TestAdjustedCuttingSites:
 
         assert computed_cutting_sites_ser.equals(expected_cutting_sites_ser)
 
+
 from mqc.mbias import compute_mbias_stats_df
+
+
 def test_compute_mbias_stats_df_converts_mbias_counts_to_mbias_stats_df():
     mbias_counts_df_stub = pd.DataFrame([
-        ['CG', 'w_bc', 1, 1, 'n_meth',   10],
+        ['CG', 'w_bc', 1, 1, 'n_meth', 10],
         ['CG', 'w_bc', 1, 1, 'n_unmeth', 10],
-        ['CG', 'w_bc', 1, 2, 'n_meth',   10],
+        ['CG', 'w_bc', 1, 2, 'n_meth', 10],
         ['CG', 'w_bc', 1, 2, 'n_unmeth', 10],
-        ['CG', 'w_bc', 1, 3, 'n_meth',   10],
+        ['CG', 'w_bc', 1, 3, 'n_meth', 10],
         ['CG', 'w_bc', 1, 3, 'n_unmeth', 10],
-        ['CG', 'w_bc', 2, 1, 'n_meth',   10],
+        ['CG', 'w_bc', 2, 1, 'n_meth', 10],
         ['CG', 'w_bc', 2, 1, 'n_unmeth', 10],
-        ['CG', 'w_bc', 2, 2, 'n_meth',   10],
+        ['CG', 'w_bc', 2, 2, 'n_meth', 10],
         ['CG', 'w_bc', 2, 2, 'n_unmeth', 10],
-        ['CG', 'w_bc', 2, 3, 'n_meth',   10],
+        ['CG', 'w_bc', 2, 3, 'n_meth', 10],
         ['CG', 'w_bc', 2, 3, 'n_unmeth', 10],
-        ['CG', 'w_bc', 3, 1, 'n_meth',   10],
+        ['CG', 'w_bc', 3, 1, 'n_meth', 10],
         ['CG', 'w_bc', 3, 1, 'n_unmeth', 10],
-        ['CG', 'w_bc', 3, 2, 'n_meth',   10],
+        ['CG', 'w_bc', 3, 2, 'n_meth', 10],
         ['CG', 'w_bc', 3, 2, 'n_unmeth', 10],
-        ['CG', 'w_bc', 3, 3, 'n_meth',   10],
+        ['CG', 'w_bc', 3, 3, 'n_meth', 10],
         ['CG', 'w_bc', 3, 3, 'n_unmeth', 10],
-    ], columns=['motif', 'bs_strand', 'flen', 'pos', 'meth_status', 'counts']).set_index(
+    ], columns=['motif', 'bs_strand', 'flen', 'pos', 'meth_status',
+                'counts']).set_index(
         ['motif', 'bs_strand', 'flen', 'pos', 'meth_status'])
-
 
     exp_mbias_stats_df = (pd.DataFrame([
         ['CG', 'w_bc', 1, 1, 0.5, 10, 10],
@@ -299,8 +605,9 @@ def test_compute_mbias_stats_df_converts_mbias_counts_to_mbias_stats_df():
         ['CG', 'w_bc', 3, 1, 0.5, 10, 10],
         ['CG', 'w_bc', 3, 2, 0.5, 10, 10],
         ['CG', 'w_bc', 3, 3, 0.5, 10, 10], ],
-        columns=['motif', 'bs_strand', 'flen', 'pos', 'beta_value', 'n_meth', 'n_unmeth'])
-        .set_index(['motif', 'bs_strand', 'flen', 'pos']))
+        columns=['motif', 'bs_strand', 'flen', 'pos', 'beta_value', 'n_meth',
+                 'n_unmeth'])
+                          .set_index(['motif', 'bs_strand', 'flen', 'pos']))
     exp_mbias_stats_df
 
     comp_mbias_stats_df = compute_mbias_stats_df(mbias_counts_df_stub)
@@ -311,7 +618,8 @@ def test_compute_mbias_stats_df_converts_mbias_counts_to_mbias_stats_df():
 def run_evaluate_mbias(motifs_str, output_dir):
     user_config_file_fp = op.join(output_dir, 'user_config.toml')
 
-    user_config = {'paths': {'mbias_counts': f"{op.dirname(__file__)}/test_files/hsc_1_mbias-counts_{motifs_str}", }}
+    user_config = {'paths': {
+        'mbias_counts': f"{op.dirname(__file__)}/test_files/hsc_1_mbias-counts_{motifs_str}", }}
 
     with open(user_config_file_fp, 'wt') as fout:
         pytoml.dump(fout, user_config)
@@ -321,6 +629,7 @@ def run_evaluate_mbias(motifs_str, output_dir):
                            '--motifs', motifs_str,
                            '--sample_name', 'hsc_1',
                            '--output_dir', output_dir])
+
 
 def get_evaluate_mbias_config(motif_str, output_dir):
     default_config_file = get_resource_abspath('config.default.toml')
@@ -333,6 +642,7 @@ def get_evaluate_mbias_config(motif_str, output_dir):
                                   default_config_file_path=default_config_file,
                                   user_config_file_path=user_config_file)
     return config
+
 
 @pytest.fixture(scope='module')
 def evaluate_mbias_run_all_motifs():
@@ -365,6 +675,7 @@ def evaluate_mbias_run_all_motifs():
     yield config
     shutil.rmtree(output_dir)
 
+
 @pytest.fixture(scope='module')
 def run_evaluate_mbias_for_cg_only():
     output_dir = tempfile.mkdtemp()
@@ -373,26 +684,31 @@ def run_evaluate_mbias_for_cg_only():
     yield config
     shutil.rmtree(output_dir)
 
+
 @pytest.mark.acceptance_test
 class TestMbiasEvaluateForAllMotifs:
-    def test_converts_mbias_counts_to_mbias_stats_df(self, evaluate_mbias_run_all_motifs):
+    def test_converts_mbias_counts_to_mbias_stats_df(self,
+                                                     evaluate_mbias_run_all_motifs):
         config = evaluate_mbias_run_all_motifs
         mbias_stats_df = pd.read_pickle(config['paths']['mbias_stats_p'])
-        assert mbias_stats_df.loc[('CG', 'w_bc', 100, 1), 'beta_value'] == 1872 / (1872 + 354)
+        assert mbias_stats_df.loc[
+                   ('CG', 'w_bc', 100, 1), 'beta_value'] == 1872 / (1872 + 354)
         # TODO: add more integration tests!
         #       - masked dataframe
         #       - correct cutting sites df (which also is interpreted as correct AdjustedCuttingSites object)
 
+
 @pytest.mark.acceptance_test
 class TestMbiasEvaluateForCGonly:
-    def test_converts_mbias_counts_to_mbias_stats_df(self, run_evaluate_mbias_for_cg_only):
+    def test_converts_mbias_counts_to_mbias_stats_df(self,
+                                                     run_evaluate_mbias_for_cg_only):
         config = run_evaluate_mbias_for_cg_only
         mbias_stats_df = pd.read_pickle(config['paths']['mbias_stats_p'])
-        assert mbias_stats_df.loc[('CG', 'w_bc', 100, 1), 'beta_value'] == 1872 / (1872 + 354)
+        assert mbias_stats_df.loc[
+                   ('CG', 'w_bc', 100, 1), 'beta_value'] == 1872 / (1872 + 354)
 
 
 def test_mask_mbias_stats_df_sets_positions_in_trimming_zone_to_nan():
-
     mbias_stats_df_stub = (pd.DataFrame([
         ['CG', 'w_bc', 1, 1, 0.5, 10, 10],
         ['CG', 'w_bc', 2, 1, 0.5, 10, 10],
@@ -400,18 +716,19 @@ def test_mask_mbias_stats_df_sets_positions_in_trimming_zone_to_nan():
         ['CG', 'w_bc', 3, 1, 0.5, 10, 10],
         ['CG', 'w_bc', 3, 2, 0.5, 10, 10],
         ['CG', 'w_bc', 3, 3, 0.5, 10, 10], ],
-        columns=['motif', 'bs_strand', 'flen', 'pos', 'beta_value', 'n_meth', 'n_unmeth'])
-                          .set_index(['motif', 'bs_strand', 'flen', 'pos']))
+        columns=['motif', 'bs_strand', 'flen', 'pos', 'beta_value', 'n_meth',
+                 'n_unmeth'])
+                           .set_index(['motif', 'bs_strand', 'flen', 'pos']))
 
     cutting_sites_df_stub = (pd.DataFrame([
-        ['w_bc', 1, 'left_cut_end',  1],
+        ['w_bc', 1, 'left_cut_end', 1],
         ['w_bc', 1, 'right_cut_end', 1],
-        ['w_bc', 2, 'left_cut_end',  2],
+        ['w_bc', 2, 'left_cut_end', 2],
         ['w_bc', 2, 'right_cut_end', 2],
-        ['w_bc', 3, 'left_cut_end',  2],
+        ['w_bc', 3, 'left_cut_end', 2],
         ['w_bc', 3, 'right_cut_end', 3],
-    ], columns = ['bs_strand', 'flen', 'cut_end', 'cut_pos'])
-    .set_index(['bs_strand', 'flen', 'cut_end']))
+    ], columns=['bs_strand', 'flen', 'cut_end', 'cut_pos'])
+                             .set_index(['bs_strand', 'flen', 'cut_end']))
 
     exp_masked_df = (pd.DataFrame([
         ['CG', 'w_bc', 1, 1, 0.5, 10, 10],
@@ -420,28 +737,32 @@ def test_mask_mbias_stats_df_sets_positions_in_trimming_zone_to_nan():
         ['CG', 'w_bc', 3, 1, np.nan, np.nan, np.nan],
         ['CG', 'w_bc', 3, 2, 0.5, 10, 10],
         ['CG', 'w_bc', 3, 3, 0.5, 10, 10], ],
-        columns=['motif', 'bs_strand', 'flen', 'pos', 'beta_value', 'n_meth', 'n_unmeth'])
-                           .set_index(['motif', 'bs_strand', 'flen', 'pos']))
+        columns=['motif', 'bs_strand', 'flen', 'pos', 'beta_value', 'n_meth',
+                 'n_unmeth'])
+                     .set_index(['motif', 'bs_strand', 'flen', 'pos']))
 
-    computed_masked_df = mask_mbias_stats_df(mbias_stats_df_stub, cutting_sites_df_stub)
+    computed_masked_df = mask_mbias_stats_df(mbias_stats_df_stub,
+                                             cutting_sites_df_stub)
 
     assert exp_masked_df.equals(computed_masked_df)
+
 
 @pytest.fixture()
 def max_flen_cutting_df_to_array_conversion():
     return 100
 
-@pytest.fixture()
-def cutting_sites_array_computed_from_df(max_flen_cutting_df_to_array_conversion):
 
+@pytest.fixture()
+def cutting_sites_array_computed_from_df(
+        max_flen_cutting_df_to_array_conversion):
     cutting_sites_df_stub = (pd.DataFrame([
-        ['w_bc', 1, 'left_cut_end',  1],
+        ['w_bc', 1, 'left_cut_end', 1],
         ['w_bc', 1, 'right_cut_end', 1],
-        ['w_bc', 2, 'left_cut_end',  2],
+        ['w_bc', 2, 'left_cut_end', 2],
         ['w_bc', 2, 'right_cut_end', 2],
-        ['w_bc', 3, 'left_cut_end',  2],
+        ['w_bc', 3, 'left_cut_end', 2],
         ['w_bc', 3, 'right_cut_end', 3],
-    ], columns = ['bs_strand', 'flen', 'cut_end', 'cut_pos'])
+    ], columns=['bs_strand', 'flen', 'cut_end', 'cut_pos'])
                              .set_index(['bs_strand', 'flen', 'cut_end']))
 
     cutting_sites_array = convert_cutting_sites_df_to_array(
@@ -459,12 +780,12 @@ class TestConvertCuttingSitesDfToArray:
             4, max_flen_cutting_df_to_array_conversion + 1, 2)
 
     @pytest.mark.parametrize('stratum,exp_value',
-                              (((2, 1, 0), 1,),
-                               ((2, 1, 1), 1, ),
-                               ((2, 2, 0), 2, ),
-                               ((2, 2, 1), 2),
-                               ((2, 3, 0), 2),
-                               ((2, 3, 1), 3)))
+                             (((2, 1, 0), 1,),
+                              ((2, 1, 1), 1,),
+                              ((2, 2, 0), 2,),
+                              ((2, 2, 1), 2),
+                              ((2, 3, 0), 2),
+                              ((2, 3, 1), 3)))
     def test_cutting_sites_array_is_filled_based_on_df_where_data_are_available(
             self, stratum, exp_value, cutting_sites_array_computed_from_df):
         assert cutting_sites_array_computed_from_df[stratum] == exp_value
