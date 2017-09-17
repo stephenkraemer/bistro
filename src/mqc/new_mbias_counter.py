@@ -60,6 +60,7 @@ class MbiasCounter(Counter):
         self.flen_bin_size = sts["flen_bin_size"]
         self.max_phred = sts["max_phred"]
         self.phred_bin_size = sts["phred_bin_size"]
+        # TODO: get from IndexFile
         self.seq_context_size = config["stats"]["seq_context_size"]
 
         dim_names = ["seq_context", "bs_strand", "flen",

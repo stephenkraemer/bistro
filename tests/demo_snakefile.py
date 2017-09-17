@@ -24,8 +24,8 @@ index_dir = f"{sandbox_dir}/genomes/GRCm38mm10_PhiX_Lambda"
 user_config_file = f"{sandbox_dir}/user_config.toml"
 alignment_rpp_dir = "/icgc/dkfzlsdf/analysis/hs_ontogeny/results/wgbs/results_per_pid"
 
-autosomes = ['19']  #[str(i) for i in range(1,20)]
-other_chroms = []  #['X', 'Y', 'MT', 'phix', 'L']
+autosomes = ['18', '19']  #[str(i) for i in range(1,20)]
+other_chroms = ['L']  #['X', 'Y', 'MT', 'phix', 'L']
 
 config['pids'] = config['pids'].split(',')
 motifs_str = config['motifs']
@@ -218,10 +218,10 @@ rule evaluate_calls:
         name = f'evaluate_calls_{{pid}}_{motifs_str}',
         sample_meta = lambda wildcards: f"population={wildcards.pid.split('_')[0]},rep={wildcards.pid.split('_')[-1]}",
     shell:
-        """
-        mqc evaluate_calls \
-        --config_file {params.config_file} \
-        --motifs {params.motif_csv} \
-        --sample_name {wildcards.pid} \
-        --output_dir {params.output_dir}
-        """
+    """
+    mqc evaluate_calls \
+    --config_file {params.config_file} \
+    --motifs {params.motif_csv} \
+    --sample_name {wildcards.pid} \
+    --output_dir {params.output_dir}
+    """

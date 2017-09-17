@@ -293,3 +293,35 @@ def test_read_fasta(genome_fasta_path, fasta_seq):
     assert chr1_seq  == fasta_seq
     assert chrMt_seq == fasta_seq
 
+
+@pytest.mark.parametrize("selected_opt_fields",
+                         [[],
+                          ["seq_context"],
+                          ["triplet_seq"],
+                          ["triplet_seq", "seq_context"]])
+def test_idx_pos_parses_index_lines_with_different_optional_fields(
+        selected_opt_fields):
+
+    all_fields_dict = {
+        "chrom": "chr1",
+        "start": 1000,
+        "end": 1002,
+        "motif": "CG",
+        "strand": "+",
+        "score": ".",
+        "triplet_seq": "CGA",
+        "seq_context": "AACGA",
+    }
+
+    all_optional_fields = ["triplet_seq", "seq_context"]
+
+    included_fields = ["chrom", "start", "end", "motif", "score", "strand"] + selected_opt_fields
+
+    line = '\t'.join([str(all_fields_dict[key])
+                      for key in included_fields])
+
+    from mqc.index import IndexPosition
+    idx_pos = IndexPosition(line, selected_opt_fields)
+
+    for field in included_fields:
+        assert getattr(idx_pos, field) == all_fields_dict[field]

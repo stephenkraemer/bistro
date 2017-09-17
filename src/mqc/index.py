@@ -16,21 +16,30 @@ class IndexFile:
     def __init__(self, bed_abspath):
         # TODO: some sort of context manager for closing this?
         self.index_fobj = gzip.open(bed_abspath, 'rt')
-        header = next(self.index_fobj)  # skip header
+        header = next(self.index_fobj).strip()
         if not header.startswith('#'):
             raise ValueError('Index file does not have a header')
+        self.optional_fields = header.split("\t")[6:]
 
     def __next__(self):
         next_index_line = next(self.index_fobj)
-        return IndexPosition(next_index_line)
+        return IndexPosition(next_index_line, self.optional_fields)
 
     def __iter__(self):
         return self
 
 
 class IndexPosition:
-    # TODO: support additional index fields
-    def __init__(self, index_line: str):
+    """ Represent line of index file
+
+    Will always have BED6 attributes:
+    chrom, start, end, motif, score, strand
+
+    If the index file has more columns (named in the header line),
+    will have additional fields. The names of these fields are taken
+    from the header line.
+    """
+    def __init__(self, index_line: str, opt_fields):
         fields = index_line.rstrip().split('\t')
         self.chrom = fields[0]
         self.start = int(fields[1])
@@ -38,7 +47,12 @@ class IndexPosition:
         self.motif = fields[3]
         self.score = fields[4]
         self.strand = fields[5]  # '+' or '-'
+
         self.watson_base = 'C' if (self.strand == '+') else 'G'
+
+        # all str
+        for idx, field_name in enumerate(opt_fields, start=6):
+            setattr(self, field_name, fields[idx])
 
     def __str__(self):
         return '{}:{}-{}, motif: {} (on strand {})'.format(
