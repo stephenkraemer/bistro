@@ -4,11 +4,11 @@ How do I run this?
 -----------------
 
 snakemake \
---snakefile /home/kraemers/projects/mqc/mqc/tests/demo_snakefile.py \
+--snakefile /home/kraemers/projects/mqc/tests/demo_snakefile.py \
 --config pids=mpp1_rep1,mpp1_rep2 motifs=CG \
 --cluster "qsub -S /bin/bash -l walltime={params.walltime},mem={params.mem},nodes=1:ppn={params.cores} -N {params.name}" \
 --jobs 40 \
---jobscript /home/kraemers/projects/mqc/mqc/tests/jobscript.sh \
+--jobscript /home/kraemers/projects/mqc/tests/jobscript.sh \
 --dryrun
 
 """
@@ -18,17 +18,14 @@ shell.prefix("module load python/3.6.0; source /home/kraemers/programs/python_vi
 
 import os.path as op
 
-sandbox_dir = "/icgc/dkfzlsdf/analysis/B080/kraemers/projects/mcall_qc/sandbox/temp"
+sandbox_dir = "/icgc/dkfzlsdf/analysis/B080/kraemers/projects/mcall_qc/sandbox"
 output_rpp_dir = f"{sandbox_dir}/results_per_pid"
 index_dir = f"{sandbox_dir}/genomes/GRCm38mm10_PhiX_Lambda"
 user_config_file = f"{sandbox_dir}/user_config.toml"
 alignment_rpp_dir = "/icgc/dkfzlsdf/analysis/hs_ontogeny/results/wgbs/results_per_pid"
 
-autosomes = ['19']#[str(i) for i in range(1,20)]
-other_chroms = [] #['X', 'Y', 'MT', 'phix', 'L']
-
-# autosomes = [str(i) for i in range(10,20)]
-# other_chroms = ['L']
+autosomes = ['19']  #[str(i) for i in range(1,20)]
+other_chroms = []  #['X', 'Y', 'MT', 'phix', 'L']
 
 config['pids'] = config['pids'].split(',')
 motifs_str = config['motifs']
@@ -96,6 +93,7 @@ rule make_index:
         mqc make_index --genome_fasta {input} \
         --output_dir {params.output_dir} \
         --cores {params.cores} \
+        --seq_context 2 \
         {params.motifs_flags}
         """
 
@@ -164,6 +162,47 @@ rule evaluate_mbias:
         --output_dir {params.output_dir}
         """
 
+
+mcall_command = (
+    'mqc call'
+    ' --bam {input.bam}'
+    ' --config_file {params.config_file}'
+    ' --output_dir {params.output_dir}'
+    ' --sample_name {wildcards.pid}'
+    ' --sample_meta {params.sample_meta}'
+    ' --use_mbias_fit'
+    ' --cores {params.cores}'
+    ' {input.index_files}'
+)
+
+rule call:
+    input:
+        bam=f"{alignment_rpp_dir}/{{pid}}/alignment/blood_{{pid}}_merged.mdup.bam",
+        index_files = expand("{index_dir}/GRCm38mm10_PhiX_Lambda_{motifs_str}_{chrom}.bed.gz",
+                             index_dir=index_dir,
+                             motifs_str=motifs_str,
+                             chrom=autosomes + other_chroms),
+        adj_cut_sites_obj = f"{output_rpp_dir}/{{pid}}/meth/qc_stats/{{pid}}_adjusted_cutting_sites_obj_{motifs_str}.p",
+    params:
+        config_file = user_config_file,
+        mem = '8g',
+        cores = '12',
+        output_dir = f"{output_rpp_dir}/{{pid}}/meth/",
+        walltime = '42:00:00',
+        name = f'mcall_{motifs_str}_{{pid}}',
+        sample_meta = lambda wildcards: f"population={wildcards.pid.split('_')[0]},rep={wildcards.pid.split('_')[-1]}",
+    output:
+        mcall_files = expand("{output_rpp_dir}/{{pid}}/meth/meth_calls/mcalls_{{pid}}_{single_motif}_{chrom}.bed.gz",
+                            output_rpp_dir=output_rpp_dir,
+                            chrom=autosomes + other_chroms,
+                            single_motif=single_motifs),
+        coverage_counts = expand("{output_rpp_dir}/{{pid}}/meth/qc_stats/{{pid}}_coverage-counts_{motifs_str}.{ext}",
+                            output_rpp_dir=output_rpp_dir,
+                            motifs_str=motifs_str,
+                            ext=['p', 'tsv']),
+    shell: mcall_command
+
+
 rule evaluate_calls:
     input:
         coverage_counts = f"{output_rpp_dir}/{{pid}}/meth/qc_stats/{{pid}}_coverage-counts_{motifs_str}.p",
@@ -186,45 +225,3 @@ rule evaluate_calls:
         --sample_name {wildcards.pid} \
         --output_dir {params.output_dir}
         """
-
-
-
-mcall_command = (
-    'mqc call'
-    ' --bam {input.bam}'
-    ' --config_file {params.config_file}'
-    ' --output_dir {params.output_dir}'
-    ' --sample_name {wildcards.pid}'
-    ' --sample_meta {params.sample_meta}'
-    ' --use_mbias_fit'
-    ' --cores {params.cores}'
-    ' {input.index_files}'
-)
-
-
-rule call:
-    input:
-        bam=f"{alignment_rpp_dir}/{{pid}}/alignment/blood_{{pid}}_merged.mdup.bam",
-        index_files = expand("{index_dir}/GRCm38mm10_PhiX_Lambda_{motifs_str}_{chrom}.bed.gz",
-                             index_dir=index_dir,
-                             motifs_str=motifs_str,
-                             chrom=autosomes + other_chroms),
-        adj_cut_sites_obj = f"{output_rpp_dir}/{{pid}}/meth/qc_stats/{{pid}}_adjusted_cutting_sites_obj_{motifs_str}.p",
-    params:
-        config_file = user_config_file,
-        mem = '8g',
-        cores = '12',
-        output_dir = f"{output_rpp_dir}/{{pid}}/meth/",
-        walltime = '42:00:00',
-        name = f'mcall_{motifs_str}_{{pid}}',
-        sample_meta = lambda wildcards: f"population={wildcards.pid.split('_')[0]},rep={wildcards.pid.split('_')[-1]}",
-    output:
-        mbias_files = expand("{output_rpp_dir}/{{pid}}/meth/meth_calls/mcalls_{{pid}}_{single_motif}_{chrom}.bed.gz",
-                            output_rpp_dir=output_rpp_dir,
-                            chrom=autosomes + other_chroms,
-                            single_motif=single_motifs),
-        coverage_counts = expand("{output_rpp_dir}/{{pid}}/meth/qc_stats/{{pid}}_coverage-counts_{motifs_str}.{ext}",
-                            output_rpp_dir=output_rpp_dir,
-                            motifs_str=motifs_str,
-                            ext=['p', 'tsv']),
-    shell: mcall_command

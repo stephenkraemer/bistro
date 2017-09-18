@@ -406,7 +406,7 @@ def freq_plot_per_motif(mbias_stats_dfs_dict, config):
             mbias_stats_dfs_dict.items(), aes_mappings):
 
         curr_df = (curr_df[['n_meth', 'n_unmeth']]
-                   .stack()
+                   .stack(dropna=False)
                    .to_frame('counts'))
 
         for curr_motif, curr_motif_df in curr_df.groupby(level='motif'):
