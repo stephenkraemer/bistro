@@ -30,6 +30,10 @@ def collect_stats(config):
     mbias_run = MbiasDeterminationRun(config, cutting_sites=None)
     mbias_run.run_parallel()
     for counter in mbias_run.summed_up_counters.values():
+        print("\nshape: ", counter.counter_array.shape)
+        print("\nsize [MB]: ", counter.counter_array.nbytes / 10**6)
+        df = counter.get_dataframe()
+        print("\ndf [MB]: ", df.memory_usage() / 10**6)
         counter.save_dataframe()
 
 
@@ -261,6 +265,9 @@ class QcAndMethCallingRun(PileupRun):
         visitors['coverage_counter'] = CoverageCounter(self.config)
 
         return visitors
+
+
+
 
 
 def _filter_for_counters(visitors) -> Dict:

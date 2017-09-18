@@ -19,8 +19,8 @@ import subprocess
 
 from mqc.config import assemble_config_vars
 # from mqc.mbias import MbiasCounter
-from mqc.new_mbias_counter_design import MbiasCounter
-from mqc.new_mbias_counter_design import \
+from mqc.mbias import MbiasCounter
+from mqc.mbias import \
     get_sequence_context_to_array_index_table, map_seq_ctx_to_motif
 from mqc.mbias import FixedRelativeCuttingSites
 from mqc.mbias import convert_cutting_sites_df_to_array
@@ -197,7 +197,7 @@ def test_mbias_counter_get_dataframe(mocker):
     config["stats"]["phred_bin_size"] = 5
     config["stats"]["seq_context_size"] = 5
 
-    map_fn = mocker.patch('mqc.new_mbias_counter_design.'
+    map_fn = mocker.patch('mqc.mbias.'
                           'get_sequence_context_to_array_index_table')
     map_fn.return_value = SEQ_CONTEXT_TO_IDX_MAPPING
 
@@ -260,7 +260,7 @@ class TestMbiasCounterMotifPileupProcessing:
                        phred=30,
                        expected_phred_bin=6), ]
 
-        map_fn = mocker.patch('mqc.new_mbias_counter_design.'
+        map_fn = mocker.patch('mqc.mbias.'
                               'get_sequence_context_to_array_index_table')
         map_fn.return_value = SEQ_CONTEXT_TO_IDX_MAPPING
 
@@ -300,7 +300,7 @@ class TestMbiasCounterMotifPileupProcessing:
             - they have no methylation calling status: NA, SNP or Ref
         """
 
-        map_fn = mocker.patch('mqc.new_mbias_counter_design.'
+        map_fn = mocker.patch('mqc.mbias.'
                               'get_sequence_context_to_array_index_table')
         map_fn.return_value = SEQ_CONTEXT_TO_IDX_MAPPING
 
@@ -329,7 +329,7 @@ class TestMbiasCounterMotifPileupProcessing:
 
     def test_flen_and_phred_are_pooled_in_highest_bin_if_above_max(
             self, mocker):
-        map_fn = mocker.patch('mqc.new_mbias_counter_design.'
+        map_fn = mocker.patch('mqc.mbias.'
                               'get_sequence_context_to_array_index_table')
         map_fn.return_value = SEQ_CONTEXT_TO_IDX_MAPPING
 
@@ -375,7 +375,7 @@ class TestMbiasCounterMotifPileupProcessing:
              present in seq_ctx_idx_dict defined by the user
         """
 
-        map_fn = mocker.patch('mqc.new_mbias_counter_design.'
+        map_fn = mocker.patch('mqc.mbias.'
                               'get_sequence_context_to_array_index_table')
         # we are only interested in these three motifs
         map_fn.return_value = SEQ_CONTEXT_TO_IDX_MAPPING
@@ -400,7 +400,7 @@ class TestMbiasCounterMotifPileupProcessing:
 
     def test_motif_pileups_are_added_incrementally(
             self, mocker):
-        map_fn = mocker.patch('mqc.new_mbias_counter_design.'
+        map_fn = mocker.patch('mqc.mbias.'
                               'get_sequence_context_to_array_index_table')
         # we are only interested in these three motifs
         map_fn.return_value = SEQ_CONTEXT_TO_IDX_MAPPING
@@ -662,7 +662,7 @@ def evaluate_mbias_run_all_motifs():
     mbias_counts_df_all_motifs = pd.read_pickle("/home/stephen2/projects/mqc/mqc/mqc/tests/test_files/hsc_1_mbias-counts_CG-CHG-CHH.p")
     flens = list(range(50,120,10)) + list(range(120, 500, 40))
     idx = pd.IndexSlice
-    mbias_counts_df_all_motifs = mbias_counts_df_all_motifs.loc[idx[:, :, flens], :]
+    mbias_counts_df_all_motifs = mbias_counts_df_all_motifs.loc[idxs[:, :, flens], :]
     mbias_counts_df_all_motifs.to_pickle("/home/stephen2/projects/mqc/mqc/mqc/tests/test_files/hsc_1_mbias-counts_CG-CHG-CHH.p")
     mbias_counts_cg_only = mbias_counts_df_all_motifs.loc[['CG'], :]
     mbias_counts_cg_only.head()
