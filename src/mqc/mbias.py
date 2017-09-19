@@ -75,14 +75,15 @@ class MbiasCounter(Counter):
                            .values.tolist())
         self.last_phred_bin_idx = len(phred_intervals) - 1
 
-        self.seq_ctx_idx_dict = get_sequence_context_to_array_index_table(
-            self.seq_context_size)
+        self.seq_ctx_idx_dict, self.binned_motif_to_index_dict = (
+            get_sequence_context_to_array_index_table(
+                self.seq_context_size))
 
         # Note: 1-based position labels in dataframe, 0-based position indices
         # in array
         ordered_seq_contexts = [seq_context
                                 for seq_context, idx in sorted(
-                self.seq_ctx_idx_dict.items(),
+                self.binned_motif_to_index_dict.items(),
                 key=lambda x: x[1])]
         dim_levels = [ordered_seq_contexts,
                       ['c_bc', 'c_bc_rv', 'w_bc', 'w_bc_rv'],
@@ -91,7 +92,7 @@ class MbiasCounter(Counter):
                       range(1, self.max_read_length + 1),
                       ['n_meth', 'n_unmeth']]
 
-        array_shape = [len(self.seq_ctx_idx_dict),
+        array_shape = [len(ordered_seq_contexts),
                        4,  # BSSeq-strands
                        len(flen_intervals),
                        len(phred_intervals),
@@ -198,7 +199,7 @@ def get_sequence_context_to_array_index_table(motif_size: int):
             motif.translate(str.maketrans('CGTA', 'CGWW'))]
         for motif in all_5bp_motifs}
 
-    return _5bp_to_three_letter_motif_index_mapping
+    return _5bp_to_three_letter_motif_index_mapping, binned_motif_to_idx_mapping
 
 
 def map_seq_ctx_to_motif(seq_ctx, use_classical=True):
