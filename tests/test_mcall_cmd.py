@@ -182,16 +182,24 @@ def get_text_of_call_files(output_dir, motifs_str, user_config_file):
 
     return computed_calls
 
-@pytest.fixture(scope='module')
-def cg_run_file_contents(base_command_list, index_file_paths_dict, config_file_path):
+@pytest.fixture(scope='module', params=['dont_stratify_beta', 'stratify_beta'] )
+def cg_run_file_contents(base_command_list, index_file_paths_dict, config_file_path, request):
 
     # using a non-existent output dir is intentional
     # mqc should create the output dir recursively
     tmpdir = tempfile.mkdtemp()
     cg_only_output_dir = op.join(tmpdir, 'hsc_1')
-    subprocess.check_call(base_command_list
-                          + ['--output_dir', cg_only_output_dir]
-                          + index_file_paths_dict['CG'])
+    if request.param == 'stratify_beta':
+        subprocess.check_call(base_command_list
+                              + ['--output_dir', cg_only_output_dir]
+                              + index_file_paths_dict['CG']
+                              + ['--strat_beta_dist']
+                              )
+    else:
+        subprocess.check_call(base_command_list
+                              + ['--output_dir', cg_only_output_dir]
+                              + index_file_paths_dict['CG']
+                              )
     computed_calls = get_text_of_call_files(cg_only_output_dir,
                                             motifs_str='CG',
                                             user_config_file=config_file_path)

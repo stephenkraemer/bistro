@@ -66,12 +66,21 @@ rule all:
                             pid=config['pids'],
                             motifs_str=motifs_str),
 
+        strat_beta_hist = expand("{output_rpp_dir}/{pid}/meth/qc_stats/{pid}_stratified-beta-hist_{motifs_str}_{stratum}.png",
+                            output_rpp_dir=output_rpp_dir,
+                            pid=config['pids'],
+                            motifs_str=motifs_str,
+                            stratum=['total', 'mate-wise', 'strand-wise']),
+
         # mqc call
-        meth_calls = expand("{output_rpp_dir}/{pid}/meth/meth_calls/mcalls_{pid}_{single_motif}_{chrom}.bed.gz",
+        meth_calls = expand(["{output_rpp_dir}/{pid}/meth/meth_calls/mcalls_{pid}_{single_motif}_{chrom}.bed.gz",
+                             "{output_rpp_dir}/{pid}/meth/qc_stats/{pid}_stratified-beta-counts_{motifs_str}.{ext}",],
                             output_rpp_dir=output_rpp_dir,
                             pid=config['pids'],
                             single_motif=single_motifs,
-                            chrom=autosomes + other_chroms),
+                            chrom=autosomes + other_chroms,
+                            motifs_str=motifs_str,
+                            ext=['p', 'tsv']),
 
 
 rule make_index:
@@ -162,6 +171,35 @@ rule evaluate_mbias:
         --output_dir {params.output_dir}
         """
 
+rule evaluate_calls:
+    input:
+        coverage_counts = f"{output_rpp_dir}/{{pid}}/meth/qc_stats/{{pid}}_coverage-counts_{motifs_str}.p",
+    output:
+        coverage_hist  = f"{output_rpp_dir}/{{pid}}/meth/qc_stats/{{pid}}_coverage-hist_{motifs_str}.png",
+        strat_beta_hist = expand("{output_rpp_dir}/{{pid}}/meth/qc_stats/{{pid}}_stratified-beta-hist_{motifs_str}_{stratum}.png",
+                            output_rpp_dir=output_rpp_dir,
+                            motifs_str=motifs_str,
+                            stratum=['total', 'mate-wise', 'strand-wise']),
+    params:
+        config_file = user_config_file,
+        output_dir = f"{output_rpp_dir}/{{pid}}/meth/",
+        motif_csv = motif_csv,
+        walltime = '00:30:00',
+        mem = '6g',
+        cores = '2',
+        name = f'evaluate_calls_{{pid}}_{motifs_str}',
+        sample_meta = lambda wildcards: f"population={wildcards.pid.split('_')[0]},rep={wildcards.pid.split('_')[-1]}",
+    shell:
+        """
+        mqc evaluate_calls \
+        --config_file {params.config_file} \
+        --motifs {params.motif_csv} \
+        --sample_name {wildcards.pid} \
+        --output_dir {params.output_dir} \
+        --strat_beta_dist
+        """
+
+
 
 mcall_command = (
     'mqc call'
@@ -172,6 +210,7 @@ mcall_command = (
     ' --sample_meta {params.sample_meta}'
     ' --use_mbias_fit'
     ' --cores {params.cores}'
+    ' --strat_beta_dist'
     ' {input.index_files}'
 )
 
@@ -197,6 +236,10 @@ rule call:
                             chrom=autosomes + other_chroms,
                             single_motif=single_motifs),
         coverage_counts = expand("{output_rpp_dir}/{{pid}}/meth/qc_stats/{{pid}}_coverage-counts_{motifs_str}.{ext}",
+                            output_rpp_dir=output_rpp_dir,
+                            motifs_str=motifs_str,
+                            ext=['p', 'tsv']),
+        strat_beta_counts = expand("{output_rpp_dir}/{{pid}}/meth/qc_stats/{{pid}}_stratified-beta-counts_{motifs_str}.{ext}",
                             output_rpp_dir=output_rpp_dir,
                             motifs_str=motifs_str,
                             ext=['p', 'tsv']),

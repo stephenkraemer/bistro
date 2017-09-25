@@ -11,7 +11,8 @@ import pysam
 from mqc.coverage import CoverageCounter
 from mqc.index import IndexFile
 from mqc.mbias import MbiasCounter, FixedRelativeCuttingSites
-from mqc.mcaller import MethCaller, StratifiedMethCaller, StratifiedBetaCounter
+from mqc.mcaller import MethCaller, StratifiedMethCaller
+from mqc.beta_value import StratifiedBetaCounter
 from mqc.overlap import OverlapHandler
 from mqc.pileup.pileup import stepwise_pileup_generator
 from mqc.qc_filters import PhredFilter, MapqFilter
@@ -253,7 +254,7 @@ class QcAndMethCallingRun(PileupRun):
 
         if self.config['run']['strat_beta_dist']:
             visitors['meth_caller'] = StratifiedMethCaller()
-            visitors['beta_counter'] = StratifiedBetaCounter()
+            visitors['beta_counter'] = StratifiedBetaCounter(self.config)
         else:
             visitors['meth_caller'] = MethCaller()
 

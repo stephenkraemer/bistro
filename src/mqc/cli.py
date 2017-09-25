@@ -181,6 +181,7 @@ def make_index(genome_fasta, output_dir, cores,
 #                             mqc evaluate_calls
 #==============================================================================
 from mqc.coverage import analyze_coverage
+from mqc.beta_value import analyze_stratified_beta_values
 @mqc.command()
 @click.option('--config_file', type=input_click_path, help='[optional]')
 @click.option('--motifs', help='e.g. CG or CG,CHG,CHH')
@@ -191,8 +192,9 @@ from mqc.coverage import analyze_coverage
 @click.option('--sample_meta',
               help="Pass additional metadata as"
                    " 'key=value,key2=value2' [optional]")
+@click.option('--strat_beta_dist', is_flag=True)
 @click.pass_context
-def evaluate_calls(ctx, config_file, motifs, output_dir, sample_name, sample_meta):
+def evaluate_calls(ctx, config_file, motifs, output_dir, sample_name, sample_meta, strat_beta_dist):
 
     default_config_file = get_resource_abspath('config.default.toml')
     user_config_file = config_file if config_file else ''
@@ -204,3 +206,4 @@ def evaluate_calls(ctx, config_file, motifs, output_dir, sample_name, sample_met
                                   default_config_file_path=default_config_file,
                                   user_config_file_path=user_config_file)
     analyze_coverage(config)
+    if(cli_params['strat_beta_dist']): analyze_stratified_beta_values(config)
