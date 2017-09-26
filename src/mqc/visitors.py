@@ -1,5 +1,8 @@
 """Visitor base classes"""
 
+import pickle
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 import os.path as op
@@ -124,3 +127,11 @@ class Counter(metaclass=ABCMeta):
 
         self.get_dataframe().to_pickle(self.save_stem+'.p')
         self.get_dataframe().reset_index().to_csv(self.save_stem+'.tsv', sep='\t', header=True, index=False)
+
+    def save(self):
+        """Save Counter as pickle"""
+        out_path = Path(self.save_stem).with_suffix('.p')
+        out_path.parent.mkdir(parents=True, exist_ok=True, mode=0o770)
+        with out_path.open('wb') as fout:
+            pickle.dump(self, fout)
+

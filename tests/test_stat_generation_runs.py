@@ -1,4 +1,6 @@
 import os.path as op
+
+import pickle
 import pytest
 import pytoml
 import shutil
@@ -13,6 +15,7 @@ import pandas as pd
 import mqc.flag_and_index_values as mfl
 from mqc.config import assemble_config_vars
 from mqc.utils import get_resource_abspath
+from mqc.mbias import MbiasCounter
 
 b_inds = mfl.bsseq_strand_indices
 
@@ -26,8 +29,10 @@ USER_FLEN_MAX = 200
 
 
 @pytest.fixture(scope='module',
-                params=[True, False],
-                ids=['with_user_config', 'wo_user_config'])
+                # params=[True, False],
+                # ids=['with_user_config', 'wo_user_config'],
+                params=[True],
+                ids=['with_user_config'])
 def user_config_file(request):
     if request.param:
         tmpdir = tempfile.mkdtemp()
@@ -37,6 +42,14 @@ def user_config_file(request):
                 [trimming]
                 max_flen_considered_for_trimming = {USER_FLEN_MAX}
                 
+                [stats]
+                  max_flen = 500
+                  max_flen_with_single_flen_resolution = 150
+                  flen_bin_size = 10
+                  max_phred = 40
+                  phred_bin_size = 5
+                  seq_context_size = 5
+                                
                 """))
         yield user_config_file_path
         # TODO: does this also remove after an exception occured?
@@ -46,7 +59,7 @@ def user_config_file(request):
 
 
 @pytest.fixture(scope='module')
-def computed_mbias_counts_df(user_config_file):
+def mbias_counter(user_config_file):
     """Runs mqc stats and provides path to results dir"""
 
     tmpdir = tempfile.mkdtemp()
@@ -75,15 +88,15 @@ def computed_mbias_counts_df(user_config_file):
         default_config_file_path=DEFAULT_CONFIG_FILE,
         user_config_file_path=user_config_file)
 
-    mbias_stats_p_path = config["paths"]["mbias_counts"] + ".p"
-    df = pd.read_pickle(mbias_stats_p_path)
-    df.columns.name = ('with_user_config'
-                       if user_config_file
-                       else 'no_user_config')
-    yield df
+    mbias_counter_pickle_path = config["paths"]["mbias_counts"] + ".p"
+    with open(mbias_counter_pickle_path, 'rb') as fin:
+        mbias_counter = pickle.load(fin)
+    yield mbias_counter
     shutil.rmtree(tmpdir)
 
 
+"""
+Has to be adapted for stratified counts
 expected_counts_df = (pd.DataFrame(
     [('CHG', 'w_bc', 116, 24, 'n_unmeth', 2),
      ('CHG', 'w_bc_rv', 116, 93, 'n_unmeth', 2),
@@ -97,14 +110,13 @@ expected_counts_df = (pd.DataFrame(
     columns=columns)
                       .set_index(columns[:-1])
                       .sort_index())
+"""
 
 
-def test_stats_run_through(computed_mbias_counts_df):
-    print(computed_mbias_counts_df.head())
-    # assert type(computed_mbias_counts_df) == pd.DataFrame
+def test_stats_run_through(mbias_counter):
+    print(mbias_counter.counter_array.shape)
     assert False
-
-
+    # assert isinstance(mbias_counter, MbiasCounter)
 
 # @pytest.mark.acceptance_test
 # @pytest.mark.parametrize("stratum_idx,values",
