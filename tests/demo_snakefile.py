@@ -1,10 +1,15 @@
+# TODO: remove these lines and test again
+shell.executable("/bin/bash")
+shell.prefix("module load python/3.6.0; source /home/kraemers/programs/python_virtualenvs/mqc_test/bin/activate; echo loaded mqc_test; ")
+
 """ Demo workflow using mqc
 
 How do I run this?
 -----------------
+/home/kraemers/projects/mqc/tests/demo_snakefile.py
 
 snakemake \
---snakefile /home/kraemers/projects/mqc/tests/demo_snakefile.py \
+--snakefile /home/stephen2/projects/mqc/tests/demo_snakefile.py \
 --config pids=mpp1_rep1,mpp1_rep2 motifs=CG \
 --cluster "qsub -S /bin/bash -l walltime={params.walltime},mem={params.mem},nodes=1:ppn={params.cores} -N {params.name}" \
 --jobs 40 \
@@ -12,82 +17,85 @@ snakemake \
 --dryrun
 
 """
-# TODO: remove these lines and test again
-shell.executable("/bin/bash")
-shell.prefix("module load python/3.6.0; source /home/kraemers/programs/python_virtualenvs/mqc_test/bin/activate; echo loaded mqc_test; ")
 
 import os.path as op
+from pathlib import Path
+import sys
 
-sandbox_dir = "/icgc/dkfzlsdf/analysis/B080/kraemers/projects/mcall_qc/sandbox"
-output_rpp_dir = f"{sandbox_dir}/results_per_pid"
-index_dir = f"{sandbox_dir}/genomes/GRCm38mm10_PhiX_Lambda"
-user_config_file = f"{sandbox_dir}/user_config.toml"
-alignment_rpp_dir = "/icgc/dkfzlsdf/analysis/hs_ontogeny/results/wgbs/results_per_pid"
+script_dir = op.dirname(__file__)
+sys.path.append(script_dir)
+from snakefile_config import *
+sys.path.remove(script_dir)
 
-autosomes = ['18', '19']  #[str(i) for i in range(1,20)]
-other_chroms = ['L']  #['X', 'Y', 'MT', 'phix', 'L']
-
+# assemble config vars
 config['pids'] = config['pids'].split(',')
-motifs_str = config['motifs']
-single_motifs = motifs_str.split('-')
-motif_csv = ','.join(motifs_str.split('-'))
+all_chroms = autosomes + other_chroms
+reference_genome_name = Path(reference_genome).name.replace('.fa.gz', '')
+output_dir_by_pid = f"{output_rpp_dir}/{{pid}}/meth/"
+config['config_file'] = mqc_config_file
+config['motifs_csv'] = motifs_csv_str
+
+# fill out patterns with config vars, leaving only wildcards
+
+## make_index
+index_file_pattern_by_chrom = f"{index_dir}/{reference_genome_name}_{motifs_msv_str}_{chr_prefix}{{chrom}}.bed.gz"
+all_index_files = expand(index_file_pattern_by_chrom, chrom = all_chroms),
+
+## stats
+mbias_counter_pattern_by_pid = f"{output_rpp_dir}/{{pid}}/meth/qc_stats/{{pid}}_mbias-counts_{motifs_msv_str}.p",
+all_stats_files = expand(mbias_counter_pattern_by_pid, pid=config['pids']),
+
+## evaluate_mbias
+adj_cut_sites_obj_by_pid = f"{output_rpp_dir}/{{pid}}/meth/qc_stats/{{pid}}_adjusted_cutting_sites_obj_{motifs_msv_str}.p"
+mbias_stats_patterns_by_pid = [
+    adj_cut_sites_obj_by_pid,
+    f"{output_rpp_dir}/{{pid}}/meth/qc_stats/{{pid}}_mbias-stats_{motifs_msv_str}.p",
+    f"{output_rpp_dir}/{{pid}}/meth/qc_stats/{{pid}}_mbias-stats_masked_{motifs_msv_str}.p",
+    f"{output_rpp_dir}/{{pid}}/meth/qc_stats/{{pid}}_adjusted_cutting_sites_df_{motifs_msv_str}.p",
+    f"{output_rpp_dir}/{{pid}}/meth/qc_stats/{{pid}}_adjusted-cutting-sites_barplot_{motifs_msv_str}.png",
+    f"{output_rpp_dir}/{{pid}}/meth/qc_stats/.done_{motifs_msv_str}_{{pid}}_mbias-line-plot",
+    f"{output_rpp_dir}/{{pid}}/meth/qc_stats/.done_{motifs_msv_str}_{{pid}}_freq-line-plot",
+    ]
+all_evaluate_stats_files = expand(mbias_stats_patterns_by_pid, pid=config['pids']),
+
+## call
+call_file_patterns_by_pid = expand("{output_rpp_dir}/{{pid}}/meth/meth_calls/"
+                                   "mcalls_{{pid}}_{single_motif}_{chrom}.bed.gz",
+                                   output_rpp_dir=output_rpp_dir,
+                                   single_motif=single_motifs,
+                                   chrom=all_chroms)
+coverage_count_patterns_by_pid = [f"{output_rpp_dir}/{{pid}}/meth/qc_stats/{{pid}}_coverage-counts_{motifs_msv_str}.tsv",
+                                  f"{output_rpp_dir}/{{pid}}/meth/qc_stats/{{pid}}_coverage-counts_{motifs_msv_str}.p"]
+all_mcall_files = expand(call_file_patterns_by_pid, pid=config['pids']),
+all_coverage_counter_files = expand(coverage_count_patterns_by_pid, pid=config['pids']),
+
+## evaluate_calls
+evaluate_calls_patterns_by_pid = [
+    f"{output_rpp_dir}/{{pid}}/meth/qc_stats/{{pid}}_coverage-hist_{motifs_msv_str}.png",
+]
+all_evaluate_calls_files = expand(evaluate_calls_patterns_by_pid, pid=config['pids']),
 
 rule all:
     input:
-        # mqc make_index
-        index_files = expand("{index_dir}/GRCm38mm10_PhiX_Lambda_{motifs_str}_{chrom}.bed.gz",
-                             index_dir=index_dir,
-                             chrom=autosomes + other_chroms,
-                             motifs_str=motifs_str),
-
-        # mqc stats
-        mbias_counts = expand("{output_rpp_dir}/{pid}/meth/qc_stats/{pid}_mbias-counts_{motifs_str}.{ext}",
-                              output_rpp_dir=output_rpp_dir,
-                              pid=config['pids'],
-                              motifs_str=motifs_str,
-                              ext=['p', 'tsv']),
-
-
-        # mqc evaluate_mbias
-        mbias_stats = expand(["{output_rpp_dir}/{pid}/meth/qc_stats/{pid}_mbias-stats_{motifs_str}.p",
-                              "{output_rpp_dir}/{pid}/meth/qc_stats/{pid}_mbias-stats_masked_{motifs_str}.p",
-                              "{output_rpp_dir}/{pid}/meth/qc_stats/{pid}_adjusted_cutting_sites_obj_{motifs_str}.p",
-                              "{output_rpp_dir}/{pid}/meth/qc_stats/{pid}_adjusted_cutting_sites_df_{motifs_str}.p",
-                              "{output_rpp_dir}/{pid}/meth/qc_stats/{pid}_adjusted-cutting-sites_barplot_{motifs_str}.png",
-                              "{output_rpp_dir}/{pid}/meth/qc_stats/.done_{motifs_str}_{pid}_mbias-line-plot",
-                              "{output_rpp_dir}/{pid}/meth/qc_stats/.done_{motifs_str}_{pid}_freq-line-plot",],
-                             output_rpp_dir=output_rpp_dir,
-                             pid=config['pids'],
-                             motifs_str=motifs_str),
-
-        # mqc evaluate_calls
-        coverage_hist = expand("{output_rpp_dir}/{pid}/meth/qc_stats/{pid}_coverage-hist_{motifs_str}.png",
-                            output_rpp_dir=output_rpp_dir,
-                            pid=config['pids'],
-                            motifs_str=motifs_str),
-
-        # mqc call
-        meth_calls = expand("{output_rpp_dir}/{pid}/meth/meth_calls/mcalls_{pid}_{single_motif}_{chrom}.bed.gz",
-                            output_rpp_dir=output_rpp_dir,
-                            pid=config['pids'],
-                            single_motif=single_motifs,
-                            chrom=autosomes + other_chroms),
+        all_index_files,
+        all_stats_files,
+        # all_evaluate_stats_files,
+        # all_mcall_files,
+        # all_coverage_counter_files,
+        # all_evaluate_calls_files,
 
 
 rule make_index:
-    input: f"{index_dir}/GRCm38mm10_PhiX_Lambda.fa",
+    input: reference_genome
     params:
         output_dir = index_dir,
         walltime = '08:00:00',
         mem = '8g',
         cores = '12',
-        name = f'make_index_{motifs_str}',
-        motifs_flags = '--cg' if motifs_str == 'CG' else '--cg --chg --chh',
+        name = f'make_index_{motifs_csv_str}',
+        motifs_flags = '--cg' if motifs_csv_str == 'CG' else '--cg --chg --chh',
     output:
-        index_files = expand("{index_dir}/GRCm38mm10_PhiX_Lambda_{motifs_str}_{chrom}.bed.gz",
-                             index_dir=index_dir,
-                             chrom=autosomes + other_chroms,
-                             motifs_str=motifs_str),
+        index_files = all_index_files,
     shell:
         """
         mqc make_index --genome_fasta {input} \
@@ -100,63 +108,47 @@ rule make_index:
 
 rule get_stats:
     input:
-        bam=f"{alignment_rpp_dir}/{{pid}}/alignment/blood_{{pid}}_merged.mdup.bam",
-        index_files = expand("{index_dir}/GRCm38mm10_PhiX_Lambda_{motifs_str}_{chrom}.bed.gz",
-                             index_dir=index_dir,
-                             motifs_str=motifs_str,
-                             chrom=autosomes),
+        bam=bam_pattern_by_pid,
+        index_files = expand(index_file_pattern_by_chrom, chrom=autosomes),
     params:
-        config_file = user_config_file,
-        output_dir = f"{output_rpp_dir}/{{pid}}/meth/",
-        motif_csv = motif_csv,
-        walltime = '01:30:00' if motifs_str == 'CG' else '08:00:00',
-        mem = '2g',
+        output_dir = output_dir_by_pid,
+        walltime = '01:30:00' if motifs_csv_str == 'CG' else '08:00:00',
+        mem = '12g',
         cores = '12',
-        name = f'get_stats_{{pid}}_{motifs_str}',
+        name = f'get_stats_{{pid}}_{motifs_msv_str}',
         sample_meta = lambda wildcards: f"population={wildcards.pid.split('_')[0]},rep={wildcards.pid.split('_')[-1]}",
     output:
-        mbias_counts_p = f"{output_rpp_dir}/{{pid}}/meth/qc_stats/{{pid}}_mbias-counts_{motifs_str}.p",
-        mbias_counts_tsv = f"{output_rpp_dir}/{{pid}}/meth/qc_stats/{{pid}}_mbias-counts_{motifs_str}.tsv",
+        mbias_counter = mbias_counter_pattern_by_pid,
     shell:
         """
         mqc stats \
             --bam {input.bam} \
-            --config_file {params.config_file} \
+            --config_file {config[config_file]} \
             --output_dir {params.output_dir} \
             --sample_name {wildcards.pid} \
             --sample_meta {params.sample_meta} \
             --cores {params.cores} \
-            --motifs {params.motif_csv} \
+            --motifs {config[motifs_csv]} \
             {input.index_files}
         """
 
-
-
 rule evaluate_mbias:
     input:
-        mbias_counts_p = f"{output_rpp_dir}/{{pid}}/meth/qc_stats/{{pid}}_mbias-counts_{motifs_str}.p",
+        mbias_counter = mbias_counter_pattern_by_pid
     output:
-        mbias_stats_p                = f"{output_rpp_dir}/{{pid}}/meth/qc_stats/{{pid}}_mbias-stats_{motifs_str}.p",
-        mbias_stats_masked_p         = f"{output_rpp_dir}/{{pid}}/meth/qc_stats/{{pid}}_mbias-stats_masked_{motifs_str}.p",
-        adjusted_cutting_sites_obj_p = f"{output_rpp_dir}/{{pid}}/meth/qc_stats/{{pid}}_adjusted_cutting_sites_obj_{motifs_str}.p",
-        adjusted_cutting_sites_df_p  = f"{output_rpp_dir}/{{pid}}/meth/qc_stats/{{pid}}_adjusted_cutting_sites_df_{motifs_str}.p",
-        adj_cutting_sites_plot_done  = f"{output_rpp_dir}/{{pid}}/meth/qc_stats/{{pid}}_adjusted-cutting-sites_barplot_{motifs_str}.png",
-        mbias_line_plots_done        = touch(f"{output_rpp_dir}/{{pid}}/meth/qc_stats/.done_{motifs_str}_{{pid}}_mbias-line-plot"),
-        freq_line_plot_done          = touch(f"{output_rpp_dir}/{{pid}}/meth/qc_stats/.done_{motifs_str}_{{pid}}_freq-line-plot"),
+        mbias_stats_patterns_by_pid
     params:
-        config_file = user_config_file,
-        output_dir = f"{output_rpp_dir}/{{pid}}/meth/",
-        motif_csv = motif_csv,
+        output_dir = output_dir_by_pid,
         walltime = '00:30:00',
         mem = '6g',
         cores = '2',
-        name = f'evalute_mbias_{{pid}}_{motifs_str}',
+        name = f'evalute_mbias_{{pid}}_{motifs_msv_str}',
         sample_meta = lambda wildcards: f"population={wildcards.pid.split('_')[0]},rep={wildcards.pid.split('_')[-1]}",
     shell:
         """
         mqc evaluate_mbias \
-        --config_file {params.config_file} \
-        --motifs {params.motif_csv} \
+        --config_file {config[config_file]} \
+        --motifs {config[motifs_csv]} \
         --sample_name {wildcards.pid} \
         --sample_meta {params.sample_meta} \
         --output_dir {params.output_dir}
@@ -166,62 +158,50 @@ rule evaluate_mbias:
 mcall_command = (
     'mqc call'
     ' --bam {input.bam}'
-    ' --config_file {params.config_file}'
+    ' --config_file {config[config_file]}'
     ' --output_dir {params.output_dir}'
     ' --sample_name {wildcards.pid}'
     ' --sample_meta {params.sample_meta}'
-    ' --use_mbias_fit'
     ' --cores {params.cores}'
     ' {input.index_files}'
 )
+# ' --use_mbias_fit'
 
 rule call:
     input:
-        bam=f"{alignment_rpp_dir}/{{pid}}/alignment/blood_{{pid}}_merged.mdup.bam",
-        index_files = expand("{index_dir}/GRCm38mm10_PhiX_Lambda_{motifs_str}_{chrom}.bed.gz",
-                             index_dir=index_dir,
-                             motifs_str=motifs_str,
-                             chrom=autosomes + other_chroms),
-        adj_cut_sites_obj = f"{output_rpp_dir}/{{pid}}/meth/qc_stats/{{pid}}_adjusted_cutting_sites_obj_{motifs_str}.p",
+        bam=bam_pattern_by_pid,
+        index_files = all_index_files,
+        # adj_cut_sites_obj = adj_cut_sites_obj_by_pid,
     params:
-        config_file = user_config_file,
         mem = '8g',
         cores = '12',
-        output_dir = f"{output_rpp_dir}/{{pid}}/meth/",
+        output_dir = output_dir_by_pid,
         walltime = '42:00:00',
-        name = f'mcall_{motifs_str}_{{pid}}',
+        name = f'mcall_{motifs_msv_str}_{{pid}}',
         sample_meta = lambda wildcards: f"population={wildcards.pid.split('_')[0]},rep={wildcards.pid.split('_')[-1]}",
     output:
-        mcall_files = expand("{output_rpp_dir}/{{pid}}/meth/meth_calls/mcalls_{{pid}}_{single_motif}_{chrom}.bed.gz",
-                            output_rpp_dir=output_rpp_dir,
-                            chrom=autosomes + other_chroms,
-                            single_motif=single_motifs),
-        coverage_counts = expand("{output_rpp_dir}/{{pid}}/meth/qc_stats/{{pid}}_coverage-counts_{motifs_str}.{ext}",
-                            output_rpp_dir=output_rpp_dir,
-                            motifs_str=motifs_str,
-                            ext=['p', 'tsv']),
+        mcall_files = call_file_patterns_by_pid,
+        coverage_files = coverage_count_patterns_by_pid,
     shell: mcall_command
 
 
 rule evaluate_calls:
     input:
-        coverage_counts = f"{output_rpp_dir}/{{pid}}/meth/qc_stats/{{pid}}_coverage-counts_{motifs_str}.p",
+        coverage_counts = coverage_count_patterns_by_pid,
     output:
-        coverage_hist  = f"{output_rpp_dir}/{{pid}}/meth/qc_stats/{{pid}}_coverage-hist_{motifs_str}.png",
+        evaluate_calls_patterns_by_pid,
     params:
-        config_file = user_config_file,
-        output_dir = f"{output_rpp_dir}/{{pid}}/meth/",
-        motif_csv = motif_csv,
+        output_dir = output_dir_by_pid,
         walltime = '00:30:00',
         mem = '6g',
         cores = '2',
-        name = f'evaluate_calls_{{pid}}_{motifs_str}',
+        name = f'evaluate_calls_{{pid}}_{motifs_csv_str}',
         sample_meta = lambda wildcards: f"population={wildcards.pid.split('_')[0]},rep={wildcards.pid.split('_')[-1]}",
     shell:
-    """
-    mqc evaluate_calls \
-    --config_file {params.config_file} \
-    --motifs {params.motif_csv} \
-    --sample_name {wildcards.pid} \
-    --output_dir {params.output_dir}
-    """
+        """
+        mqc evaluate_calls \
+        --config_file {config[config_file]} \
+        --motifs {config[motifs_csv]} \
+        --sample_name {wildcards.pid} \
+        --output_dir {params.output_dir}
+        """
