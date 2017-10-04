@@ -9,19 +9,11 @@ from pkg_resources import resource_filename
 
 
 def convert_array_to_df(arr, dim_levels, dim_names, value_column_name):
-    indices_per_dim = [np.arange(x) for x in arr.shape]
-    index_level_tuples = [
-        list(zip(curr_indices, curr_levels))
-        for curr_indices, curr_levels
-        in zip(indices_per_dim, dim_levels)]
-
-    rows = _create_dataframe_rows(arr, index_level_tuples)
-    column_names = dim_names + [value_column_name]
-    df = (pd.DataFrame(rows, columns=column_names)
-          .set_index(dim_names)
-          # TODO: ensure that this is fully sorted
-          .sort_index(axis='index'))
+    midx = pd.MultiIndex.from_product(dim_levels, names=dim_names)
+    arr.shape = (arr.size,)
+    df = pd.DataFrame(arr, index=midx, columns=[value_column_name]).reset_index()
     return df
+
 
 def _create_dataframe_rows(arr, index_level_tuples):
     rows = []
@@ -32,6 +24,7 @@ def _create_dataframe_rows(arr, index_level_tuples):
         curr_row = levels + [arr[idx_tuple]]
         rows.append(curr_row)
     return rows
+
 
 def open_gzip_or_plain_file(filepath, mode='rt'):
     """Recognizes and opens plain and gzip text files
@@ -51,7 +44,6 @@ def open_gzip_or_plain_file(filepath, mode='rt'):
         file-like object (text file)
     """
 
-
     # Note: There is a race condition here, as the file may
     # be deleted between those checks and the opening of the file
     # Improve or don't use where such cases are a problem
@@ -59,7 +51,7 @@ def open_gzip_or_plain_file(filepath, mode='rt'):
     # These checks work even if there are no access permissions to the file
 
 
-    #TODO-low-prio: What happens if there are no access permissions to the dir
+    # TODO-low-prio: What happens if there are no access permissions to the dir
     #      containing the file? Will these checks fail with cryptic errors?
     if not os.path.exists(filepath):
         raise FileNotFoundError(f'File {filepath} not found')
@@ -89,6 +81,6 @@ def open_gzip_or_plain_file(filepath, mode='rt'):
 
     return fobj
 
+
 def get_resource_abspath(basename):
     return resource_filename('mqc.resources', basename)
-

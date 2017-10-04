@@ -30,7 +30,7 @@ sys.path.remove(script_dir)
 # assemble config vars
 config['pids'] = config['pids'].split(',')
 all_chroms = autosomes + other_chroms
-reference_genome_name = Path(reference_genome).name.replace('.fa.gz', '')
+reference_genome_name = Path(reference_genome).name.replace('.fa', '').replace('.gz', '')
 output_dir_by_pid = f"{output_rpp_dir}/{{pid}}/meth/"
 config['config_file'] = mqc_config_file
 config['motifs_csv'] = motifs_csv_str

@@ -61,12 +61,6 @@ class Counter(metaclass=ABCMeta):
         if not isinstance(dim_names, list):
             raise TypeError('Counter expects list of dimension names')
 
-        if not all([isinstance(elem, (list, tuple, range))
-                    for elem in dim_levels]):
-            raise TypeError('Counter expects dimension levels argument'
-                            'to be list of list/tuple/range, with one list per'
-                            'dimension')
-
         self.dim_names = dim_names
         self.dim_levels = dim_levels
         self.counter_array = counter_array

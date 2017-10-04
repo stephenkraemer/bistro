@@ -11,7 +11,8 @@ import numpy as np
 import pandas as pd
 
 import matplotlib
-matplotlib.use('Agg') # import before pyplot import!
+
+matplotlib.use('Agg')  # import before pyplot import!
 import matplotlib.pyplot as plt
 import seaborn as sns
 
@@ -85,12 +86,18 @@ class MbiasCounter(Counter):
                                 for seq_context, idx in sorted(
                 self.binned_motif_to_index_dict.items(),
                 key=lambda x: x[1])]
-        dim_levels = [ordered_seq_contexts,
-                      ['c_bc', 'c_bc_rv', 'w_bc', 'w_bc_rv'],
+
+        def get_categorical(ordered_str_labels):
+            return pd.Categorical(ordered_str_labels,
+                                  categories=ordered_str_labels,
+                                  ordered=True)
+
+        dim_levels = [get_categorical(ordered_seq_contexts),
+                      get_categorical(['c_bc', 'c_bc_rv', 'w_bc', 'w_bc_rv']),
                       flen_intervals,
                       phred_intervals,
                       range(1, self.max_read_length + 1),
-                      ['n_meth', 'n_unmeth']]
+                      get_categorical(['n_meth', 'n_unmeth'])]
 
         array_shape = [len(ordered_seq_contexts),
                        4,  # BSSeq-strands
@@ -224,6 +231,7 @@ def map_seq_ctx_to_motif(seq_ctx, use_classical=True):
     motif = 'C' + motif_suffix
     return motif
 
+
 class CuttingSites(metaclass=ABCMeta):
     # TODO: Make sure that plateau intervals are 1-based labels, not zero-based indices
     @abstractmethod
@@ -243,9 +251,11 @@ class FixedRelativeCuttingSites(CuttingSites):
         self._minimal_cutting_sites_array = np.array([])
         self._minimal_cutting_sites_df = pd.DataFrame()
 
-        self.max_read_length_bp = config["data_properties"]["max_read_length_bp"]
+        self.max_read_length_bp = config["data_properties"][
+            "max_read_length_bp"]
         self.max_flen = config["trimming"]["max_flen_considered_for_trimming"]
-        self.n_bp_to_discard_at_frag_ends = config["trimming"]["relative_to_fragment_ends_dict"]
+        self.n_bp_to_discard_at_frag_ends = config["trimming"][
+            "relative_to_fragment_ends_dict"]
 
         self.dim_levels = [b_inds._fields,
                            range(0, self.max_flen + 1),
@@ -300,11 +310,16 @@ class FixedRelativeCuttingSites(CuttingSites):
                 # Set last included position (zero-based)
                 for curr_flen in range(0, self.max_flen):
                     max_allowed_pos_in_fragment = (
-                        curr_flen - self.n_bp_to_discard_at_frag_ends[bsseq_strand_name][1] - 1)
+                        curr_flen -
+                        self.n_bp_to_discard_at_frag_ends[bsseq_strand_name][
+                            1] - 1)
                     max_allow_pos_in_read = (max_allowed_pos_in_fragment
-                                             if max_allowed_pos_in_fragment <= (self.max_read_length_bp - 1)
-                                             else (self.max_read_length_bp - 1) )
-                    min_trimmsite_arr[bsseq_strand_index, curr_flen, 1] = max_allow_pos_in_read
+                                             if max_allowed_pos_in_fragment <= (
+                        self.max_read_length_bp - 1)
+                                             else (
+                        self.max_read_length_bp - 1))
+                    min_trimmsite_arr[
+                        bsseq_strand_index, curr_flen, 1] = max_allow_pos_in_read
 
             # cache
             self._minimal_cutting_sites_array = min_trimmsite_arr
@@ -326,7 +341,6 @@ class FixedRelativeCuttingSites(CuttingSites):
 
 
 class AdjustedCuttingSites(CuttingSites):
-
     def __init__(self, mbias_df, config):
         self.max_flen = config['trimming']['max_flen_considered_for_trimming']
         self._df = self._compute_df(mbias_df, config)
@@ -343,11 +357,11 @@ class AdjustedCuttingSites(CuttingSites):
 
     @staticmethod
     def _compute_df(mbias_df, config):
-        df =  (mbias_df
-               .loc['CG', :]
-               .groupby(axis='index',
-                        level=['bs_strand', 'flen'])
-               .apply(fit_normalvariate_plateau, config))
+        df = (mbias_df
+              .loc['CG', :]
+              .groupby(axis='index',
+                       level=['bs_strand', 'flen'])
+              .apply(fit_normalvariate_plateau, config))
         df.columns.name = 'cut_end'
         df = df.stack().to_frame('cut_pos')
         df = df.sort_index()
@@ -368,6 +382,7 @@ def convert_cutting_sites_df_to_array(df, max_flen):
         df_int_idx['flen'].tolist(),
         df_int_idx['cut_end'].tolist()] = df_int_idx['cut_pos']
     return arr
+
 
 def fit_normalvariate_plateau(group_df: pd.DataFrame, config) -> pd.Series:
     """Find the longest possible plateau of good quality
@@ -402,7 +417,8 @@ def fit_normalvariate_plateau(group_df: pd.DataFrame, config) -> pd.Series:
 
     min_plateau_length = int(effective_read_length * min_perc)
 
-    for plateau_length in range(effective_read_length, min_plateau_length - 1, -1):
+    for plateau_length in range(effective_read_length, min_plateau_length - 1,
+                                -1):
         max_start_pos = effective_read_length - plateau_length
         std_to_beat = max_std
         best_start = None
@@ -412,8 +428,10 @@ def fit_normalvariate_plateau(group_df: pd.DataFrame, config) -> pd.Series:
             curr_std = curr_beta_values.std()
             if curr_std < std_to_beat:
                 plateau_height = curr_beta_values.mean()
-                left_end_bad = ( abs(curr_beta_values[0:4] - plateau_height) > 2 * curr_std).any()
-                right_end_bad = ( abs(curr_beta_values[-4:] - plateau_height) > 2 * curr_std).any()
+                left_end_bad = (abs(curr_beta_values[
+                                    0:4] - plateau_height) > 2 * curr_std).any()
+                right_end_bad = (abs(curr_beta_values[
+                                     -4:] - plateau_height) > 2 * curr_std).any()
                 if not (left_end_bad or right_end_bad):
                     std_to_beat = curr_std
                     best_start = start_pos
@@ -433,7 +451,7 @@ def cutting_sites_plot(cutting_sites_df, config):
                       col='bs_strand', col_wrap=2,
                       col_order=['w_bc', 'w_bc_rv', 'c_bc', 'c_bc_rv'],
                       hue='cut_end')
-    g.set(xticks=range(0,500, 50))
+    g.set(xticks=range(0, 500, 50))
     g = g.map(plt.plot, 'flen', 'cut_pos', alpha=0.7)
     g.savefig(config['paths']['adj_cutting_sites_plot'])
 
@@ -445,9 +463,10 @@ def compute_mbias_stats_df(mbias_counts_df):
     df = (mbias_counts_df['counts']
           .unstack()
           .groupby(level=['motif', 'bs_strand', 'flen'])
-          .apply(lambda group_df: group_df.loc[(group_df.name[0], group_df.name[1], group_df.name[2]), :].query(
-            "{pos_col_name} <= {curr_flen}".format(
-                pos_col_name='pos', curr_flen=group_df.name[2])))
+          .apply(lambda group_df: group_df.loc[(
+        group_df.name[0], group_df.name[1], group_df.name[2]), :].query(
+        "{pos_col_name} <= {curr_flen}".format(
+            pos_col_name='pos', curr_flen=group_df.name[2])))
           )
     df['beta_value'] = df['n_meth'] / (df['n_meth'] + df['n_unmeth'])
     df = df[['beta_value', 'n_meth', 'n_unmeth']]
@@ -457,50 +476,48 @@ def compute_mbias_stats_df(mbias_counts_df):
 def mask_mbias_stats_df(df: pd.DataFrame, cutting_sites_df: pd.DataFrame):
     def mask_positions(group_df):
         bs_strand, flen = group_df.name
-        left, right = cutting_sites_df.loc[(bs_strand, flen, ['left_cut_end', 'right_cut_end']), 'cut_pos']
-        group_df.loc[idxs[:, bs_strand, flen, 1:(left-1)], :] = np.nan
-        group_df.loc[idxs[:, bs_strand, flen, (right+1):], :] = np.nan
+        left, right = cutting_sites_df.loc[
+            (bs_strand, flen, ['left_cut_end', 'right_cut_end']), 'cut_pos']
+        group_df.loc[idxs[:, bs_strand, flen, 1:(left - 1)], :] = np.nan
+        group_df.loc[idxs[:, bs_strand, flen, (right + 1):], :] = np.nan
         return group_df
+
     return (df.groupby(level=['bs_strand', 'flen'])
             .apply(mask_positions))
 
 
-def pos_vs_beta_plots(mbias_stats_dfs_dict, config):
+def pos_vs_beta_plots(mbias_stats_dfs_dict, config, aes_mappings):
     trunk_path = config['paths']['mbias_plots_trunk']
-    aes_mappings = [
-        {'row': 'motif', 'col': 'bs_strand', 'hue': None},
-        {'row': 'motif', 'col': 'bs_strand', 'hue': 'flen'},
-        # {'row': 'motif', 'col': 'bs_strand', 'hue': 'Phred'},
-        # {'row': 'flen', 'col': 'bs_strand', 'hue': 'Phred'},
-        # {'row': 'Phred', 'col': 'bs_strand', 'hue': 'flen'},
-    ]
     for (curr_name, curr_df), curr_aes_mapping in product(
             mbias_stats_dfs_dict.items(), aes_mappings):
 
-        groupby_vars = ([val for val in curr_aes_mapping.values() if val is not None]
-                        + ['pos'])
+        groupby_vars = (
+            [val for val in curr_aes_mapping.values() if val is not None]
+            + ['pos'])
+
+        # curr_df = mbias_stats_df
+        if 'flen' in groupby_vars:
+            flen_sel = config['plots']['mbias_flens_to_display']
+            curr_df = curr_df.loc[idxs[:, :, :, flen_sel], :]
+        if 'phred' in groupby_vars:
+            phred_sel = config['plots']['mbias_phreds_to_display']
+            curr_df = curr_df.loc[idxs[:, :, :, :, phred_sel], :]
         agg_df = curr_df.groupby(level=groupby_vars).sum()
-        agg_df['beta_value'] = agg_df['n_meth']/(agg_df['n_meth'] + agg_df['n_unmeth'])
+        agg_df['beta_value'] = agg_df['n_meth'] / (
+            agg_df['n_meth'] + agg_df['n_unmeth'])
 
         plot_df = agg_df.reset_index()
 
-        if 'flen' in groupby_vars:
-            row_is_displayed = plot_df['flen'].isin(config['plots']['mbias_flens_to_display'])
-            plot_df = plot_df.loc[row_is_displayed, :]
-        if 'phred' in groupby_vars:
-            row_is_displayed = plot_df['phred'].isin(config['plots']['mbias_phreds_to_display'])
-            plot_df = plot_df.loc[row_is_displayed, :]
-
         p = (sns.FacetGrid(plot_df, **curr_aes_mapping)
              .map(plt.plot, 'pos', 'beta_value')
-             .add_legend())
+             .add_legend()
+             )
         strat_name = '_'.join([f"{aes}-{var}"
                                for aes, var in curr_aes_mapping.items()])
         p.savefig(f"{trunk_path}_{curr_name}_{strat_name}.png")
 
 
 def freq_plot_per_motif(mbias_stats_dfs_dict, config):
-
     trunk_path = config['paths']['cg_occurence_plot_trunk']
 
     aes_mappings = [
@@ -519,17 +536,20 @@ def freq_plot_per_motif(mbias_stats_dfs_dict, config):
         for curr_motif, curr_motif_df in curr_df.groupby(level='motif'):
 
             groupby_vars = (['motif']
-                            + [val for val in curr_aes_mapping.values() if val is not None]
+                            + [val for val in curr_aes_mapping.values() if
+                               val is not None]
                             + ['pos'])
-            agg_df = curr_motif_df.groupby(level = groupby_vars).sum()
+            agg_df = curr_motif_df.groupby(level=groupby_vars).sum()
 
             plot_df = agg_df.reset_index()
 
             if 'flen' in groupby_vars:
-                row_is_displayed = plot_df['flen'].isin(config['plots']['mbias_flens_to_display'])
+                row_is_displayed = plot_df['flen'].isin(
+                    config['plots']['mbias_flens_to_display'])
                 plot_df = plot_df.loc[row_is_displayed, :]
             if 'phred' in groupby_vars:
-                row_is_displayed = plot_df['phred'].isin(config['plots']['mbias_phreds_to_display'])
+                row_is_displayed = plot_df['phred'].isin(
+                    config['plots']['mbias_phreds_to_display'])
                 plot_df = plot_df.loc[row_is_displayed, :]
 
             p = sns.FacetGrid(plot_df, sharey=False, margin_titles=True,
@@ -538,42 +558,48 @@ def freq_plot_per_motif(mbias_stats_dfs_dict, config):
             p.add_legend()
             p.fig.tight_layout()
 
-            strat_name = '_'.join([f"{aes}-{var}" for aes, var in curr_aes_mapping.items()])
-            p.savefig(f"{trunk_path}_{curr_name}_{strat_name}_{curr_motif}.png")
+            strat_name = '_'.join(
+                [f"{aes}-{var}" for aes, var in curr_aes_mapping.items()])
+            p.savefig(
+                f"{trunk_path}_{curr_name}_{strat_name}_{curr_motif}.png")
 
 
 def create_mbias_stats_plots(mbias_stats_dfs_dict, config):
     pos_vs_beta_plots(mbias_stats_dfs_dict, config)
-    freq_plot_per_motif(mbias_stats_dfs_dict, config)
+    # freq_plot_per_motif(mbias_stats_dfs_dict, config)
 
 
 def analyze_mbias_counts(config):
-
     mbias_evaluate_paths = config['paths']
     # TODO: create paths subdirs in separate logical unit
-    os.makedirs(mbias_evaluate_paths['qc_stats_dir'], exist_ok=True, mode=0o770)
+    os.makedirs(mbias_evaluate_paths['qc_stats_dir'], exist_ok=True,
+                mode=0o770)
 
-    mbias_counts_df = pd.read_pickle(config['paths']['mbias_counts']+'.p')
+    mbias_counts_df = pd.read_pickle(config['paths']['mbias_counts'] + '.p')
 
     mbias_stats_df = compute_mbias_stats_df(mbias_counts_df)
     mbias_stats_df.to_pickle(mbias_evaluate_paths['mbias_stats_p'])
-    mbias_stats_df.reset_index().to_csv(mbias_evaluate_paths['mbias_stats_tsv'],
-                                        header=True, index=False, sep='\t')
+    mbias_stats_df.reset_index().to_csv(
+        mbias_evaluate_paths['mbias_stats_tsv'],
+        header=True, index=False, sep='\t')
 
     adjusted_cutting_sites = AdjustedCuttingSites(mbias_stats_df, config)
-    with open(mbias_evaluate_paths['adjusted_cutting_sites_obj_p'], 'wb') as fobj:
+    with open(mbias_evaluate_paths['adjusted_cutting_sites_obj_p'],
+              'wb') as fobj:
         pickle.dump(adjusted_cutting_sites, fobj)
     adjusted_cutting_sites.get_df().to_pickle(
         mbias_evaluate_paths['adjusted_cutting_sites_df_p'])
     adjusted_cutting_sites.get_df().reset_index().to_csv(
         mbias_evaluate_paths['adjusted_cutting_sites_df_tsv'],
-        sep = "\t", header = True, index = False)
+        sep="\t", header=True, index=False)
 
     masked_mbias_stats_df = mask_mbias_stats_df(mbias_stats_df,
                                                 adjusted_cutting_sites.get_df())
-    masked_mbias_stats_df.to_pickle(mbias_evaluate_paths['mbias_stats_masked_p'])
-    masked_mbias_stats_df.reset_index().to_csv(mbias_evaluate_paths['mbias_stats_masked_tsv'],
-                                               sep='\t', header=True, index=False)
+    masked_mbias_stats_df.to_pickle(
+        mbias_evaluate_paths['mbias_stats_masked_p'])
+    masked_mbias_stats_df.reset_index().to_csv(
+        mbias_evaluate_paths['mbias_stats_masked_tsv'],
+        sep='\t', header=True, index=False)
 
     mbias_stats_dfs_dict = {'full': mbias_stats_df,
                             'trimmed': masked_mbias_stats_df}
