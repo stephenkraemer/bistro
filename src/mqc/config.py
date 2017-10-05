@@ -156,6 +156,8 @@ def _expand_path(config, path_name):
 
 
 def get_sample_info_dict(sample_name, sample_meta_str=None):
+    # Attention developers! Do not change this to a regular dict,
+    # as the order of the dict is required to add the metadata to the counter dataframes!
     sample_metadata = OrderedDict(name=sample_name)
     if sample_meta_str:
         add_infos = OrderedDict((x.split('=')[0], x.split('=')[1])

@@ -36,6 +36,7 @@ class BedFile:
 class StratifiedBetaCounter(Counter):
     def __init__(self, config: Dict, chrom: str=''):
 
+
         save_stem = config['paths']['stratified_beta_counts']
         motifs = config['run']['motifs']
 
@@ -60,6 +61,8 @@ class StratifiedBetaCounter(Counter):
                       bstrat.all: 'all'}
 
         strat_list_sorted = [strat_dict[x] for x in sorted(strat_dict.keys())]
+
+        self.sample_meta = config['sample'].copy()
 
         dim_names = ['motif', 'roi_type', 'bs_strand', 'beta_value']
 
@@ -116,6 +119,17 @@ class StratifiedBetaCounter(Counter):
                                    roi_hit_list,
                                    strat_idx,
                                    int(beta * self.bins)] += 1
+
+    def get_dataframe(self):
+        if self._counter_dataframe.empty:
+            counter_dataframe = super().get_dataframe().reset_index()
+            for key in self.sample_meta.keys():
+                counter_dataframe.insert(0, key, self.sample_meta[key])
+            self._counter_dataframe = counter_dataframe.set_index(list(self.sample_meta.keys()) + self.dim_names)
+
+        return self._counter_dataframe
+
+
 
 
 def stratified_beta_hist(strat_beta_df, config):

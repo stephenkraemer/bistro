@@ -151,16 +151,32 @@ class TestStratifiedBetaCounter:
         assert strat_beta_counter.counter_array[motif_idx, roi_strats.whole_genome, 6].sum() == 0
 
 
-    #TODO: Create additional acceptance test with roi stratifying
+    def test_writes_metadata_to_counter_dataframe(self):
+
+        config_with_meta = CONFIG.copy()
+        config_with_meta['sample']['metadata_key1'] = 'value1'
+        config_with_meta['sample']['metadata_key2'] = 'value2'
+
+        strat_beta_counter = StratifiedBetaCounter(config_with_meta)
+        df = strat_beta_counter.get_dataframe()
+
+        assert df.index.names == ['metadata_key1', 'metadata_key2', 'motif', 'roi_type', 'bs_strand', 'beta_value']
+        df = df.reset_index()
+
+        assert (df['metadata_key1'] == 'value1').all()
+        assert (df['metadata_key2'] == 'value2').all()
+
+    # TODO: Create additional acceptance test with roi stratifying
+
     @pytest.mark.acceptance_test
     @pytest.mark.parametrize('motifs', MOTIF_SETS)
     def test_strat_beta_counter_file_output(self, motifs):
         with tempfile.TemporaryDirectory() as tmpdir:
             idx_files = [op.join(TEST_FILES_DIR, 'test_mcall_' + motifs + '_' + chrom + '.bed.gz') for chrom in TEST_CHROMS]
-            output_dir = tmpdir
+            output_dir = '/home/mattausc/Documents/sandbox05'#tmpdir
 
             test_config_path = op.join(tmpdir, 'test_config.toml')
-            computed_df_basename = f"{SAMPLE_NAME}_stratified-beta-counts_{motifs}.p"
+            computed_df_basename = f"{SAMPLE_NAME}_stratified-beta-counts_{motifs}"
             user_config = {'paths': {'stratified_beta_counts': f"{QC_STATS_DIR}/{computed_df_basename}", }}
 
             with open(test_config_path, 'w') as fout:
@@ -176,7 +192,7 @@ class TestStratifiedBetaCounter:
                             '--strat_beta_dist'])
 
             counter_df_tsv = pd.read_csv(op.join(output_dir, QC_STATS_DIR, f'{computed_df_basename}.tsv'), sep='\t')\
-                .set_index(['motif', 'roi_type', 'bs_strand', 'beta_value'])
+                .set_index(['name', 'motif', 'roi_type', 'bs_strand', 'beta_value'])
             counter_df_p = pd.read_pickle(op.join(output_dir, QC_STATS_DIR, f'{computed_df_basename}.p'))
 
             expected_df = pd.read_pickle(op.join(TEST_FILES_DIR, f'test_strat_beta_counts_{motifs}.p'))
