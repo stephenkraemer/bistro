@@ -9,9 +9,33 @@ from pkg_resources import resource_filename
 
 
 def convert_array_to_df(arr, dim_levels, dim_names, value_column_name):
+    """ Convert ndarray to DataFrame
+
+    Parameters
+    ----------
+    arr: np.ndarray
+    dim_levels: List[Iterable]
+        One iterable per index level, detailing the unique index levels
+        *The index levels must be given in sorted order*
+    dim_names: List[str]
+    value_column_name: str
+
+    Returns
+    -------
+    pd.DataFrame
+        One index level per dimension, one column with counts, named
+        value_column_name
+
+    Typical choices for the dim_level iterables are pd.Categorical, List[str],
+    range, and List[pd.Interval]
+
+    *Note* that this does not sort the index. If you gave all dim_levels in sorted
+    order the index will however be in sorted form automatically (although this
+    is not marked in the DataFrame)
+    """
     midx = pd.MultiIndex.from_product(dim_levels, names=dim_names)
     arr.shape = (arr.size,)
-    df = pd.DataFrame(arr, index=midx, columns=[value_column_name]).reset_index()
+    df = pd.DataFrame(arr, index=midx, columns=[value_column_name])
     return df
 
 

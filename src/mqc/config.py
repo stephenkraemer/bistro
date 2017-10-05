@@ -12,10 +12,12 @@ def assemble_config_vars(command_line_args_dict: dict,
                          user_config_file_path: str = '', ):
     """Assemble configuration variables in one dict and expand paths
 
+
     Parameters
     ----------
     command_line_args_dict:
         Command line arguments, provided as dict by command line parser
+        This function expects two CLI parameters: sample_name and output_dir.
     default_config_file_path: str
         Required, typically every mqc based tool will have its own default
         config file
@@ -63,7 +65,10 @@ def assemble_config_vars(command_line_args_dict: dict,
     # The remaining command line args are run parameters
     command_line_args_dict = copy.deepcopy(command_line_args_dict)
     sample_name = command_line_args_dict.pop('sample_name')
-    sample_meta_str = command_line_args_dict.pop('sample_meta')
+    try:
+        sample_meta_str = command_line_args_dict.pop('sample_meta')
+    except KeyError:
+        sample_meta_str = ''
 
     # Initialize config dict with sample metadata and run params sections
     sample_info_dict = get_sample_info_dict(sample_name, sample_meta_str)

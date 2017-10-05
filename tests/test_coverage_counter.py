@@ -4,9 +4,12 @@ import tempfile
 from collections import defaultdict
 from unittest.mock import MagicMock
 
+import numpy as np
 import pandas as pd
 import pytest
 from mqc.coverage import CoverageCounter
+from mqc.config import assemble_config_vars
+from mqc.utils import get_resource_abspath
 
 CONFIG = defaultdict(dict)
 CONFIG['run']['motifs'] = ['cg', 'chg']
@@ -24,10 +27,10 @@ TEST_CHROMS = ['1', '2']
 
 EXPECTED_COVERAGE = {'CG': pd.DataFrame({'motif': ['CG', 'CG', 'CG'],
                                          'coverage': [1, 2, 8],
-                                         'counts': [0, 2, 1]}),
+                                         'counts': np.array([0, 2, 1], dtype='u4')}),
                      'CG-CHG-CHH': pd.DataFrame({'motif': ['CG', 'CG', 'CHG', 'CHG', 'CHH'],
                                                  'coverage': [2, 8, 4, 2, 1],
-                                                 'counts': [2, 1, 1, 0, 1]})}
+                                                 'counts': np.array([2, 1, 1, 0, 1], dtype='u4')})}
 
 class TestCoverageCounterProcessing:
     def test_updates_cov_counter_array(self):
@@ -68,19 +71,36 @@ class TestCoverageCounterProcessing:
     @pytest.mark.parametrize('motifs', MOTIF_SETS)
     def test_cov_counter_file_output(self, motifs):
         with tempfile.TemporaryDirectory() as tmpdir:
-            idx_files = [op.join(TEST_FILES_DIR, 'test_mcall_' + motifs + '_' + chrom + '.bed.gz') for chrom in TEST_CHROMS]
-            output_dir = op.join(tmpdir, SAMPLE_NAME)
+            config = assemble_config_vars(
+                command_line_args_dict={'output_dir': tmpdir,
+                                        'sample_name': SAMPLE_NAME,
+                                        'motifs_str': motifs},
+                default_config_file_path=get_resource_abspath('config.default.toml'),
+                user_config_file_path=''
+            )
+            idx_files = [
+                op.join(TEST_FILES_DIR,
+                        'test_mcall_' + motifs + '_' + chrom + '.bed.gz')
+                for chrom in TEST_CHROMS]
 
-            subprocess.run(['mqc', 'call', '--bam', TEST_BAM, idx_files[0], idx_files[1], '--output_dir', output_dir, '--sample_name', SAMPLE_NAME])
+            subprocess.run(['mqc', 'call', '--bam', TEST_BAM,
+                            '--output_dir', tmpdir,
+                            '--sample_name', SAMPLE_NAME,
+                            idx_files[0], idx_files[1]])
 
-            counter_df_tsv = pd.read_csv(op.join(output_dir, QC_STATS_DIR, f"{SAMPLE_NAME}_coverage-counts_{motifs}.tsv"), sep='\t').set_index(['motif', 'coverage'])
-            counter_df_p = pd.read_pickle(op.join(output_dir, QC_STATS_DIR, f"{SAMPLE_NAME}_coverage-counts_{motifs}.p"))
+            counter_df_tsv = (pd.read_csv(config['paths']['cov_counts'] + '.tsv', sep='\t')
+                              .set_index(['motif', 'coverage'])
+                              .astype(dtype='u4'))
+            counter_df_p = pd.read_pickle(config['paths']['cov_counts'] + '.p')
 
             expected_df = EXPECTED_COVERAGE[motifs].set_index(['motif', 'coverage'])
 
-            for df_type, computed_df in [['tsv', counter_df_tsv], ['pickled', counter_df_p]]:
+            for df_type, computed_df in [
+                    ['tsv', counter_df_tsv], ['pickled', counter_df_p]]:
 
-                msg = f"Computed ({df_type} dataframe): {computed_df} \nExpected coverage: {expected_df}"
-                assert computed_df.loc[expected_df.index].equals(expected_df), msg
+                computed_df_slice =  computed_df.loc[expected_df.index]
+                msg = f"Computed ({df_type} dataframe): {computed_df_slice}" \
+                      f" \nExpected coverage: {expected_df}"
+                assert computed_df_slice.equals(expected_df), msg
 
 

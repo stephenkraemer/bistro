@@ -23,10 +23,6 @@ TESTS_DIR = op.dirname(__file__)
 SAMPLE_NAME = 'hsc_rep1'
 SAMPLE_META = 'population=hsc,rep=1,model=blk6'
 DEFAULT_CONFIG_FILE = get_resource_abspath('config.default.toml')
-columns = ['motif', 'bs_strand', 'flen', 'pos', 'meth_status', 'counts']
-index_cols = columns[0:-1]
-USER_FLEN_MAX = 200
-
 
 @pytest.fixture(scope='module',
                 # params=[True, False],
@@ -40,15 +36,15 @@ def user_config_file(request):
         with open(user_config_file_path, 'wt') as fobj:
             fobj.write(dedent(f"""\
                 [trimming]
-                max_flen_considered_for_trimming = {USER_FLEN_MAX}
+                max_flen_considered_for_trimming = 100
                 
                 [stats]
-                  max_flen = 500
-                  max_flen_with_single_flen_resolution = 150
-                  flen_bin_size = 10
+                  max_flen = 100
+                  max_flen_with_single_flen_resolution = 10
+                  flen_bin_size = 20
                   max_phred = 40
                   phred_bin_size = 5
-                  seq_context_size = 5
+                  seq_context_size = 3
                                 
                 """))
         yield user_config_file_path
@@ -95,29 +91,27 @@ def mbias_counter(user_config_file):
     shutil.rmtree(tmpdir)
 
 
-"""
-Has to be adapted for stratified counts
-expected_counts_df = (pd.DataFrame(
-    [('CHG', 'w_bc', 116, 24, 'n_unmeth', 2),
-     ('CHG', 'w_bc_rv', 116, 93, 'n_unmeth', 2),
-     ('CG', 'c_bc_rv', 146, 81, 'n_meth', 2),
-     ('CG', 'w_bc', 116, 25, 'n_meth', 2),
-     ('CG', 'w_bc_rv', 116, 92, 'n_meth', 2),
-     ('CG', 'c_bc', 146, 66, 'n_meth', 2),
-     ('CG', 'w_bc', 116, 64, 'n_unmeth', 2),
-     ('CG', 'w_bc_rv', 116, 53, 'n_meth', 2),
-     ('CG', 'c_bc', 146, 27, 'n_meth', 2), ],
-    columns=columns)
-                      .set_index(columns[:-1])
-                      .sort_index())
-"""
-
-
+@pytest.mark.acceptance_test
 def test_stats_run_through(mbias_counter):
-    print(mbias_counter.counter_array.shape)
-    assert False
-    # assert isinstance(mbias_counter, MbiasCounter)
+    assert isinstance(mbias_counter, MbiasCounter)
 
+# TODO: better tests
+# """
+# Has to be adapted for stratified counts
+# expected_counts_df = (pd.DataFrame(
+#     [('CHG', 'w_bc', 116, 24, 'n_unmeth', 2),
+#      ('CHG', 'w_bc_rv', 116, 93, 'n_unmeth', 2),
+#      ('CG', 'c_bc_rv', 146, 81, 'n_meth', 2),
+#      ('CG', 'w_bc', 116, 25, 'n_meth', 2),
+#      ('CG', 'w_bc_rv', 116, 92, 'n_meth', 2),
+#      ('CG', 'c_bc', 146, 66, 'n_meth', 2),
+#      ('CG', 'w_bc', 116, 64, 'n_unmeth', 2),
+#      ('CG', 'w_bc_rv', 116, 53, 'n_meth', 2),
+#      ('CG', 'c_bc', 146, 27, 'n_meth', 2), ],
+#     columns=columns)
+#                       .set_index(columns[:-1])
+#                       .sort_index())
+# """
 # @pytest.mark.acceptance_test
 # @pytest.mark.parametrize("stratum_idx,values",
 #                          expected_counts_df.iterrows())

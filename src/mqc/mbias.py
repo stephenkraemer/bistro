@@ -76,9 +76,7 @@ class MbiasCounter(Counter):
                            .values.tolist())
         self.last_phred_bin_idx = len(phred_intervals) - 1
 
-        self.seq_ctx_idx_dict, self.binned_motif_to_index_dict = (
-            get_sequence_context_to_array_index_table(
-                self.seq_context_size))
+        self.seq_ctx_idx_dict, self.binned_motif_to_index_dict = get_sequence_context_to_array_index_table(self.seq_context_size)
 
         # Note: 1-based position labels in dataframe, 0-based position indices
         # in array
@@ -105,7 +103,7 @@ class MbiasCounter(Counter):
                        len(phred_intervals),
                        self.max_read_length,
                        2]  # meth status
-        counter_array = np.zeros(array_shape, dtype='u4')
+        counter_array = np.zeros(array_shape, dtype='u8')
 
         super().__init__(dim_names=dim_names,
                          dim_levels=dim_levels,
@@ -180,6 +178,23 @@ class MbiasCounter(Counter):
 
 
 def get_sequence_context_to_array_index_table(motif_size: int):
+    """ Return dicts used in mapping sequence contexts to counter array indices
+
+    Parameters
+    ----------
+    motif_size: int
+        size of motifs (e.g. 3 or 5 bp)
+
+    Returns
+    -------
+    Dict[str, str]
+        mapping of full motif [ATCG] to array integer index. Several motifs
+        may map to the same index
+    Dict[str, int]
+        mapping of binned motif to array integer index. Every mapping is
+        unique.
+    """
+
     if motif_size % 2 != 1:
         raise ValueError("Motif size must be an uneven number")
 
@@ -296,7 +311,7 @@ class FixedRelativeCuttingSites(CuttingSites):
         if not self._minimal_cutting_sites_array.size:
             # Flen is 1-based
             min_trimmsite_arr = np.zeros([
-                4, (self.max_flen + 1), 2], dtype=np.int32)
+                4, (self.max_flen + 1), 2], dtype=np.uint32)
 
             for bsseq_strand_name, bsseq_strand_index in b_inds._asdict().items():
 
@@ -456,21 +471,42 @@ def cutting_sites_plot(cutting_sites_df, config):
     g.savefig(config['paths']['adj_cutting_sites_plot'])
 
 
-def compute_mbias_stats_df(mbias_counts_df):
-    # discard positions beyond current flen
-    # unstack n_meth, n_unmeth
-    # calculate beta_value
-    df = (mbias_counts_df['counts']
-          .unstack()
-          .groupby(level=['motif', 'bs_strand', 'flen'])
-          .apply(lambda group_df: group_df.loc[(
-        group_df.name[0], group_df.name[1], group_df.name[2]), :].query(
-        "{pos_col_name} <= {curr_flen}".format(
-            pos_col_name='pos', curr_flen=group_df.name[2])))
-          )
-    df['beta_value'] = df['n_meth'] / (df['n_meth'] + df['n_unmeth'])
-    df = df[['beta_value', 'n_meth', 'n_unmeth']]
-    return df
+def compute_mbias_stats_df(mbias_counter_fp_str):
+    index_cols = ['motif', 'seq_context', 'bs_strand', 'flen', 'phred', 'pos',
+                  'meth_status']
+    mbias_stats_df = (pd.read_pickle(mbias_counter_fp_str)
+                      .get_dataframe()
+                      # for interactive testing
+                      # .query("seq_context in "
+                      #        "['WWCGW', 'CCCGC', 'GGCGG', 'CGCGC', 'GCCGG']")
+                      .groupby(['flen', 'pos'])
+                      .filter(lambda group_df: (group_df.name[0].right - 1
+                                                >= group_df.name[1]))
+                      .assign(motif=lambda df:
+    df['seq_context'].apply(map_seq_ctx_to_motif))
+                      .set_index(index_cols)
+                      # do not use .loc[:, 'counts'] to convert to series
+                      # then you can't access group keys via group_df.name
+                      .loc[:, 'counts']
+                      .unstack('meth_status')
+                      )
+    # columns is categorical index, can't be extended
+    # mbias_stats_df.columns = mbias_stats_df.columns.tolist()
+    mbias_stats_df.columns = ['n_meth', 'n_unmeth']
+    mbias_stats_df['beta_value'] = compute_beta_values(mbias_stats_df)
+    return mbias_stats_df
+
+
+def compute_classic_mbias_stats_df(mbias_stats_df):
+    return (mbias_stats_df
+        .groupby(level=['motif', 'bs_strand', 'flen', 'pos'])
+        .sum()
+        .groupby(['flen', 'pos'])
+        .filter(lambda group_df: (group_df.name[0].right - 1
+                                  >= group_df.name[1]))
+        .assign(beta_value=(
+        lambda df: df['n_meth'] / (df['n_unmeth'] + df['n_meth'])))
+    )
 
 
 def mask_mbias_stats_df(df: pd.DataFrame, cutting_sites_df: pd.DataFrame):
@@ -486,6 +522,23 @@ def mask_mbias_stats_df(df: pd.DataFrame, cutting_sites_df: pd.DataFrame):
             .apply(mask_positions))
 
 
+def mask_mbias_stats_df(mbias_stats_df, cutting_sites_df):
+    def mask_trimming_zones(group_df, cutting_sites_df):
+        bs_strand, flen, pos = group_df.name
+        left, right = cutting_sites_df.loc[
+            (bs_strand, flen, ['left_cut_end', 'right_cut_end']), 'cut_pos']
+        if left <= pos <= right:
+            return True
+        else:
+            return False
+
+    return (mbias_stats_df
+            .groupby(['bs_strand', 'flen', 'pos'])
+            .filter(mask_trimming_zones, dropna=False,
+                    cutting_sites_df=cutting_sites_df)
+            )
+
+
 def pos_vs_beta_plots(mbias_stats_dfs_dict, config, aes_mappings):
     trunk_path = config['paths']['mbias_plots_trunk']
     for (curr_name, curr_df), curr_aes_mapping in product(
@@ -495,18 +548,16 @@ def pos_vs_beta_plots(mbias_stats_dfs_dict, config, aes_mappings):
             [val for val in curr_aes_mapping.values() if val is not None]
             + ['pos'])
 
-        # curr_df = mbias_stats_df
         if 'flen' in groupby_vars:
             flen_sel = config['plots']['mbias_flens_to_display']
             curr_df = curr_df.loc[idxs[:, :, :, flen_sel], :]
-        if 'phred' in groupby_vars:
-            phred_sel = config['plots']['mbias_phreds_to_display']
-            curr_df = curr_df.loc[idxs[:, :, :, :, phred_sel], :]
-        agg_df = curr_df.groupby(level=groupby_vars).sum()
-        agg_df['beta_value'] = agg_df['n_meth'] / (
-            agg_df['n_meth'] + agg_df['n_unmeth'])
 
-        plot_df = agg_df.reset_index()
+        plot_df = (curr_df
+                   .groupby(level=groupby_vars)
+                   .sum()
+                   .assign(beta_value=compute_beta_values)
+                   .reset_index()
+                   )
 
         p = (sns.FacetGrid(plot_df, **curr_aes_mapping)
              .map(plt.plot, 'pos', 'beta_value')
@@ -565,23 +616,152 @@ def freq_plot_per_motif(mbias_stats_dfs_dict, config):
 
 
 def create_mbias_stats_plots(mbias_stats_dfs_dict, config):
-    pos_vs_beta_plots(mbias_stats_dfs_dict, config)
+    aes_mappings = [
+        {'row': 'motif', 'col': 'bs_strand', 'hue': None},
+        {'row': 'motif', 'col': 'bs_strand', 'hue': 'flen'},
+        {'row': 'motif', 'col': 'bs_strand', 'hue': 'phred'},
+    ]
+    pos_vs_beta_plots(mbias_stats_dfs_dict, config, aes_mappings)
     # freq_plot_per_motif(mbias_stats_dfs_dict, config)
+    create_phred_filtering_mbias_plots(
+        mbias_stats_dfs_dict['full'], config)
+
+
+def create_phred_filtering_mbias_plots(mbias_stats_df, config):
+    phred_filter_dfs = compute_phred_filtering_dfs(
+        mbias_stats_df)
+
+    plot_data = phred_filter_dfs['counts_by_phred_filtering'].reset_index()
+    g = (sns.FacetGrid(plot_data, row='motif', col='bs_strand', hue='phred')
+         .map(plt.plot, 'pos', 'beta_value')
+         .add_legend())
+    g.savefig(config['paths'][
+                  'mbias_plots_trunk'] + '_phred_filtering_effect_by_pos.png')
+
+    plot_data = phred_filter_dfs[
+        'counts_by_phred_filtering_agg_pos'].reset_index()
+    g = sns.factorplot(x='bs_strand', y='beta_value', hue='phred',
+                       data=plot_data)
+    g.savefig(config['paths']['mbias_plots_trunk']
+              + '_phred_filtering_effect_by_strand.png')
+
+    plot_data = phred_filter_dfs[
+        'counts_by_phred_filtering_global'].reset_index()
+    g = sns.factorplot(x='phred', y='beta_value', data=plot_data)
+    g.savefig(
+        config['paths']['mbias_plots_trunk'] + '_phred_filtering_global.png')
+
+
+def compute_phred_filtering_dfs(mbias_stats_df):
+
+    res = {}
+
+    res['cum_counts_by_phred'] = (
+        mbias_stats_df
+            .groupby(['motif', 'bs_strand', 'phred', 'pos'])
+            .sum()
+            .groupby(['motif', 'bs_strand', 'pos'], group_keys=False)
+            .expanding(1)
+            .sum()
+            .sort_index()
+    )
+
+    res['counts_by_phred_filtering'] = (
+        res['cum_counts_by_phred']
+            .groupby(['motif', 'bs_strand', 'pos'])
+            .transform(lambda ser: -1 * ser + ser.iloc[-1])
+            .assign(beta_value=compute_beta_values)
+            .sort_index()
+    )
+
+    res['counts_by_phred_filtering_agg_pos'] = (
+        res['counts_by_phred_filtering']
+            .groupby(['motif', 'bs_strand', 'phred'])
+            .sum()
+            .assign(beta_value=compute_beta_values))
+
+    res['counts_by_phred_filtering_global'] = (
+        res['counts_by_phred_filtering_agg_pos']
+            .groupby('phred')
+            .sum()
+            .assign(beta_value=compute_beta_values))
+
+    return res
+
+
+def create_tile_plots(mbias_stats_df, config):
+    motif = 'CG'
+    # displayed_flens = [80, 100, 120, 150, 200, 300, 400]
+    displayed_flens = [120, 200]
+    displayed_phreds = [10, 20, 30]
+    aes_mapping = {
+        'x': 'phred',
+        'y': 'seq_context',
+        'col': 'bs_strand',
+        'row': 'flen',
+        'fill': 'beta_value',
+        'label': 'cell_label',
+    }
+    facetting_tuple = (aes_mapping.pop('row'), aes_mapping.pop('col'))
+
+    trunk_path = config['paths']['mbias_stats_heatmap_trunk']
+    aes_mapping_str = '_'.join(
+        [f"{key}-{value}" for key, value in aes_mapping.items()])
+    target_path = f"{trunk_path}_{aes_mapping_str}.png"
+
+    motif_df = (mbias_stats_df
+                .loc[idxs[motif, :, :, displayed_flens, displayed_phreds], :]
+                .groupby(
+        ['motif', 'seq_context', 'bs_strand', 'flen', 'phred'])
+                .sum()
+                .assign(beta_value=lambda df:
+    df['n_meth'] / (df['n_meth'] + df['n_unmeth']))
+                .reset_index()
+                )
+    motif_df['seq_context'].cat.remove_unused_categories(inplace=True)
+    motif_df['n_total'] = motif_df['n_meth'] + motif_df['n_unmeth']
+    motif_df['beta_value_label'] = motif_df['beta_value'].apply(
+        lambda fl: f"{fl:.2f}")
+    motif_df['cell_label'] = motif_df[['beta_value', 'n_total']].apply(
+        lambda ser: f"{ser.beta_value:.2f}\n({(ser.n_total/1000):.1f})",
+        axis=1)
+
+    g = (gg.ggplot(data=motif_df, mapping=gg.aes(**aes_mapping))
+         + gg.facet_grid(facetting_tuple)
+         + gg.geom_tile()
+         + gg.geom_text(size=9, )
+         )
+    g.save(target_path, height=15, width=15, units='in')
 
 
 def analyze_mbias_counts(config):
-    mbias_evaluate_paths = config['paths']
-    # TODO: create paths subdirs in separate logical unit
-    os.makedirs(mbias_evaluate_paths['qc_stats_dir'], exist_ok=True,
-                mode=0o770)
+    os.makedirs(config['paths']['qc_stats_dir'],
+                exist_ok=True, mode=0o770)
+    mbias_stats_df = compute_mbias_stats_df(
+        config['paths']['mbias_counts'] + '.p')
 
-    mbias_counts_df = pd.read_pickle(config['paths']['mbias_counts'] + '.p')
+    mbias_stats_df.to_pickle(config['paths']['mbias_stats_p'])
+    mbias_stats_df.to_csv(config['paths']['mbias_stats_tsv'],
+                          header=True, index=True, sep='\t')
 
-    mbias_stats_df = compute_mbias_stats_df(mbias_counts_df)
-    mbias_stats_df.to_pickle(mbias_evaluate_paths['mbias_stats_p'])
-    mbias_stats_df.reset_index().to_csv(
-        mbias_evaluate_paths['mbias_stats_tsv'],
-        header=True, index=False, sep='\t')
+    classic_mbias_stats_df = compute_classic_mbias_stats_df(mbias_stats_df)
+    mbias_stats_df.to_pickle(config['paths']['mbias_stats_classic_p'])
+
+    adjusted_cutting_sites_df = AdjustedCuttingSites(
+        classic_mbias_stats_df, config).get_df()
+    del classic_mbias_stats_df
+
+    masked_mbias_stats_df = mask_mbias_stats_df(
+        mbias_stats_df, adjusted_cutting_sites_df)
+
+    del adjusted_cutting_sites_df
+
+    mbias_stats_dfs_dict = {'full': mbias_stats_df,
+                            'trimmed': masked_mbias_stats_df}
+
+    create_mbias_stats_plots(mbias_stats_dfs_dict, config)
+
+    """
 
     adjusted_cutting_sites = AdjustedCuttingSites(mbias_stats_df, config)
     with open(mbias_evaluate_paths['adjusted_cutting_sites_obj_p'],
@@ -606,3 +786,8 @@ def analyze_mbias_counts(config):
     create_mbias_stats_plots(mbias_stats_dfs_dict, config)
     cutting_sites_plot(adjusted_cutting_sites.get_df(), config)
     plt.close('all')
+    """
+
+
+def compute_beta_values(df):
+    return df['n_meth'] / (df['n_meth'] + df['n_unmeth'])
