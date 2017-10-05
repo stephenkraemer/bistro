@@ -60,6 +60,7 @@ CONFIG['stats']['flen_bin_size'] = 10
 CONFIG['stats']['max_phred'] = 40
 CONFIG['stats']['phred_bin_size'] = 5
 CONFIG["stats"]["seq_context_size"] = 5
+SAMPLE_NAME = 'hsc_1'
 
 AlignmentStub = namedtuple('AlignmentStub',
                            'template_length')
@@ -287,7 +288,7 @@ class TestMbiasCounterMotifPileupProcessing:
         map_fn = mocker.patch('mqc.mbias.'
                               'get_sequence_context_to_array_index_table')
         map_fn.return_value = (
-        SEQ_CONTEXT_TO_IDX_MAPPING, BINNED_SEQ_CONTEXT_TO_IDX_MAPPING)
+            SEQ_CONTEXT_TO_IDX_MAPPING, BINNED_SEQ_CONTEXT_TO_IDX_MAPPING)
 
         mbias_counter = MbiasCounter(CONFIG)
         mbias_counter.seq_ctx_idx_dict = SEQ_CONTEXT_TO_IDX_MAPPING
@@ -328,7 +329,7 @@ class TestMbiasCounterMotifPileupProcessing:
         map_fn = mocker.patch('mqc.mbias.'
                               'get_sequence_context_to_array_index_table')
         map_fn.return_value = (
-        SEQ_CONTEXT_TO_IDX_MAPPING, BINNED_SEQ_CONTEXT_TO_IDX_MAPPING)
+            SEQ_CONTEXT_TO_IDX_MAPPING, BINNED_SEQ_CONTEXT_TO_IDX_MAPPING)
 
         reads = [bstub_with(),
                  bstub_with(mflag=m_flags.is_ref),
@@ -358,7 +359,7 @@ class TestMbiasCounterMotifPileupProcessing:
         map_fn = mocker.patch('mqc.mbias.'
                               'get_sequence_context_to_array_index_table')
         map_fn.return_value = (
-        SEQ_CONTEXT_TO_IDX_MAPPING, BINNED_SEQ_CONTEXT_TO_IDX_MAPPING)
+            SEQ_CONTEXT_TO_IDX_MAPPING, BINNED_SEQ_CONTEXT_TO_IDX_MAPPING)
 
         reads = [bstub_with(),
                  bstub_with(flen=1000),
@@ -432,7 +433,7 @@ class TestMbiasCounterMotifPileupProcessing:
                               'get_sequence_context_to_array_index_table')
         # we are only interested in these three motifs
         map_fn.return_value = (
-        SEQ_CONTEXT_TO_IDX_MAPPING, BINNED_SEQ_CONTEXT_TO_IDX_MAPPING)
+            SEQ_CONTEXT_TO_IDX_MAPPING, BINNED_SEQ_CONTEXT_TO_IDX_MAPPING)
 
         reads = [bstub_with(flen=400,
                             expected_flen_bin=175,
@@ -636,109 +637,6 @@ def test_compute_mbias_stats_df_converts_mbias_counts_to_mbias_stats_df():
     pass
 
 
-# -----------------------------------------------------------------------------
-# Acceptance tests
-# -----------------------------------------------------------------------------
-
-@pytest.fixture()
-def user_config_file():
-    test_file = (Path(__file__).parent
-                 / "test_files/test-evaluate-stats_mbias-counter")
-    tmpdir = Path(tempfile.mkdtemp())
-    user_config_file_path = tmpdir / "user_config_file.toml"
-    user_config_file_path.write_text(dedent(f"""\
-            [paths]
-                mbias_counts = "{test_file}"
-            [data_properties]
-                max_read_length_bp = 101
-            [trimming]
-                max_flen_considered_for_trimming = 30
-                min_plateau_perc = 0.8
-                max_std_within_plateau = 0.1
-                min_flen_considered_for_trimming = 10
-            [stats]
-                max_flen = 30
-                max_flen_with_single_flen_resolution = 5
-                flen_bin_size = 10
-                max_phred = 40
-                phred_bin_size = 5
-                seq_context_size = 5
-                
-            [plots]
-                mbias_flens_to_display = [100, 150, 190]
-            """))
-    yield str(user_config_file_path)
-    shutil.rmtree(tmpdir)
-
-
-def run_evaluate_mbias(motifs_str, output_dir):
-    user_config_file_fp = op.join(output_dir, 'user_config.toml')
-
-    user_config = {'paths': {
-        'mbias_counts': f"{op.dirname(__file__)}/test_files/hsc_1_mbias-counts_{motifs_str}", }}
-
-    with open(user_config_file_fp, 'wt') as fout:
-        pytoml.dump(fout, user_config)
-
-    subprocess.check_call(['mqc', 'evaluate_mbias',
-                           '--config_file', user_config_file_fp,
-                           '--motifs', motifs_str,
-                           '--sample_name', 'hsc_1',
-                           '--output_dir', output_dir])
-
-
-def get_evaluate_mbias_config(motif_str, output_dir):
-    default_config_file = get_resource_abspath('config.default.toml')
-    user_config_file = op.join(output_dir, 'user_config.toml')
-    cli_params = {'motifs_str': motif_str,
-                  'sample_name': 'hsc_1',
-                  'sample_meta': None,
-                  'output_dir': output_dir}
-    config = assemble_config_vars(cli_params,
-                                  default_config_file_path=default_config_file,
-                                  user_config_file_path=user_config_file)
-    return config
-
-
-@pytest.fixture(scope='module')
-def evaluate_mbias_run_all_motifs():
-    output_dir = tempfile.mkdtemp()
-    run_evaluate_mbias('CG-CHG-CHH', output_dir)
-    config = get_evaluate_mbias_config('CG-CHG-CHH', output_dir)
-    yield config
-    shutil.rmtree(output_dir)
-
-
-@pytest.fixture(scope='module')
-def run_evaluate_mbias_for_cg_only():
-    output_dir = tempfile.mkdtemp()
-    run_evaluate_mbias('CG', output_dir)
-    config = get_evaluate_mbias_config('CG', output_dir)
-    yield config
-    shutil.rmtree(output_dir)
-
-
-@pytest.mark.acceptance_test
-class TestMbiasEvaluateForAllMotifs:
-    def test_converts_mbias_counts_to_mbias_stats_df(self,
-                                                     evaluate_mbias_run_all_motifs):
-        config = evaluate_mbias_run_all_motifs
-        mbias_stats_df = pd.read_pickle(config['paths']['mbias_stats_p'])
-        assert mbias_stats_df.loc[
-                   ('CG', 'w_bc', 100, 1), 'beta_value'] == 1872 / (1872 + 354)
-        # TODO: add more integration tests!
-        #       - masked dataframe
-        #       - correct cutting sites df (which also is interpreted as correct AdjustedCuttingSites object)
-
-
-@pytest.mark.acceptance_test
-class TestMbiasEvaluateForCGonly:
-    def test_converts_mbias_counts_to_mbias_stats_df(self,
-                                                     run_evaluate_mbias_for_cg_only):
-        config = run_evaluate_mbias_for_cg_only
-        mbias_stats_df = pd.read_pickle(config['paths']['mbias_stats_p'])
-        assert mbias_stats_df.loc[
-                   ('CG', 'w_bc', 100, 1), 'beta_value'] == 1872 / (1872 + 354)
 
 
 def test_mask_mbias_stats_df_sets_positions_in_trimming_zone_to_nan():
@@ -835,15 +733,17 @@ class TestConvertCuttingSitesDfToArray:
         assert (cutting_sites_array_computed_from_df == 0).all()
 
 
-@pytest.mark.acceptance_test
-class TestAnalyseMbiasCounts:
-    def test_runs_through(self):
-        tmpdir = tempfile.TemporaryDirectory()
-        tmpdir_path = Path(tmpdir.name)
-        user_config_file_path = tmpdir_path / 'user_config_file.toml'
-        test_file = (Path(__file__).parent
-                     / "test_files/test-evaluate-stats_mbias-counter")
-        user_config_file_path.write_text(dedent(f"""\
+# -----------------------------------------------------------------------------
+# Acceptance tests
+# -----------------------------------------------------------------------------
+
+@pytest.fixture(scope='module')
+def user_config_file():
+    test_file = (Path(__file__).parent
+                 / "test_files/test-evaluate-stats_mbias-counter")
+    tmpdir = Path(tempfile.mkdtemp())
+    user_config_file_path = tmpdir / "user_config_file.toml"
+    user_config_file_path.write_text(dedent(f"""\
             [paths]
                 mbias_counts = "{test_file}"
             [data_properties]
@@ -864,68 +764,57 @@ class TestAnalyseMbiasCounts:
             [plots]
                 mbias_flens_to_display = [100, 150, 190]
             """))
+    yield str(user_config_file_path)
+    shutil.rmtree(tmpdir)
+
+
+@pytest.fixture(scope='module',
+                params=['CG', 'CG-CHG-CHH'])
+def run_evaluate_mbias_then_return_config(request, user_config_file):
+    output_dir = tempfile.mkdtemp()
+
+    subprocess.check_call(['mqc', 'evaluate_mbias',
+                           '--config_file', user_config_file,
+                           '--motifs', request.param,
+                           '--sample_name', SAMPLE_NAME,
+                           '--output_dir', output_dir])
+
+    default_config_file = get_resource_abspath('config.default.toml')
+    cli_params = {'motifs_str': request.param,
+                  'sample_name': SAMPLE_NAME,
+                  'sample_meta': None,
+                  'output_dir': output_dir}
+    config = assemble_config_vars(cli_params,
+                                  default_config_file_path=default_config_file,
+                                  user_config_file_path=user_config_file)
+
+    yield config
+    shutil.rmtree(output_dir)
+
+
+@pytest.mark.acceptance_test
+class TestMbiasEvaluate:
+    def test_runs_through(self, run_evaluate_mbias_then_return_config):
+        config = run_evaluate_mbias_then_return_config
+        mbias_stats_df = pd.read_pickle(config['paths']['mbias_stats_p'])
+        assert isinstance(mbias_stats_df, pd.DataFrame)
+
+# redundant with CLI-based acceptance test, but great for interactive debugging
+# in IDE
+@pytest.mark.acceptance_test
+class TestAnalyseMbiasCounts:
+    def test_runs_through(self, user_config_file):
+        tmpdir = tempfile.TemporaryDirectory()
 
         config = assemble_config_vars(
-            command_line_args_dict={'sample_name': 'test_sample',
+            command_line_args_dict={'sample_name': SAMPLE_NAME,
                                     'sample_meta': 'population=hsc',
-                                    'output_dir': str(tmpdir_path),
+                                    'output_dir': tmpdir.name,
                                     'motifs_str': 'CG'},
             default_config_file_path=get_resource_abspath(
                 'config.default.toml'),
-            user_config_file_path=str(user_config_file_path)
+            user_config_file_path=str(user_config_file)
         )
+
         analyze_mbias_counts(config)
 
-
-"""
-# evaluate_stats command test data generated with
-mbias_counts = "/icgc/dkfzlsdf/analysis/B080/kraemers/projects/mcall_qc/sandbox/results_per_pid/blood05_H035-358K/meth/qc_stats/blood05_H035-358K_mbias-counts_CG"
-with open(mbias_counts + '.p', 'rb') as fin:
-    mbias_counter = pickle.load(fin)
-
-def shorten(levels):
-    if isinstance(levels, pd.Categorical):
-        return levels[0:3].remove_unused_categories()
-    else:
-        return levels[0:3]
-mbias_counter.dim_levels = [shorten(x) for x in mbias_counter.dim_levels]
-# CG motifs required, as they are selected when trimming at the moment
-mbias_counter.dim_levels[0] = 'CCCGC GGCGG WWCGW'.split()
-mbias_counter.counter_array = mbias_counter.counter_array[
-                              0:3, 0:3, 0:3, 0:3, 0:3, :].copy()
-with open('/home/kraemers/projects/mqc/tests/test_files/test-evaluate-stats_mbias-counter.p', 'wb') as fout:
-    pickle.dump(mbias_counter, fout)
-
-# -------- new
-mbias_counts = "/icgc/dkfzlsdf/analysis/B080/kraemers/projects/mcall_qc/sandbox/results_per_pid/blood05_H035-358K/meth/qc_stats/blood05_H035-358K_mbias-counts_CG"
-with open(mbias_counts + '.p', 'rb') as fin:
-    mbias_counter = pickle.load(fin)
-mbias_counts_df = mbias_counter.get_dataframe()
-
-
-index_cols = ['seq_context', 'bs_strand', 'flen', 'phred', 'pos',
-              'meth_status']
-
-dim_levels = (
-    ['CCCGC', 'WWCGW', 'WWCWW', 'WWCWG'],
-    ['c_bc', 'c_bc_rv'],
-    [pd.Interval(100, 101, closed='left'), pd.Interval(150, 151, closed='left'), pd.Interval(181, 201, closed='left')],
-    [pd.Interval(10, 15, closed='left'), pd.Interval(20, 25, closed='left'), pd.Interval(30, 35, closed='left')],
-    list(range(1,151)),
-    ['n_meth', 'n_unmeth']
-)
-
-mbias_counts_df = (mbias_counts_df
-                   .query("seq_context in ['CCCGC', 'WWCGW', 'WWCWW', 'WWCWG']")
-                   .set_index(index_cols)
-                   )
-
-mbias_counts_df_small = mbias_counts_df.loc[dim_levels, :]
-
-mbias_counter.dim_levels = dim_levels
-mbias_counter.counter_array = mbias_counts_df_small.values
-mbias_counts_df_reproduced = mbias_counter.get_dataframe()
-
-with open('/home/kraemers/projects/mqc/tests/test_files/test-evaluate-stats_mbias-counter.p', 'wb') as fout:
-    pickle.dump(mbias_counter, fout)
-"""
