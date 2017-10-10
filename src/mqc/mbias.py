@@ -76,7 +76,8 @@ class MbiasCounter(Counter):
                            .values.tolist())
         self.last_phred_bin_idx = len(phred_intervals) - 1
 
-        self.seq_ctx_idx_dict, self.binned_motif_to_index_dict = get_sequence_context_to_array_index_table(self.seq_context_size)
+        self.seq_ctx_idx_dict, self.binned_motif_to_index_dict = get_sequence_context_to_array_index_table(
+            self.seq_context_size)
 
         # Note: 1-based position labels in dataframe, 0-based position indices
         # in array
@@ -653,7 +654,6 @@ def create_phred_filtering_mbias_plots(mbias_stats_df, config):
 
 
 def compute_phred_filtering_dfs(mbias_stats_df):
-
     res = {}
 
     res['cum_counts_by_phred'] = (
@@ -745,48 +745,37 @@ def analyze_mbias_counts(config):
                           header=True, index=True, sep='\t')
 
     classic_mbias_stats_df = compute_classic_mbias_stats_df(mbias_stats_df)
-    mbias_stats_df.to_pickle(config['paths']['mbias_stats_classic_p'])
+    classic_mbias_stats_df.to_pickle(config['paths']['mbias_stats_classic_p'])
 
-    adjusted_cutting_sites_df = AdjustedCuttingSites(
-        classic_mbias_stats_df, config).get_df()
+    adjusted_cutting_sites = AdjustedCuttingSites(
+        classic_mbias_stats_df, config)
     del classic_mbias_stats_df
+
+    with open(config['paths']['adjusted_cutting_sites_obj_p'], 'wb') as fobj:
+        pickle.dump(adjusted_cutting_sites, fobj)
+    adjusted_cutting_sites_df = adjusted_cutting_sites.get_df()
+    del adjusted_cutting_sites
+
+    adjusted_cutting_sites_df.to_pickle(config["paths"]
+                                        ["adjusted_cutting_sites_df_p"])
+    adjusted_cutting_sites_df.to_csv(
+        config["paths"]['adjusted_cutting_sites_df_tsv'],
+        header=True, index=True, sep="\t")
+    # cutting_sites_plot(adjusted_cutting_sites_df, config)
 
     masked_mbias_stats_df = mask_mbias_stats_df(
         mbias_stats_df, adjusted_cutting_sites_df)
 
     del adjusted_cutting_sites_df
 
+    masked_mbias_stats_df.to_pickle(config['paths']['mbias_stats_masked_p'])
+    masked_mbias_stats_df.to_csv(config['paths']['mbias_stats_masked_tsv'],
+                                 sep='\t', header=True, index=True)
+
     mbias_stats_dfs_dict = {'full': mbias_stats_df,
                             'trimmed': masked_mbias_stats_df}
 
     create_mbias_stats_plots(mbias_stats_dfs_dict, config)
-
-    """
-
-    adjusted_cutting_sites = AdjustedCuttingSites(mbias_stats_df, config)
-    with open(mbias_evaluate_paths['adjusted_cutting_sites_obj_p'],
-              'wb') as fobj:
-        pickle.dump(adjusted_cutting_sites, fobj)
-    adjusted_cutting_sites.get_df().to_pickle(
-        mbias_evaluate_paths['adjusted_cutting_sites_df_p'])
-    adjusted_cutting_sites.get_df().reset_index().to_csv(
-        mbias_evaluate_paths['adjusted_cutting_sites_df_tsv'],
-        sep="\t", header=True, index=False)
-
-    masked_mbias_stats_df = mask_mbias_stats_df(mbias_stats_df,
-                                                adjusted_cutting_sites.get_df())
-    masked_mbias_stats_df.to_pickle(
-        mbias_evaluate_paths['mbias_stats_masked_p'])
-    masked_mbias_stats_df.reset_index().to_csv(
-        mbias_evaluate_paths['mbias_stats_masked_tsv'],
-        sep='\t', header=True, index=False)
-
-    mbias_stats_dfs_dict = {'full': mbias_stats_df,
-                            'trimmed': masked_mbias_stats_df}
-    create_mbias_stats_plots(mbias_stats_dfs_dict, config)
-    cutting_sites_plot(adjusted_cutting_sites.get_df(), config)
-    plt.close('all')
-    """
 
 
 def compute_beta_values(df):
