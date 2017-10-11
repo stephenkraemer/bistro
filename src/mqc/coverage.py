@@ -53,7 +53,7 @@ def coverage_hist(coverage_df, config):
          .map(plt.plot, 'coverage', 'counts')
          .set_titles("{col_name}")
          .set_axis_labels('Coverage', 'Frequency')
-         .set(xlim=(last_bin/(-15), last_bin))
+         .set(xlim=(last_bin/(-15), last_bin+2))
          )
     g.fig.tight_layout()
     g.fig.savefig(config['paths']['coverage_hist'])

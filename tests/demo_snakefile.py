@@ -32,6 +32,11 @@ motifs_str = config['motifs']
 single_motifs = motifs_str.split('-')
 motif_csv = ','.join(motifs_str.split('-'))
 
+regions_of_interest = ['whole_genome']
+if 'roi_index_files' in config.keys():
+    for roi_index_file in config['roi_index_files'].split(','):
+        regions_of_interest.append(op.splitext(op.basename(roi_index_file))[0])
+
 rule all:
     input:
         # mqc make_index
@@ -66,10 +71,11 @@ rule all:
                             pid=config['pids'],
                             motifs_str=motifs_str),
 
-        strat_beta_hist = expand("{output_rpp_dir}/{pid}/meth/qc_stats/{pid}_stratified-beta-hist_{motifs_str}_{stratum}.png",
+        strat_beta_hist = expand("{output_rpp_dir}/{pid}/meth/qc_stats/{pid}_stratified-beta-hist_{motifs_str}_{roi_type}_{stratum}.png",
                             output_rpp_dir=output_rpp_dir,
                             pid=config['pids'],
                             motifs_str=motifs_str,
+                            roi_type=regions_of_interest,
                             stratum=['total', 'mate-wise', 'strand-wise']),
 
         # mqc call
@@ -171,35 +177,6 @@ rule evaluate_mbias:
         --output_dir {params.output_dir}
         """
 
-rule evaluate_calls:
-    input:
-        coverage_counts = f"{output_rpp_dir}/{{pid}}/meth/qc_stats/{{pid}}_coverage-counts_{motifs_str}.p",
-    output:
-        coverage_hist  = f"{output_rpp_dir}/{{pid}}/meth/qc_stats/{{pid}}_coverage-hist_{motifs_str}.png",
-        strat_beta_hist = expand("{output_rpp_dir}/{{pid}}/meth/qc_stats/{{pid}}_stratified-beta-hist_{motifs_str}_{stratum}.png",
-                            output_rpp_dir=output_rpp_dir,
-                            motifs_str=motifs_str,
-                            stratum=['total', 'mate-wise', 'strand-wise']),
-    params:
-        config_file = user_config_file,
-        output_dir = f"{output_rpp_dir}/{{pid}}/meth/",
-        motif_csv = motif_csv,
-        walltime = '00:30:00',
-        mem = '6g',
-        cores = '2',
-        name = f'evaluate_calls_{{pid}}_{motifs_str}',
-        sample_meta = lambda wildcards: f"population={wildcards.pid.split('_')[0]},rep={wildcards.pid.split('_')[-1]}",
-    shell:
-        """
-        mqc evaluate_calls \
-        --config_file {params.config_file} \
-        --motifs {params.motif_csv} \
-        --sample_name {wildcards.pid} \
-        --output_dir {params.output_dir} \
-        --strat_beta_dist
-        """
-
-
 
 mcall_command = (
     'mqc call'
@@ -208,10 +185,11 @@ mcall_command = (
     ' --output_dir {params.output_dir}'
     ' --sample_name {wildcards.pid}'
     ' --sample_meta {params.sample_meta}'
-    ' --use_mbias_fit'
     ' --cores {params.cores}'
     ' --strat_beta_dist'
     ' {input.index_files}'
+    ' {params.roi_index_files}'
+    ' {params.use_mbias_fit}'
 )
 
 rule call:
@@ -230,6 +208,8 @@ rule call:
         walltime = '42:00:00',
         name = f'mcall_{motifs_str}_{{pid}}',
         sample_meta = lambda wildcards: f"population={wildcards.pid.split('_')[0]},rep={wildcards.pid.split('_')[-1]}",
+        roi_index_files = f"--roi_index_files {config['roi_beds']}" if 'roi_beds' in config else '',
+        use_mbias_fit = " --use_mbias_fit" if 'use_mbias_fit' in config else '',
     output:
         mcall_files = expand("{output_rpp_dir}/{{pid}}/meth/meth_calls/mcalls_{{pid}}_{single_motif}_{chrom}.bed.gz",
                             output_rpp_dir=output_rpp_dir,
@@ -246,11 +226,17 @@ rule call:
     shell: mcall_command
 
 
+
 rule evaluate_calls:
     input:
         coverage_counts = f"{output_rpp_dir}/{{pid}}/meth/qc_stats/{{pid}}_coverage-counts_{motifs_str}.p",
     output:
         coverage_hist  = f"{output_rpp_dir}/{{pid}}/meth/qc_stats/{{pid}}_coverage-hist_{motifs_str}.png",
+        strat_beta_hist = expand("{output_rpp_dir}/{{pid}}/meth/qc_stats/{{pid}}_stratified-beta-hist_{motifs_str}_{roi_type}_{stratum}.png",
+                            output_rpp_dir=output_rpp_dir,
+                            motifs_str=motifs_str,
+                            roi_type=regions_of_interest,
+                            stratum=['total', 'mate-wise', 'strand-wise']),
     params:
         config_file = user_config_file,
         output_dir = f"{output_rpp_dir}/{{pid}}/meth/",
@@ -266,5 +252,6 @@ rule evaluate_calls:
         --config_file {params.config_file} \
         --motifs {params.motif_csv} \
         --sample_name {wildcards.pid} \
-        --output_dir {params.output_dir}
+        --output_dir {params.output_dir} \
+        --strat_beta_dist
         """

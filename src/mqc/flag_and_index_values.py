@@ -44,3 +44,7 @@ meth_calling_indices = namedtuple('MethCallingIndices', 'n_meth n_total')(
     n_meth=0,
     n_total=1
 )
+
+region_of_interest_indices = namedtuple('RegionOfInterestIndices', 'whole_genome')(
+    whole_genome=0
+)

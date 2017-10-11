@@ -74,7 +74,6 @@ class StratifiedMethCaller(Visitor):
 
         with np.errstate(divide='ignore', invalid='ignore'):
             motif_pileup.strat_beta_arr = np.divide(meth_counts_arr[:, mcall_ind.n_meth], meth_counts_arr[:, mcall_ind.n_total])
-            motif_pileup.strat_beta_arr[~ np.isfinite(motif_pileup.strat_beta_arr)] = np.nan
 
         motif_pileup.n_meth = meth_counts_arr[bstrat.all, mcall_ind.n_meth]
         motif_pileup.n_total = meth_counts_arr[bstrat.all, mcall_ind.n_total]

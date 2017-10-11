@@ -125,7 +125,9 @@ class TestVisitorSelection:
             mocker.patch(v)
 
         self.config['paths']['stratified_beta_counts'] = ''
+        self.config['run']['roi_index_files'] = ''
         self.config['run']['strat_beta_dist'] = False
+        self.config['run']['motifs'] = ['CG']
         mcall_visitors = QcAndMethCallingRun(self.config)._get_visitors(chrom='')
 
         self.config['run']['strat_beta_dist'] = True

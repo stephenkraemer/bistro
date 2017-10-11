@@ -9,7 +9,7 @@
   min_plateau_perc = 0.8
   max_flen_considered_for_trimming = 600
   min_flen_considered_for_trimming = 50
-  max_std_within_plateau = 0.02
+  max_std_within_plateau = 0.1
 
   # for customization, you have to give a *complete* new dict
   [trimming.relative_to_fragment_ends_dict]

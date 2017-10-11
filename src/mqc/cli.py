@@ -16,6 +16,8 @@ def mqc():
 input_click_path = click.Path(exists=True, readable=True,
                               dir_okay=False, resolve_path=True)
 
+
+
 # mqc stats
 # =========
 @mqc.command()
@@ -108,11 +110,15 @@ def evaluate_mbias(ctx, config_file, motifs, output_dir, sample_name, sample_met
 @click.option('--cores', default=1)
 @click.option('--use_mbias_fit', is_flag=True)
 @click.option('--strat_beta_dist', is_flag=True)
+@click.option('--roi_index_files',
+              required=False,
+              type=str,
+              help='Pass region of interest bed files as csv [optional]')
 
 @click.pass_context
 def call(ctx, bam, index_files,
           output_dir, config_file,
-          sample_name, sample_meta, cores, use_mbias_fit, strat_beta_dist):
+          sample_name, sample_meta, cores, use_mbias_fit, strat_beta_dist, roi_index_files):
     """Methylation calling"""
 
     default_config_file = get_resource_abspath('config.default.toml')

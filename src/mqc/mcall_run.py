@@ -6,6 +6,9 @@ from abc import abstractmethod, ABCMeta
 from collections import OrderedDict
 from copy import deepcopy
 from typing import Dict, List
+import os.path as op
+import datetime
+import pytoml
 
 import pysam
 from mqc.coverage import CoverageCounter
@@ -35,6 +38,8 @@ def collect_stats(config):
 
 
 def run_mcalling(config):
+    timestamp = datetime.datetime.today().strftime('%y%m%d_%H%M')
+
     if config['run']['use_mbias_fit']:
         with open(config['paths']['adjusted_cutting_sites_obj_p'], 'rb') as fin:
             cutting_sites = pickle.load(fin)
@@ -46,6 +51,15 @@ def run_mcalling(config):
 
     for counter in second_run.summed_up_counters.values():
         counter.save_dataframe()
+
+    with open(op.join(config['paths']['output_dir'], f"{config['sample']['name']}_parameters_{timestamp}.toml"), mode='w') as config_dump:
+        config_formatted = config.copy()
+        for sectionkey, section in config_formatted.items():
+            for optionkey, option in section.items():
+                if type(option) == tuple:
+                    config_formatted[sectionkey][optionkey] = list(option)
+        pytoml.dump(config_dump, config_formatted)
+
 
 class PileupRun(metaclass=ABCMeta):
     """ABC for classes managing individual data collection runs
@@ -254,7 +268,7 @@ class QcAndMethCallingRun(PileupRun):
 
         if self.config['run']['strat_beta_dist']:
             visitors['meth_caller'] = StratifiedMethCaller()
-            visitors['beta_counter'] = StratifiedBetaCounter(self.config)
+            visitors['beta_counter'] = StratifiedBetaCounter(self.config, chrom=chrom)
         else:
             visitors['meth_caller'] = MethCaller()
 
