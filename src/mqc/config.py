@@ -4,12 +4,14 @@ import copy
 import os
 import pytoml
 import re
+import json
 from collections import OrderedDict
 
 
 def assemble_config_vars(command_line_args_dict: dict,
                          default_config_file_path: str,
-                         user_config_file_path: str = '', ):
+                         user_config_file_path: str = '',
+                         cmd_line_config_vars: str = ''):
     """Assemble configuration variables in one dict and expand paths
 
     Parameters
@@ -21,6 +23,8 @@ def assemble_config_vars(command_line_args_dict: dict,
         config file
     user_config_file_path : str
         Optional path to user config file
+    cmd_line_config_vars : str
+        Optional JSON-format config variables, will override both default and user config file
 
     Returns
     -------
@@ -96,6 +100,11 @@ def assemble_config_vars(command_line_args_dict: dict,
             user_config_file_dict = pytoml.load(f)
         update_nested_dict(base_dict=config,
                            custom_dict=user_config_file_dict)
+
+    if cmd_line_config_vars:
+        cmd_line_config_dict = json.loads(cmd_line_config_vars)
+        update_nested_dict(base_dict=config,
+                           custom_dict=cmd_line_config_dict)
 
     # Copy output_dir from run parameters to the paths dict
     # Required for expansion of paths with expand_path

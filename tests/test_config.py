@@ -3,6 +3,7 @@ import pytest
 import shutil
 import tempfile
 import textwrap
+import json
 
 from mqc.config import assemble_config_vars
 
@@ -33,7 +34,7 @@ def user_config_file():
                 value = "custom_value"
                 [config_section1.nested_section.nested_section]
                 value = "custom_value"
-            
+
             [paths]
             dir1 = "/path/to/dir1"
             dir2 = "{dir1}/dir2"
@@ -62,10 +63,10 @@ def default_config_file():
                     [config_section1.nested_section.nested_section]
                     value = "default_value"
                     value2 = "default_value2"
-            
+
             [config_section2]
             value = "default_value"
-            
+
             [paths]
               dir1 = "default"
               dir2 = "default"
@@ -89,6 +90,20 @@ def config(default_config_file,
     return config
 
 
+@pytest.fixture()
+def config_with_cmd_line_update(default_config_file,
+                                user_config_file,
+                                command_line_args_dict):
+    vars_dict = {'config_section1': {'value': 'updated_value1'},
+                 'config_section2': {'value': 'updated_value2'}}
+    vars_json = json.dumps(vars_dict)
+    cmd_config_vars = assemble_config_vars(command_line_args_dict,
+                                           default_config_file_path=default_config_file,
+                                           user_config_file_path=user_config_file,
+                                           cmd_line_config_vars=vars_json)
+    return cmd_config_vars
+
+
 class TestAssembleConfigVarsFn:
     def test_default_to_base_config_file(self, config):
         assert config['config_section1']['value2'] == "default_value2"
@@ -109,7 +124,7 @@ class TestAssembleConfigVarsFn:
             self, default_config_file, user_config_file, command_line_args_dict):
         illegal_config_text = textwrap.dedent("""\
         illegal_key = "illegal_value"
-        
+
         """)
         tmp_dir_path, illegal_user_config_file = add_to_config_file(
             user_config_file, illegal_config_text
@@ -166,11 +181,11 @@ class TestAssembleConfigVarsFn:
                 expected_path_under_coverage_counts_p_key)
 
     def test_raises_when_base_config_file_contains_sample_or_run_section(
-        self, default_config_file, user_config_file, command_line_args_dict):
+            self, default_config_file, user_config_file, command_line_args_dict):
         illegal_section = textwrap.dedent("""\
             [run]
             run_param1 = "abc"
-            
+
             """)
         tmp_dir_path, illegal_default_config_file = add_to_config_file(
             default_config_file, illegal_section)
@@ -186,18 +201,17 @@ class TestAssembleConfigVarsFn:
 
     def test_raises_when_default_and_custom_types_do_not_match(
             self, default_config_file, user_config_file, command_line_args_dict):
-
         default_section_to_append = textwrap.dedent("""\
-        
+
         [appended_section]
         param1 = "value1"
-        
+
         """)
 
         custom_value_to_prepend = textwrap.dedent("""\
-        
+
         appended_section = "value1"
-        
+
         """)
 
         tmp_dir_path1, new_default_config_file = add_to_config_file(
@@ -214,8 +228,14 @@ class TestAssembleConfigVarsFn:
         shutil.rmtree(tmp_dir_path1)
         shutil.rmtree(tmp_dir_path2)
 
-def add_to_config_file(config_file_path, text_to_add, prepend=False):
+    def test_update_config_with_command_line_config_vars(self, config_with_cmd_line_update):
+        assert config_with_cmd_line_update['config_section1'][
+                   'value'] == 'updated_value1'  # Check override of user config file
+        assert config_with_cmd_line_update['config_section2'][
+                   'value'] == 'updated_value2'  # Check override of default config
 
+
+def add_to_config_file(config_file_path, text_to_add, prepend=False):
     with open(config_file_path) as fobj:
         orig_config_file_text = fobj.read()
 
