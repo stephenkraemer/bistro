@@ -1,10 +1,14 @@
 [stats]
   max_flen = 500
-  max_flen_with_single_flen_resolution = 100
+  max_flen_with_single_flen_resolution = 150
   flen_bin_size = 20
   max_phred = 40
   phred_bin_size = 5
   seq_context_size = 5
+
+[plots]
+  mbias_flens_to_display = [60, 75, 90, 100, 120, 150, 190, 290, 490]
+  mbias_phreds_to_display = [0, 5, 10, 15, 20, 25, 30, 35, 40]
 
 [conversion_error_calling]
   max_number_of_unconv_cytosines = 2
@@ -26,9 +30,6 @@
     w_bc_rv = [9, 0]
     c_bc_rv = [9, 0]
 
-[plots]
-  mbias_flens_to_display = [60, 75, 90, 100, 120, 150, 200, 300, 500]
-  mbias_phreds_to_display = [0, 5, 10, 15, 20, 25, 30, 35, 40]
 
 [beta_value_dist_stats]
   min_cov = 10
@@ -62,6 +63,7 @@
   adjusted_cutting_sites_df_tsv = "{qc_stats_dir}/{name}_adjusted_cutting_sites_df_{motifs_str}.tsv"
   mbias_plots_trunk             = "{qc_stats_dir}/{name}_mbias-line-plot_{motifs_str}"
   cg_occurence_plot_trunk       = "{qc_stats_dir}/{name}_freq-line-plot_{motifs_str}"
+  freq_with_agg_pos_plot        = "{qc_stats_dir}/{name}_freq-agg-pos-plot_{motifs_str}"
   adj_cutting_sites_plot        = "{qc_stats_dir}/{name}_adjusted-cutting-sites_barplot_{motifs_str}.png"
   cov_counts                    = "{qc_stats_dir}/{name}_coverage-counts_{motifs_str}"
   coverage_hist                 = "{qc_stats_dir}/{name}_coverage-hist_{motifs_str}.png"

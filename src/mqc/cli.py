@@ -74,8 +74,10 @@ from mqc.mbias import analyze_mbias_counts
 @click.option('--sample_meta',
               help="Pass additional metadata as"
                    " 'key=value,key2=value2' [optional]")
+@click.option('--no-cache', 'no_cache', is_flag=True)
 @click.pass_context
-def evaluate_mbias(ctx, config_file, motifs, output_dir, sample_name, sample_meta):
+def evaluate_mbias(ctx, config_file, motifs, output_dir,
+                   sample_name, sample_meta, no_cache):
 
     default_config_file = get_resource_abspath('config.default.toml')
     user_config_file = config_file if config_file else ''

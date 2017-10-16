@@ -810,7 +810,8 @@ class TestAnalyseMbiasCounts:
             command_line_args_dict={'sample_name': SAMPLE_NAME,
                                     'sample_meta': 'population=hsc',
                                     'output_dir': tmpdir.name,
-                                    'motifs_str': 'CG'},
+                                    'motifs_str': 'CG',
+                                    'no_cache': False},
             default_config_file_path=get_resource_abspath(
                 'config.default.toml'),
             user_config_file_path=str(user_config_file)
