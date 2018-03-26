@@ -33,7 +33,7 @@ from mqc.mbias import AdjustedCuttingSites
 from mqc.mbias import mask_mbias_stats_df
 from mqc.mbias import map_seq_ctx_to_motif
 from mqc.mbias import convert_cutting_sites_df_to_array
-from mqc.mbias import analyze_mbias_counts
+from mqc.mbias import compute_mbias_stats
 from mqc.utils import get_resource_abspath
 
 import matplotlib
@@ -817,5 +817,5 @@ class TestAnalyseMbiasCounts:
             user_config_file_path=str(user_config_file)
         )
 
-        analyze_mbias_counts(config)
+        compute_mbias_stats(config)
 

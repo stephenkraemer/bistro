@@ -63,7 +63,7 @@ def stats(ctx, bam, index_files,
 #==============================================================================
 #                             mqc evaluate_mbias
 #==============================================================================
-from mqc.mbias import analyze_mbias_counts
+from mqc.mbias import compute_mbias_stats
 @mqc.command()
 @click.option('--config_file', type=input_click_path, help='[optional]')
 @click.option('--motifs', help='e.g. CG or CG,CHG,CHH')
@@ -87,7 +87,7 @@ def evaluate_mbias(ctx, config_file, motifs, output_dir,
     config = assemble_config_vars(cli_params,
                                   default_config_file_path=default_config_file,
                                   user_config_file_path=user_config_file)
-    analyze_mbias_counts(config)
+    compute_mbias_stats(config)
 
 
 #==============================================================================
