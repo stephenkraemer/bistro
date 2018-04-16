@@ -1,33 +1,25 @@
-import os
+#-
 import shutil
 import tempfile
 from collections import namedtuple, defaultdict
-from copy import deepcopy
-from itertools import product
 from pathlib import Path
 from textwrap import dedent
 from unittest.mock import MagicMock
-import os.path as op
-import pytoml
-from itertools import product
-
-import pickle
 import pandas as pd
-import time
 
 idxs = pd.IndexSlice
 import numpy as np
-from numpy.testing import assert_array_equal
 import pytest
 import subprocess
 
 from mqc.config import assemble_config_vars
 # from mqc.mbias import MbiasCounter
-from mqc.mbias import MbiasCounter, create_mbias_stats_plots
-from mqc.mbias import \
-    get_sequence_context_to_array_index_table, map_seq_ctx_to_motif
+from mqc.mbias import MbiasCounter
+# from mqc.mbias import create_mbias_stats_plots
+from mqc.mbias import get_sequence_context_to_array_index_table
+# from mqc.mbias import map_seq_ctx_to_motif
 from mqc.mbias import FixedRelativeCuttingSites
-from mqc.mbias import convert_cutting_sites_df_to_array
+# from mqc.mbias import convert_cutting_sites_df_to_array
 from mqc.mbias import fit_normalvariate_plateau
 from mqc.mbias import AdjustedCuttingSites
 from mqc.mbias import mask_mbias_stats_df
@@ -39,11 +31,11 @@ from mqc.utils import get_resource_abspath
 import matplotlib
 
 matplotlib.use('Agg')  # import before pyplot import!
-import matplotlib.pyplot as plt
-import seaborn as sns
-
+# import matplotlib.pyplot as plt
+# import seaborn as sns
 import mqc.flag_and_index_values as mfl
-import plotnine as gg
+# import plotnine as gg
+#-
 
 # TODO: I currently test that any non-zero qc_fail_flag leads to discard from M-bias stats counting. When I update the behavior so that phred score fails are kept in the stats, the tests here also need to be updated accordingly
 b_inds = mfl.bsseq_strand_indices
@@ -131,7 +123,7 @@ class MotifPileupStub:
         self.reads = reads
 
 
-class TestSeqContextToBinMapping():
+class TestSeqContextToBinMapping:
     def test_even_number_motif_sizes_are_not_allowed(self):
         with pytest.raises(ValueError):
             get_sequence_context_to_array_index_table(4)
@@ -242,7 +234,10 @@ def test_mbias_counter_get_dataframe(mocker):
     ], names=["seq_context", "bs_strand", "flen", "phred", "pos",
               "meth_status"])
     exp_df = pd.DataFrame(index=midx)
-    exp_df["counts"] = np.uint64(0)
+    # counts must be uint64. But if we set this now, we have to add
+    # every count below as uint64 to avoid type casting
+    # better to do manual type casting to uint64 once at the end
+    exp_df["counts"] = 0
 
     mbias_counter = MbiasCounter(config)
 
@@ -262,7 +257,7 @@ def test_mbias_counter_get_dataframe(mocker):
     mbias_counter.counter_array[1, 3, 0, 0, 0, 0] = 1
 
     computed_df = mbias_counter.get_dataframe()
-    pd.testing.assert_frame_equal(exp_df, computed_df)
+    pd.testing.assert_frame_equal(exp_df.astype('u8'), computed_df)
 
 
 class TestMbiasCounterMotifPileupProcessing:
@@ -572,13 +567,13 @@ class TestAdjustedCuttingSites:
             pd.Series([10, 11], index=['left_cut_end', 'right_cut_end']),
             pd.Series([10, 11], index=['left_cut_end', 'right_cut_end']),
         ])
-        mocker.patch('mqc.mbias.fit_normalvariate_plateau', fit_mock)
+        mocker.patch('mqc.mbias.fit_percentiles', fit_mock)
 
-        computed_cutting_sites_ser = AdjustedCuttingSites._compute_df(
+        computed_cutting_sites_df = AdjustedCuttingSites._compute_df(
             mbias_df_stub, config={})
 
         # Note that this is sorted
-        expected_cutting_sites_ser = pd.DataFrame([
+        expected_cutting_sites_df = pd.DataFrame([
             ['c_bc', 101, 'left_cut_end', 10],
             ['c_bc', 101, 'right_cut_end', 11],
             ['w_bc', 100, 'left_cut_end', 10],
@@ -588,7 +583,8 @@ class TestAdjustedCuttingSites:
         ], columns=['bs_strand', 'flen', 'cut_end', 'cut_pos']).set_index(
             ['bs_strand', 'flen', 'cut_end'])
 
-        assert computed_cutting_sites_ser.equals(expected_cutting_sites_ser)
+        pd.testing.assert_frame_equal(computed_cutting_sites_df,
+                                      expected_cutting_sites_df)
 
 
 # TODO: adapt to extended Mbias stats counter

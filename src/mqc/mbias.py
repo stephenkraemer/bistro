@@ -486,8 +486,7 @@ def fit_normalvariate_plateau(group_df: pd.DataFrame, config) -> pd.Series:
 
 def fit_percentiles(group_df: pd.DataFrame, config) -> pd.Series:
 
-    # TODO: remove hardcoding
-    min_perc = 0.5
+    min_perc = 0.5  # min_plateau_length = effective_read_length * min_perc
     percentiles = (0.02, 0.98)
     min_percentile_delta = 0.05
     min_flen = 55
@@ -513,15 +512,13 @@ def fit_percentiles(group_df: pd.DataFrame, config) -> pd.Series:
         for start_pos in range(0, max_start_pos):
             end_pos = start_pos + plateau_length
             curr_beta_values = beta_values.iloc[start_pos:end_pos]
-            # curr_std = curr_beta_values.std()
             low_percentile, high_percentile = curr_beta_values.quantile(percentiles)
             curr_percentile_delta = high_percentile - low_percentile
             if curr_percentile_delta < percentile_delta_to_beat:
-                plateau_height = curr_beta_values.mean()
+                # plateau_height = curr_beta_values.mean()
                 left_end_ok = (curr_beta_values[0:4] > low_percentile).all()
                 right_end_ok = (curr_beta_values[-4:] < high_percentile).all()
                 if left_end_ok and right_end_ok:
-                # if True:
                     percentile_delta_to_beat = curr_percentile_delta
                     best_start = start_pos
                     best_end = end_pos

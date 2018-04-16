@@ -8,7 +8,6 @@ from mqc.index import start_parallel_index_generation
 from mqc.mcall_run import collect_stats, run_mcalling
 from mqc.utils import get_resource_abspath
 
-
 @click.group()
 def mqc():
     pass

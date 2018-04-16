@@ -7,18 +7,24 @@ import numpy as np
 import pandas as pd
 from pkg_resources import resource_filename
 
+from typing import (
+    List, Iterable
+)
 
-def convert_array_to_df(arr, dim_levels, dim_names, value_column_name):
+
+def convert_array_to_df(arr: np.ndarray,
+                        dim_levels: List[Iterable], dim_names: List[str],
+                        value_column_name: str):
     """ Convert ndarray to DataFrame
 
     Parameters
     ----------
     arr: np.ndarray
-    dim_levels: List[Iterable]
+    dim_levels:
         One iterable per index level, detailing the unique index levels
         *The index levels must be given in sorted order*
-    dim_names: List[str]
-    value_column_name: str
+    dim_names
+    value_column_name
 
     Returns
     -------
@@ -33,9 +39,18 @@ def convert_array_to_df(arr, dim_levels, dim_names, value_column_name):
     order the index will however be in sorted form automatically (although this
     is not marked in the DataFrame)
     """
-    midx = pd.MultiIndex.from_product(dim_levels, names=dim_names)
-    arr.shape = (arr.size,)
-    df = pd.DataFrame(arr, index=midx, columns=[value_column_name])
+    if arr.size == 0:
+        raise ValueError('NDarray is empty')
+
+    # Create MultiIndex for multidimensional counter, and Index for 1D counter
+    if arr.ndim > 1:
+        midx = pd.MultiIndex.from_product(dim_levels, names=dim_names)
+        arr.shape = (arr.size,)
+        df = pd.DataFrame(arr, index=midx, columns=[value_column_name])
+    else:
+        idx = pd.Index(dim_levels[0], name=dim_names[0])
+        df = pd.DataFrame(arr, index=idx, columns=[value_column_name])
+
     return df
 
 
