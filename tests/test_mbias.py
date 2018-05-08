@@ -12,29 +12,32 @@ import numpy as np
 import pytest
 import subprocess
 
+from collections import Sequence
+from itertools import product
+
 from mqc.config import assemble_config_vars
-# from mqc.mbias import MbiasCounter
-from mqc.mbias import MbiasCounter
-# from mqc.mbias import create_mbias_stats_plots
-from mqc.mbias import get_sequence_context_to_array_index_table
-# from mqc.mbias import map_seq_ctx_to_motif
-from mqc.mbias import FixedRelativeCuttingSites
-# from mqc.mbias import convert_cutting_sites_df_to_array
-from mqc.mbias import fit_normalvariate_plateau
-from mqc.mbias import AdjustedCuttingSites
-from mqc.mbias import mask_mbias_stats_df
-from mqc.mbias import map_seq_ctx_to_motif
-from mqc.mbias import convert_cutting_sites_df_to_array
-from mqc.mbias import compute_mbias_stats
+from mqc.mbias import (MbiasCounter,
+                       get_sequence_context_to_array_index_table,
+                       FixedRelativeCuttingSites,
+                       fit_normalvariate_plateau,
+                       fit_percentiles,
+                       AdjustedCuttingSites,
+                       mask_mbias_stats_df,
+                       map_seq_ctx_to_motif,
+                       convert_cutting_sites_df_to_array,
+                       compute_mbias_stats)
 from mqc.utils import get_resource_abspath
 
 import matplotlib
 
 matplotlib.use('Agg')  # import before pyplot import!
-# import matplotlib.pyplot as plt
+from matplotlib.axes import Axes
+import matplotlib.pyplot as plt
 # import seaborn as sns
 import mqc.flag_and_index_values as mfl
 # import plotnine as gg
+
+from typing import List
 #-
 
 # TODO: I currently test that any non-zero qc_fail_flag leads to discard from M-bias stats counting. When I update the behavior so that phred score fails are kept in the stats, the tests here also need to be updated accordingly
@@ -506,6 +509,176 @@ def config_fit_normal_variate_plateau():
     config["trimming"]["max_std_within_plateau"] = 0.1
     config["trimming"]["min_flen_considered_for_trimming"] = 50
     return config
+
+
+#-
+# Test M-bias plateau fitting
+# ===========================
+
+# prepare test shapes. Each shape is associated with 'correct' cutting sites
+# either these are integers, e.g. if cuts at position 8 and 90 are expected:
+# [8, 90]
+# or these are ranges, e.g. if the left cut can be anywhere between position 5 and 15
+# [(5,15), 90]
+
+def add_noise_to_mbias_shape(arr, sd=0.002):
+    np.random.seed(123)
+    return arr + (np.random.randn(*arr.shape) * sd)
+
+def sigmoid_curve(steepness, min_height, delta, longer_plateau_length, reverse=False):
+    sigmoid_area = np.round((101 - longer_plateau_length) * 2)
+    res = np.concatenate([
+        1 / (1 + np.exp(-steepness*np.linspace(-5,5,sigmoid_area))) * delta + min_height,
+        np.ones(101 - sigmoid_area) * min_height + delta])
+    if reverse:
+        res = res[::-1]
+    return res
+
+
+def michaelis_menten_curve(vmax, km, steepness, flat_plateau_start=None, reverse=False):
+    res =  vmax * np.arange(101) * steepness / (km + np.arange(101) * steepness)
+    if flat_plateau_start:
+        res[flat_plateau_start:] = res[flat_plateau_start]
+    if reverse:
+        res = res[::-1]
+    return res
+
+#-
+test_mbias_shapes = {
+    'perfect_shape': (
+        np.ones(101) * 0.75,
+        [0,100]),
+    'left_gap_repair_nucleotides': (
+        np.concatenate([np.zeros(9), np.ones(92) * 0.75]),
+        [(8,10), 100]),
+    'right_gap_repair_nucleotides': (
+        np.concatenate([np.ones(92) * 0.75, np.zeros(9)]),
+        [0, (91,93)]),
+    # 'gaps_at_both_sites': (
+    #     np.concatenate([np.zeros(5), np.ones(87) * 0.75, np.zeros(9)]),
+    #     [5, 92]),
+    # 'sigmoid_curve_1': [
+    #     sigmoid_curve(steepness=3, min_height=0.65,
+    #                   delta=0.2, longer_plateau_length=60),
+    #     [(42, 46), 100]],
+    # 'sigmoid_curve_2': [
+    #     sigmoid_curve(steepness=3, min_height=0.65, delta=0.1,
+    #                   longer_plateau_length=70, reverse=True),
+    #     [0, (65, 75)]
+    # ],
+    # 'slight_slope': [
+    #     np.linspace(0.78, 0.8, 101),
+    #     [(0,5), (95,100)],
+    # ],
+    # 'medium_slope': [
+    #     np.linspace(0.75, 0.8, 101),
+    #     [(0, 15), (85, 100)],
+    # ],
+    # 'bad_slope': [
+    #     np.linspace(0.70, 0.8, 101),
+    #     [0,0]
+    # ],
+    # 'very_bad_slope': [
+    #     np.linspace(0.60, 0.8, 101),
+    #     [0,0]
+    # ],
+    # 'intermittent_drops': [
+    #     np.repeat([.7, 0, .7, 0, .7, 0, .7],
+    #               [20, 5, 30, 10, 20, 10, 5]),
+    #     [0,0]
+    # ],
+    # 'michaelis-menten-curve1': [
+    #     michaelis_menten_curve(vmax=0.7, km=20, steepness=10),
+    #     [(20, 40), 100]
+    # ],
+    # 'michaelis-menten-curve2': [
+    #     michaelis_menten_curve(vmax=0.7, km=20, steepness=20),
+    #     [(0, 20), 100]
+    # ],
+    # 'michaelis-menten-curve3': [
+    #     michaelis_menten_curve(vmax=0.7, km=20, steepness=2),
+    #     [0, 0]
+    # ],
+    # 'michaelis-menten-curve4': [
+    #     michaelis_menten_curve(vmax=0.7, km=20, steepness=3,
+    #                            flat_plateau_start=40, reverse=True),
+    #     [0, (60,80)]
+    # ],
+}
+#-
+
+def visualize_mbias_test_shapes():
+    """Plot M-bias test function using interactive backend"""
+
+    # visualize all shapes
+    fig, axes = plt.subplots(int(np.ceil(len(test_mbias_shapes) / 2)), 2,
+                             constrained_layout=True)
+    axes: List[Axes]
+    sd = 0.05
+    for i, (shape_name, (arr, exp_cutting_sites)) in enumerate(test_mbias_shapes.items(), 1):
+        axes_coord = (int(np.ceil(i / 2)) - 1, 1 - i % 2)
+        axes[axes_coord].plot(add_noise_to_mbias_shape(arr, sd))
+        axes[axes_coord].set_ylim([0,1])
+        axes[axes_coord].set_title(shape_name)
+    fig.show()
+
+
+
+noise_levels = [0.005, 0.01]
+
+# Each plateau fitter function is associated with a config dict and with
+# tests which are expected to fail
+plateau_fitter_functions = [fit_percentiles]
+
+plateau_fitter_func_configs = {
+    fit_percentiles: {},
+}
+
+# Every plateau fitter function can have a list of shape names for which it is
+# expected to fail
+xfails_by_plateau_fitter_func_mapping = {
+    fit_percentiles: [],
+}
+
+plateau_fitting_test_parametrizations = []
+for plateau_fitter_func, test_mbias_shape_item, sd in product(
+    plateau_fitter_functions, test_mbias_shapes.items(),
+    noise_levels
+):
+
+    curr_marks = []
+    if (test_mbias_shape_item[0]
+            in xfails_by_plateau_fitter_func_mapping[plateau_fitter_func]):
+        curr_marks = [pytest.mark.xfail]
+
+    plateau_fitting_test_parametrizations.append(
+        pytest.param(plateau_fitter_func, *test_mbias_shape_item[1], sd,
+                     plateau_fitter_func_configs[plateau_fitter_func],
+                     marks=curr_marks, id=f'{test_mbias_shape_item[0]}_sd-{sd}')
+    )
+
+
+@pytest.mark.parametrize('plateau_caller_fn,beta_value_arr,'
+                         'expected_cutting_sites_tuple,sd,config',
+                         plateau_fitting_test_parametrizations)
+def test_plateau_fitter(plateau_caller_fn, beta_value_arr,
+                        expected_cutting_sites_tuple, sd, config):
+    df_stub = pd.DataFrame(
+        {'beta_value': add_noise_to_mbias_shape(beta_value_arr, sd=sd)})
+    res_ser = plateau_caller_fn(df_stub, config)
+    cut_end_ok_ser = pd.Series()
+    for i, cut_end in enumerate(['left_cut_end', 'right_cut_end']):
+        elem = expected_cutting_sites_tuple[i]
+        if isinstance(elem, Sequence):
+            assert len(elem) == 2, \
+                    'Unexpected input for expected cutting sites'
+            cut_end_ok_ser[cut_end] = elem[0] <= res_ser[cut_end] <= elem[1]
+        else:
+            assert isinstance(elem, int), \
+                    'Unexpected input for expected cutting sites'
+            cut_end_ok_ser[cut_end] = res_ser[cut_end] == elem
+    message = f'Computed:\n{res_ser}\nExpected:{expected_cutting_sites_tuple}'
+    assert cut_end_ok_ser.all(), message
 
 
 class TestFitNormalVariatePlateau:

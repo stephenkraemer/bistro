@@ -1,3 +1,4 @@
+#-
 import os
 import os.path as op
 import pickle
@@ -22,6 +23,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import plotnine as gg
 from plotnine import *
+from sklearn import linear_model
 
 import mqc.flag_and_index_values as mfl
 from mqc.pileup.bsseq_pileup_read import BSSeqPileupRead
@@ -44,6 +46,7 @@ rpy2.robjects.numpy2ri.activate()
 from rpy2.robjects import pandas2ri
 pandas2ri.activate()
 import rpy2.robjects.lib.ggplot2 as gg
+#-
 
 class MbiasCounter(Counter):
     """Count stratified M-bias stats
@@ -488,8 +491,11 @@ def fit_percentiles(group_df: pd.DataFrame, config) -> pd.Series:
 
     min_perc = 0.5  # min_plateau_length = effective_read_length * min_perc
     percentiles = (0.02, 0.98)
-    min_percentile_delta = 0.05
-    min_flen = 55
+    min_percentile_delta = 0.1
+    min_flen = 45
+    max_read_length = 101
+
+    max_slope = min_percentile_delta/max_read_length
 
     beta_values = group_df['beta_value']
 
@@ -516,12 +522,22 @@ def fit_percentiles(group_df: pd.DataFrame, config) -> pd.Series:
             curr_percentile_delta = high_percentile - low_percentile
             if curr_percentile_delta < percentile_delta_to_beat:
                 # plateau_height = curr_beta_values.mean()
-                left_end_ok = (curr_beta_values[0:4] > low_percentile).all()
-                right_end_ok = (curr_beta_values[-4:] < high_percentile).all()
-                if left_end_ok and right_end_ok:
-                    percentile_delta_to_beat = curr_percentile_delta
-                    best_start = start_pos
-                    best_end = end_pos
+                # left_end_ok = (curr_beta_values[0:4] > low_percentile).all()
+                # right_end_ok = (curr_beta_values[-4:] < high_percentile).all()
+                curr_beta_values_arr = curr_beta_values.values
+                plateau_end_deltas = (curr_beta_values_arr[0:4, np.newaxis] -
+                                      curr_beta_values_arr[np.newaxis, -4:])
+                both_ends_ok = (plateau_end_deltas < min_percentile_delta).all()
+                assert isinstance(both_ends_ok, np.bool_), type(both_ends_ok)
+                if both_ends_ok:
+                    regr = linear_model.LinearRegression()
+                    X = np.arange(0, plateau_length)[:, np.newaxis]
+                    Y = curr_beta_values_arr[:, np.newaxis]
+                    regr.fit(X, Y)
+                    if regr.coef_[0, 0] <= max_slope:
+                        percentile_delta_to_beat = curr_percentile_delta
+                        best_start = start_pos
+                        best_end = end_pos
         if best_start is not None:
             break
     else:

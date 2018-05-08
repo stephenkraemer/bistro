@@ -167,6 +167,8 @@ setup(name='mqc',
           'python-magic>=0.4.13',
           'ipywidgets',
           'matplotlib',
+          'plotnine',
+          'rpy2',
       ] + required_pysam,
 
       extras_require={

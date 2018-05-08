@@ -1,4 +1,6 @@
+src/mqc/sandbox/
 **/__pycache__/
+**/.pytest_cache/
 *.prof
 **/*.c
 **/*.so
@@ -6,3 +8,4 @@ doc/_build
 mqc.egg-info/
 build
 dist/
+src/mqc/trashbin/
