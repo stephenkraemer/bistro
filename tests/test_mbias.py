@@ -1,11 +1,13 @@
 #-
+import pickle
 import shutil
 import tempfile
 from collections import namedtuple, defaultdict
 from pathlib import Path
 from textwrap import dedent
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 import pandas as pd
+import pytoml
 
 idxs = pd.IndexSlice
 import numpy as np
@@ -222,11 +224,8 @@ def test_mbias_counter_get_dataframe(mocker):
     map_fn.return_value = (SEQ_CONTEXT_TO_IDX_MAPPING,
                            BINNED_SEQ_CONTEXT_TO_IDX_MAPPING)
 
-    flen_levels = pd.IntervalIndex.from_breaks(
-        [0, 1, 2, 3, 4, 5, 6, 8, 10, 11],
-        closed="left")
-    phred_levels = pd.IntervalIndex.from_breaks(
-        [0, 5, 10, 11], closed='left')
+    flen_levels = [0, 1, 2, 3, 4, 5, 7, 9, 10]
+    phred_levels = [4, 9, 10]
     midx = pd.MultiIndex.from_product([
         pd.Categorical(['CCCCC', 'GGCGG', 'WWCWW'], ordered=True),
         pd.Categorical(['c_bc', 'c_bc_rv', 'w_bc', 'w_bc_rv'], ordered=True),
@@ -245,9 +244,9 @@ def test_mbias_counter_get_dataframe(mocker):
     mbias_counter = MbiasCounter(config)
 
     # random middle values
-    exp_df.loc[idxs["WWCWW", "w_bc", 7, 2, 5, "n_meth":"n_meth"], "counts"] = 1
+    exp_df.loc[idxs["WWCWW", "w_bc", 7, 4, 5, "n_meth":"n_meth"], "counts"] = 1
     mbias_counter.counter_array[2, 2, 6, 0, 4, 0] = 1
-    exp_df.loc[idxs["CCCCC", "c_bc", 9, 6, 3, "n_unmeth":"n_unmeth"],
+    exp_df.loc[idxs["CCCCC", "c_bc", 9, 9, 3, "n_unmeth":"n_unmeth"],
                "counts"] = 2
     mbias_counter.counter_array[0, 0, 7, 1, 2, 1] = 2
     # max values
@@ -255,7 +254,7 @@ def test_mbias_counter_get_dataframe(mocker):
                "counts"] = 1
     mbias_counter.counter_array[0, 1, -1, -1, -1, 1] = 1
     # min values
-    exp_df.loc[idxs["GGCGG", "w_bc_rv", 0, 0, 1, "n_meth":"n_meth"],
+    exp_df.loc[idxs["GGCGG", "w_bc_rv", 0, 4, 1, "n_meth":"n_meth"],
                "counts"] = 1
     mbias_counter.counter_array[1, 3, 0, 0, 0, 0] = 1
 
@@ -908,25 +907,23 @@ class TestConvertCuttingSitesDfToArray:
 
 @pytest.fixture(scope='module')
 def user_config_file():
-    test_file = (Path(__file__).parent
-                 / "test_files/test-evaluate-stats_mbias-counter")
     tmpdir = Path(tempfile.mkdtemp())
     user_config_file_path = tmpdir / "user_config_file.toml"
     user_config_file_path.write_text(dedent(f"""\
             [paths]
-                mbias_counts = "{test_file}"
+                mbias_counts = "{tmpdir}/mbias-counter"
             [data_properties]
-                max_read_length_bp = 101
+                max_read_length_bp = 10
             [trimming]
                 max_flen_considered_for_trimming = 30
                 min_plateau_perc = 0.8
                 max_std_within_plateau = 0.1
                 min_flen_considered_for_trimming = 10
             [stats]
-                max_flen = 30
-                max_flen_with_single_flen_resolution = 5
-                flen_bin_size = 10
-                max_phred = 40
+                max_flen = 20
+                max_flen_with_single_flen_resolution = 10
+                flen_bin_size = 5
+                max_phred = 20
                 phred_bin_size = 5
                 seq_context_size = 5
                 
@@ -937,9 +934,42 @@ def user_config_file():
     shutil.rmtree(tmpdir)
 
 
+@pytest.fixture(scope='module')
+def test_mbias_counter(user_config_file):
+    with open(user_config_file, 'rt') as fin:
+        config = pytoml.load(fin)
+
+    with patch('mqc.mbias.' 'get_sequence_context_to_array_index_table') as map_fn:
+        map_fn.return_value = (SEQ_CONTEXT_TO_IDX_MAPPING,
+                               BINNED_SEQ_CONTEXT_TO_IDX_MAPPING)
+
+        mbias_counter = MbiasCounter(config)
+        mbias_counter.counter_array[
+            SEQ_CONTEXT_TO_IDX_MAPPING['GGCGG'],
+            b_inds.c_bc,
+            12,  # tlen
+            0,  # phred
+            :,  # pos
+            0   # meth status
+        ] = 10
+
+        with open(config['paths']['mbias_counts'] + '.p', 'wb') as fout:
+            pickle.dump(mbias_counter, fout)
+
+        return mbias_counter
+# to test the fixture:
+# def test_mbias_counts(test_mbias_counter: MbiasCounter):
+#     print(test_mbias_counter.get_dataframe()
+#           .loc[idxs['GGCGG', 'c_bc',
+#                16, 0, :, 'n_meth'], :])
+
+
 @pytest.fixture(scope='module',
                 params=['CG', 'CG-CHG-CHH'])
-def run_evaluate_mbias_then_return_config(request, user_config_file):
+def run_evaluate_mbias_then_return_config(
+        request, user_config_file, test_mbias_counter):
+    # test_mbias_counter fixture must be called to place the counter
+    # at the appropriate file path
     output_dir = tempfile.mkdtemp()
 
     subprocess.check_call(['mqc', 'evaluate_mbias',

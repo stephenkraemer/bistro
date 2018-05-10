@@ -169,6 +169,7 @@ setup(name='mqc',
           'matplotlib',
           'plotnine',
           'rpy2',
+          'feather-format'
       ] + required_pysam,
 
       extras_require={

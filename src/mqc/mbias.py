@@ -1,22 +1,16 @@
 #-
+import itertools
 import os
 import os.path as op
 import pickle
-import itertools
-import warnings
-import tempfile
-
 from abc import ABCMeta, abstractmethod
 from itertools import product
-from collections import ChainMap
 from math import floor, ceil
-from pathlib import Path
 from typing import Dict
 
+import matplotlib
 import numpy as np
 import pandas as pd
-
-import matplotlib
 
 matplotlib.use('Agg')  # import before pyplot import!
 import matplotlib.pyplot as plt
@@ -26,6 +20,7 @@ from plotnine import *
 from sklearn import linear_model
 
 import mqc.flag_and_index_values as mfl
+# noinspection PyUnresolvedReferences
 from mqc.pileup.bsseq_pileup_read import BSSeqPileupRead
 from mqc.pileup.pileup import MotifPileup
 from mqc.utils import convert_array_to_df
@@ -39,7 +34,6 @@ idxs = pd.IndexSlice
 
 import rpy2
 import rpy2.robjects as ro
-from rpy2.robjects.packages import importr
 # automatically convert arrays and dfs
 from rpy2.robjects.numpy2ri import numpy2ri
 rpy2.robjects.numpy2ri.activate()
@@ -49,14 +43,36 @@ import rpy2.robjects.lib.ggplot2 as gg
 #-
 
 class MbiasCounter(Counter):
-    """Count stratified M-bias stats
+    """Counter for multidimensional M-bias stats
 
-    *Implementation notes:*
-    The Fragment length dimension includes the length 0, so that it can be
-    indexed by 1-based values. The read position indexes on the other hand
-    are zero-based, for better interaction with the C/cython parts of the
-    program.
-    """
+
+
+
+
+    Implementation notes
+    --------------------
+
+    This counter is pretty close to the maximal object size for serialization
+    with older pickle protocols. If you deviate too much from the datasets
+    this was tested on (unusually high read lengths or fragment lengths etc.)
+    it may become too big. You would then need to switch to a suitable
+    serialization protocol. This will likely also be the case if you want
+    to add another dimension, or if you want to add 'snp' and 'reference'
+    levels to the methylation status dimension.
+
+    *counter_array indexing*
+    - the fragment length dimension includes the length 0, so that length N has index N.
+    - the read position indexes are zero-based, for better interaction with the C/cython parts of the program.
+
+    *counter dataframe index levels*
+    - seq context: 3 letter motifs, e.g. CWCGW (size is parameter) [categorical]
+    - bs strands are labelled in lowercase, e.g. c_bc [categorical]
+    - single fragment lengths are labelled with the flen as int
+    - binned fragment lengths are labelled with the rightmost flen in the bin
+    - phred scores are always binned, and are also labelled with the rightmost phred score in the bin
+    - pos labels: 1-based (note that array indexing is 0-based)
+    - meth. status labels: n_meth, n_unmeth [categorical]
+     """
 
     def __init__(self, config: Dict):
 
@@ -74,29 +90,8 @@ class MbiasCounter(Counter):
         dim_names = ["seq_context", "bs_strand", "flen",
                      "phred", "pos", "meth_status"]
 
-        flen_breaks = (
-            list(range(0, self.max_single_flen + 1)) +
-            list(range(self.max_single_flen + 1,
-                       self.max_flen + 2,
-                       self.flen_bin_size)))
-        if flen_breaks[-1] != self.max_flen + 1:
-            flen_breaks.append(self.max_flen + 1)
-
-        flen_intervals = (pd.IntervalIndex
-                          .from_breaks(flen_breaks, closed="left")
-                          .values.tolist())
-        self.last_flen_bin_idx = len(flen_intervals) - 1
-
-        phred_breaks = list(range(0, self.max_phred + 2, self.phred_bin_size))
-        if phred_breaks[-1] != self.max_phred + 1:
-            phred_breaks.append(self.max_phred + 1)
-        phred_intervals = (pd.IntervalIndex
-                           .from_breaks(phred_breaks, closed="left")
-                           .values.tolist())
-        self.last_phred_bin_idx = len(phred_intervals) - 1
-
-        self.seq_ctx_idx_dict, self.binned_motif_to_index_dict = get_sequence_context_to_array_index_table(
-            self.seq_context_size)
+        self.seq_ctx_idx_dict, self.binned_motif_to_index_dict = \
+            get_sequence_context_to_array_index_table(self.seq_context_size)
 
         # Note: 1-based position labels in dataframe, 0-based position indices
         # in array
@@ -110,17 +105,29 @@ class MbiasCounter(Counter):
                                   categories=ordered_str_labels,
                                   ordered=True)
 
+        flen_bin_labels = (
+            list(range(0, self.max_single_flen + 1))
+            + list(range(
+            self.max_single_flen + self.flen_bin_size, self.max_flen + 1, self.flen_bin_size)))
+        if flen_bin_labels[-1] < self.max_flen:
+            flen_bin_labels.append(self.max_flen)
+
+        phred_bin_labels = list(
+            range(self.phred_bin_size - 1, self.max_phred + 1, self.phred_bin_size))
+        if phred_bin_labels[-1] < self.max_phred:
+            phred_bin_labels.append(self.max_phred)
+
         dim_levels = [get_categorical(ordered_seq_contexts),
                       get_categorical(['c_bc', 'c_bc_rv', 'w_bc', 'w_bc_rv']),
-                      flen_intervals,
-                      phred_intervals,
+                      flen_bin_labels,
+                      phred_bin_labels,
                       range(1, self.max_read_length + 1),
                       get_categorical(['n_meth', 'n_unmeth'])]
 
         array_shape = [len(ordered_seq_contexts),
                        4,  # BSSeq-strands
-                       len(flen_intervals),
-                       len(phred_intervals),
+                       len(flen_bin_labels),
+                       len(phred_bin_labels),
                        self.max_read_length,
                        2]  # meth status
         counter_array = np.zeros(array_shape, dtype='u8')
@@ -172,10 +179,10 @@ class MbiasCounter(Counter):
                 continue
 
             tlen = abs(curr_read.alignment.template_length)
-            if tlen < self.max_single_flen:
+            if tlen <= self.max_single_flen:
                 tlen_idx = tlen
             elif tlen > self.max_flen:
-                tlen_idx = self.last_flen_bin_idx
+                tlen_idx = -1
             else:
                 tlen_idx = (self.max_single_flen
                             + ceil((tlen - self.max_single_flen)
@@ -183,22 +190,20 @@ class MbiasCounter(Counter):
 
             phred = curr_read.baseq_at_pos
             if phred > self.max_phred:
-                phred_idx = self.last_phred_bin_idx
+                phred_idx = -1
             else:
                 phred_idx = floor(phred / self.phred_bin_size)
 
-            event_class = (seq_ctx_idx,
-                           curr_read.bsseq_strand_ind,
-                           tlen_idx,
-                           phred_idx,
-                           curr_read.pos_in_read,
-                           meth_status_index)
-
-            self.counter_array[event_class] += 1
+            self.counter_array[seq_ctx_idx,
+                               curr_read.bsseq_strand_ind,
+                               tlen_idx,
+                               phred_idx,
+                               curr_read.pos_in_read,
+                               meth_status_index] += 1
 
 
 def get_sequence_context_to_array_index_table(motif_size: int):
-    """ Return dicts used in mapping sequence contexts to counter array indices
+    """ Return dicts mapping sequence contexts to counter array indices
 
     Parameters
     ----------
@@ -208,11 +213,11 @@ def get_sequence_context_to_array_index_table(motif_size: int):
     Returns
     -------
     Dict[str, str]
-        mapping of full motif [ATCG] to array integer index. Several motifs
-        may map to the same index
+        mapping of four letter motif to array integer index of the corresponding
+        three letter motif. I.e. several motifs may map to the same index.
     Dict[str, int]
-        mapping of binned motif to array integer index. Every mapping is
-        unique.
+        mapping of three-letter motif [CGW] to array integer index.
+        Every mapping is unique.
     """
 
     if motif_size % 2 != 1:
@@ -233,8 +238,8 @@ def get_sequence_context_to_array_index_table(motif_size: int):
                                    for i, motif in
                                    enumerate(all_binned_motifs)}
 
-    l2 = [all_bases] * n_bp_per_side + [['C']] + [all_bases] * n_bp_per_side
-    all_5bp_motifs = [''.join(motif) for motif in product(*l2)]
+    all_bases_set = [all_bases] * n_bp_per_side + [['C']] + [all_bases] * n_bp_per_side
+    all_5bp_motifs = [''.join(motif) for motif in product(*all_bases_set)]
 
     _5bp_to_three_letter_motif_index_mapping = {
         motif: binned_motif_to_idx_mapping[
@@ -580,10 +585,6 @@ def compute_mbias_stats_df(mbias_counter_fp_str):
 
     # only necessary while interval levels are coded in MbiasCounter.__init__
     mbias_counter = pd.read_pickle(mbias_counter_fp_str)
-    mbias_counter.dim_levels[-3] = [x.right for x in
-                                    mbias_counter.dim_levels[-3]]
-    mbias_counter.dim_levels[-4] = [x.right for x in
-                                    mbias_counter.dim_levels[-4]]
 
     print("Reading data in, removing impossible strata (pos > flen)")
     # convert MbiasCounter.counter_array to dataframe
@@ -1702,11 +1703,14 @@ def compute_mbias_stats(config):
     # TODO: get phred threshold dfs from cache
     fps = config['paths']
 
+    os.makedirs(fps['qc_stats_dir'], exist_ok=True, mode=0o770)
+
     print("Computing M-bias stats from M-bias counter array")
     mbias_stats_df = compute_mbias_stats_df(fps['mbias_counts'] + '.p')
     mbias_stats_df = add_mate_info(mbias_stats_df)
     mbias_stats_df = mbias_stats_df.sort_index()
 
+    # TODO: Important: fix hardcoding
     mbias_stats_df = mbias_stats_df.loc[idxs[:, :, :, :, :, :, 1:150], :]
 
     # discard phreds which are not present in bins
@@ -1717,19 +1721,13 @@ def compute_mbias_stats(config):
     mbias_stats_df = mbias_stats_df.loc[idxs[:, :, :, :, :, existing_phred_scores], :]
     mbias_stats_df.index = mbias_stats_df.index.remove_unused_levels()
 
-    # when testing
-    mbias_stats_df = pd.read_pickle(fps["mbias_stats_p"])
-    flen_sel = config['plots']['mbias_flens_to_display']
-    # careful with slice, depends on whether mate is already present
-    mbias_stats_df = mbias_stats_df.loc[idxs[["CG"], :, :, :, flen_sel], :].copy()
-    mbias_stats_dfs_dict = {
-        "full": mbias_stats_df,
-        "trimmed": masked_mbias_stats_df,
-    }
+    # # interactive testing
+    # mbias_stats_df = pd.read_pickle(fps["mbias_stats_p"])
+    # flen_sel = config['plots']['mbias_flens_to_display']
+    # # careful with slice, depends on whether mate is already present
+    # mbias_stats_df = mbias_stats_df.loc[idxs[["CG"], :, :, :, flen_sel], :].copy()
 
-    fps["mbias_stats_trunk"] = fps['mbias_stats_p'].replace('.p', '')
-    save_df_to_trunk_path(mbias_stats_df,
-                          fps["mbias_stats_trunk"])
+    save_df_to_trunk_path(mbias_stats_df, fps["mbias_stats_trunk"])
 
     # Could be parallelized
     compute_derived_mbias_stats(mbias_stats_df, config)
