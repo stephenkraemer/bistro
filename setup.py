@@ -158,24 +158,32 @@ setup(name='mqc',
       },
 
       install_requires=[
-          'pandas',
-          'numpy',
-          'seaborn',
-          'pytoml==0.1.11',
           'click',
-          'joblib',
-          'python-magic>=0.4.13',
+          'feather-format',
           'ipywidgets',
+          'joblib',
           'matplotlib',
+          'numpy',
+          'pandas',
           'plotnine',
-          'rpy2',
-          'feather-format'
+          'python-magic>=0.4.13',
+          'pytoml==0.1.11',
+          # 'rpy2',  only for mbias plots if plotting with R ggplot2
+          'scikit-learn',
+          'scipy',
+          'seaborn',
+          'statsmodels',
+          'toolz',
       ] + required_pysam,
 
       extras_require={
           'dev': [
               'pytest',
               'pytest-mock',
+              'pytest-xdist',
+              # Required to set e.g. TMP, to avoid writing to /tmp,
+              # which may not be allowed
+              'pytest-env',
               # 'cython (>=0.25)',
           ]
       },

@@ -1,3 +1,15 @@
+User install
+------------
+If cython and pysam are installed into the environment, the program
+will attempt to compile the extension modules. If they are not installed,
+the precompiled extension modules will be used. In this case, the required
+pysam version will be automatically installed with the package.
+
+Try to install tested cython and pysam version.
+If you use untested versions, a warning will be displayed,
+but compilation will still be attempted. The currently recommended cython and pysam
+versions are in requirements.txt
+
 Develop install
 ---------------
 
