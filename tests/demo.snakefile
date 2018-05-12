@@ -1,6 +1,6 @@
 # TODO: remove these lines and test again
-shell.executable("/bin/bash")
-shell.prefix("module load python/3.6.0; source /home/kraemers/programs/python_virtualenvs/mqc_test/bin/activate; echo loaded mqc_test; ")
+# shell.executable("/bin/bash")
+# shell.prefix("module load python/3.6.0; source /home/kraemers/programs/python_virtualenvs/mqc_test/bin/activate; echo loaded mqc_test; ")
 
 """ Demo workflow using mqc
 
@@ -9,18 +9,23 @@ How do I run this?
 /home/kraemers/projects/mqc/tests/demo_snakefile.py
 
 snakemake \
---snakefile /home/stephen2/projects/mqc/tests/demo_snakefile.py \
---config pids=mpp1_rep1,mpp1_rep2 motifs=CG \
---cluster "qsub -S /bin/bash -l walltime={params.walltime},mem={params.mem},nodes=1:ppn={params.cores} -N {params.name}" \
---jobs 40 \
---jobscript /home/kraemers/projects/mqc/tests/jobscript.sh \
+--snakefile ~/projects/mqc/tests/demo.snakefile \
+--config pids=mpp1_3 motifs=CG \
+--jobs 1 \
+
+--jobscript /home/kraemers/projects/mqc/tests/jobscript_lsf.sh \
 --dryrun
+
+--cluster "bsub -R rusage[mem={params.mem}G] -M {params.mem}G -n {params.cores} -J {params.name} -W {params.walltime}" \
+--cluster "qsub -S /bin/bash -l walltime={params.walltime},mem={params.mem}g,nodes=1:ppn={params.cores} -N {params.name}" \
+--jobscript /home/kraemers/projects/mqc/tests/jobscript_lsf.sh \
 
 """
 
 import os.path as op
 from pathlib import Path
 import sys
+import re
 
 script_dir = op.dirname(__file__)
 sys.path.append(script_dir)
@@ -47,15 +52,7 @@ all_stats_files = expand(mbias_counter_pattern_by_pid, pid=config['pids']),
 
 ## evaluate_mbias
 adj_cut_sites_obj_by_pid = f"{output_rpp_dir}/{{pid}}/meth/qc_stats/{{pid}}_adjusted_cutting_sites_obj_{motifs_msv_str}.p"
-mbias_stats_patterns_by_pid = [
-    adj_cut_sites_obj_by_pid,
-    f"{output_rpp_dir}/{{pid}}/meth/qc_stats/{{pid}}_mbias-stats_{motifs_msv_str}.p",
-    f"{output_rpp_dir}/{{pid}}/meth/qc_stats/{{pid}}_mbias-stats_masked_{motifs_msv_str}.p",
-    f"{output_rpp_dir}/{{pid}}/meth/qc_stats/{{pid}}_adjusted_cutting_sites_df_{motifs_msv_str}.p",
-    f"{output_rpp_dir}/{{pid}}/meth/qc_stats/{{pid}}_adjusted-cutting-sites_barplot_{motifs_msv_str}.png",
-    f"{output_rpp_dir}/{{pid}}/meth/qc_stats/.done_{motifs_msv_str}_{{pid}}_mbias-line-plot",
-    f"{output_rpp_dir}/{{pid}}/meth/qc_stats/.done_{motifs_msv_str}_{{pid}}_freq-line-plot",
-    ]
+mbias_stats_patterns_by_pid = f"{output_rpp_dir}/{{pid}}/meth/qc_stats/{{pid}}_mbias-stats_{motifs_msv_str}.p"
 all_evaluate_stats_files = expand(mbias_stats_patterns_by_pid, pid=config['pids']),
 
 ## call
@@ -75,11 +72,30 @@ evaluate_calls_patterns_by_pid = [
 ]
 all_evaluate_calls_files = expand(evaluate_calls_patterns_by_pid, pid=config['pids']),
 
+def get_sample_metadata(wildcards) -> str:
+    """Extract sample name and replicate ID from sample ID
+
+    This function assumes the standard mouse hematopoiesis project
+    nomenclature
+
+    Returns:
+        String with comma-separated metadata fields
+        sample=<sample_name>,rep=<repID>
+    """
+    # example: hsc_mu-d3a-ki_1
+    sample_name_pattern = r'^(.*)_(\d+)$'
+    try:
+        population, rep = re.search(sample_name_pattern, wildcards.pid).groups()
+    except KeyError:
+        raise ValueError(f"Can't extract sample metadata from pid {wildcards.pid}")
+    return (f"population={population},"
+            f"rep={rep}")
+
 rule all:
     input:
         all_index_files,
         all_stats_files,
-        # all_evaluate_stats_files,
+        all_evaluate_stats_files,
         # all_mcall_files,
         # all_coverage_counter_files,
         # all_evaluate_calls_files,
@@ -89,8 +105,8 @@ rule make_index:
     input: reference_genome
     params:
         output_dir = index_dir,
-        walltime = '08:00:00',
-        mem = '8g',
+        walltime = '08:00',
+        mem = '8',
         cores = '12',
         name = f'make_index_{motifs_csv_str}',
         motifs_flags = '--cg' if motifs_csv_str == 'CG' else '--cg --chg --chh',
@@ -112,11 +128,11 @@ rule get_stats:
         index_files = expand(index_file_pattern_by_chrom, chrom=autosomes),
     params:
         output_dir = output_dir_by_pid,
-        walltime = '01:30:00' if motifs_csv_str == 'CG' else '08:00:00',
-        mem = '12g',
+        walltime = '01:30' if motifs_csv_str == 'CG' else '08:00',
+        mem = '12',
         cores = '12',
         name = f'get_stats_{{pid}}_{motifs_msv_str}',
-        sample_meta = lambda wildcards: f"population={wildcards.pid.split('_')[0]},rep={wildcards.pid.split('_')[-1]}",
+        sample_meta = get_sample_metadata
     output:
         mbias_counter = mbias_counter_pattern_by_pid,
     shell:
@@ -139,11 +155,11 @@ rule evaluate_mbias:
         mbias_stats_patterns_by_pid
     params:
         output_dir = output_dir_by_pid,
-        walltime = '00:30:00',
-        mem = '6g',
-        cores = '2',
+        walltime = '00:45:00',
+        mem = '32g',
+        cores = '8',
         name = f'evalute_mbias_{{pid}}_{motifs_msv_str}',
-        sample_meta = lambda wildcards: f"population={wildcards.pid.split('_')[0]},rep={wildcards.pid.split('_')[-1]}",
+        sample_meta = get_sample_metadata
     shell:
         """
         mqc evaluate_mbias \
@@ -178,7 +194,7 @@ rule call:
         output_dir = output_dir_by_pid,
         walltime = '42:00:00',
         name = f'mcall_{motifs_msv_str}_{{pid}}',
-        sample_meta = lambda wildcards: f"population={wildcards.pid.split('_')[0]},rep={wildcards.pid.split('_')[-1]}",
+        sample_meta = get_sample_metadata
     output:
         mcall_files = call_file_patterns_by_pid,
         coverage_files = coverage_count_patterns_by_pid,
@@ -196,7 +212,7 @@ rule evaluate_calls:
         mem = '6g',
         cores = '2',
         name = f'evaluate_calls_{{pid}}_{motifs_csv_str}',
-        sample_meta = lambda wildcards: f"population={wildcards.pid.split('_')[0]},rep={wildcards.pid.split('_')[-1]}",
+        sample_meta = get_sample_metadata
     shell:
         """
         mqc evaluate_calls \
