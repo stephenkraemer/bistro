@@ -2,7 +2,7 @@ import os.path as op
 
 import pickle
 import pytest
-import pytoml
+import toml
 import shutil
 import subprocess
 import tempfile
@@ -166,7 +166,7 @@ def test_stats_run_through(mbias_counter):
 #         expected_max_flen = USER_FLEN_MAX
 #     else:  # no user config
 #         with open(DEFAULT_CONFIG_FILE) as f:
-#             default_config_file_dict = pytoml.load(f)
+#             default_config_file_dict = toml.load(f)
 #         expected_max_flen = default_config_file_dict['trimming'][
 #             'max_flen_considered_for_trimming']
 #

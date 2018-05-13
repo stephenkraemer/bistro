@@ -2,7 +2,7 @@
 
 import copy
 import os
-import pytoml
+import toml
 import re
 from collections import OrderedDict
 
@@ -80,7 +80,7 @@ def assemble_config_vars(command_line_args_dict: dict,
 
     # Add config variables from the default config file
     with open(default_config_file_path) as f:
-        default_config_file_dict = pytoml.load(f)
+        default_config_file_dict = toml.load(f)
 
     # 'run' and 'sample' section names are reserved for CLI args
     has_illegal_section = ('run' in default_config_file_dict
@@ -98,7 +98,7 @@ def assemble_config_vars(command_line_args_dict: dict,
     # not defined in the base dict
     if user_config_file_path:
         with open(user_config_file_path) as f:
-            user_config_file_dict = pytoml.load(f)
+            user_config_file_dict = toml.load(f)
         update_nested_dict(base_dict=config,
                            custom_dict=user_config_file_dict)
 

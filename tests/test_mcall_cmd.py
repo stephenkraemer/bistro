@@ -9,7 +9,7 @@ import subprocess
 import tempfile
 from textwrap import dedent
 
-import pytoml
+import toml
 
 from mqc.config import assemble_config_vars
 from mqc.mbias import FixedRelativeCuttingSites
@@ -78,7 +78,7 @@ def expected_results_dict():
 
 @pytest.fixture(scope="module")
 def cutting_sites_obj_fp():
-    config_stub = pytoml.loads(dedent("""
+    config_stub = toml.loads(dedent("""
             [trimming]
               max_flen_considered_for_trimming = 500
               [trimming.relative_to_fragment_ends_dict]

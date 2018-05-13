@@ -3,8 +3,11 @@ import pytest
 import shutil
 import tempfile
 import textwrap
+import toml
+
 
 from mqc.config import assemble_config_vars
+from mqc.utils import get_resource_abspath
 
 POPULATION = "HSC"
 OUTPUT_DIR = "/abs/path/to/out_dir"
@@ -87,6 +90,14 @@ def config(default_config_file,
                                   default_config_file_path=default_config_file,
                                   user_config_file_path=user_config_file)
     return config
+
+
+def test_default_config_file_is_valid():
+    with open(get_resource_abspath('config.default.toml')) as fin:
+        config = toml.load(fin)
+    assert isinstance(config, dict)
+
+
 
 
 class TestAssembleConfigVarsFn:

@@ -167,7 +167,7 @@ setup(name='mqc',
           'pandas',
           'plotnine',
           'python-magic>=0.4.13',
-          'pytoml==0.1.11',
+          'toml',
           # 'rpy2',  only for mbias plots if plotting with R ggplot2
           'scikit-learn',
           'scipy',

@@ -7,7 +7,7 @@ from pathlib import Path
 from textwrap import dedent
 from unittest.mock import MagicMock, patch
 import pandas as pd
-import pytoml
+import toml
 
 idxs = pd.IndexSlice
 import numpy as np
@@ -27,7 +27,9 @@ from mqc.mbias import (MbiasCounter,
                        mask_mbias_stats_df,
                        map_seq_ctx_to_motif,
                        convert_cutting_sites_df_to_array,
-                       compute_mbias_stats)
+                       compute_mbias_stats,
+                       # mbias_stat_plots,
+                       )
 from mqc.utils import get_resource_abspath
 
 import matplotlib
@@ -937,7 +939,7 @@ def user_config_file():
 @pytest.fixture(scope='module')
 def test_mbias_counter(user_config_file):
     with open(user_config_file, 'rt') as fin:
-        config = pytoml.load(fin)
+        config = toml.load(fin)
 
     with patch('mqc.mbias.' 'get_sequence_context_to_array_index_table') as map_fn:
         map_fn.return_value = (SEQ_CONTEXT_TO_IDX_MAPPING,
@@ -1017,4 +1019,37 @@ class TestAnalyseMbiasCounts:
         )
 
         compute_mbias_stats(config)
+
+
+@pytest.fixture(scope='module',
+                params = ['CG', 'CG,CHG,CHH'])
+def run_mbias_stats_plots(request, mbias_plot_config_file):
+
+    output_dir = tempfile.mkdtemp()
+
+    subprocess.run(['mqc', 'mbias_plots',
+                    '--config_file', mbias_plot_config_file,
+                    '--motifs', request.param,
+                    '--sample_name', SAMPLE_NAME,
+                    '--output_dir', mbias_plot_config_file['run']],
+                   check=True)
+
+    default_config_file = get_resource_abspath('config.default.toml')
+    cli_params = {'motifs_str': request.param,
+                  'sample_name': SAMPLE_NAME,
+                  'sample_meta': None,
+                  'output_dir': output_dir}
+    config = assemble_config_vars(cli_params,
+                                  default_config_file_path=default_config_file,
+                                  user_config_file_path=user_config_file)
+
+    yield config
+    shutil.rmtree(output_dir)
+
+@pytest.mark.acceptance_test
+class TestMbiasPlots:
+    def test_runs_through(self, run_mbias_stats_plots):
+        config = run_mbias_stats_plots
+        plots = Path(config['paths']['mbias_plots_trunk'] + '*.png').glob()
+        assert len(plots) > 1
 
