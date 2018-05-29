@@ -1,3 +1,9 @@
+"""Test M-bias plot config, compatible with test data
+
+The simulated M-bias stats have only few flen and phred levels,
+post_agg_filters have to be adapted to that
+"""
+
 default_config = {
     "defaults": {
         'plot_params': {
@@ -16,9 +22,9 @@ default_config = {
                        'rotate_labels': True},
             'plot': ['line'],
         },
-        "pre_plot_filters": {
-            'flen': [60, 75, 90, 100, 120, 150, 190, 290, 490],
-            'phred': [0, 5, 10, 15, 20, 25, 30, 35, 40],
+        "post_agg_filters": {
+            'flen': [100, 200, 250],
+            'phred': [20, 40],
         },
     },
     "group1": {

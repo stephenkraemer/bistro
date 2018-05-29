@@ -1048,14 +1048,15 @@ class TestAnalyseMbiasCounts:
 #-
 def create_test_mbias_stats_df(
         strata_curve_tuples:
-        List[Tuple[Union[Tuple, Callable], np.ndarray, Union[np.ndarray, int]]]) \
+        List[Tuple[Union[Tuple, Callable],
+                   Union[np.ndarray, int], Union[np.ndarray, int]]]) \
         -> pd.DataFrame:
     """ Create small mbias stats dataframe for testing
 
     Args:
-        strata_curve_tuples: specifies index slices (tuple or callable)
-        where beta values (np.ndarray) should be entered with coverage
-        (np.ndarray or int)
+        strata_curve_tuples: specifies index slices (tuple
+        or callable) where beta values (np.ndarray or int)
+        should be entered with coverage (np.ndarray or int)
 
     Returns:
         mbias stats dataframe with mbias stats entered into the
@@ -1069,8 +1070,8 @@ def create_test_mbias_stats_df(
                               ordered=True)
 
     ordered_seq_contexts = ['CCCCC', 'GGCGG']
-    flen_bin_labels = [50, 100, 150, 200]
-    phred_bin_labels = [20, 40]
+    flen_bin_labels = [50, 100, 150, 200, 250]
+    phred_bin_labels = [20, 30, 40]
     max_read_length = 100
 
     dim_levels = [get_categorical(['CG', 'CHH']),
@@ -1732,10 +1733,15 @@ def trimmed_mbias_stats_fp(tmpdir):
     yield fp
 
 
-# Test with and without user-supplied config file
+# Once it is possible to give a dict name to --mbias_plot_config,
+# I can add a default dict suitable for testing to the default
+# mbias_plot_config module. Until then, it is not trivial
+# to test running mbias_plots without the mbias_plot_config option
+# because the current default config file has post_agg_filters with too many
+# levels, which will raise a ValueError
 @pytest.fixture(params=[
     str(test_mbias_plot_config_file()) + '::default_config',
-    None])
+])
 def run_mbias_stats_plots(
         request, test_mbias_plot_config_file,
         full_mbias_stats_fp,trimmed_mbias_stats_fp):
@@ -1760,11 +1766,16 @@ def run_mbias_stats_plots(
 
     shutil.rmtree(output_dir)
 
+@pytest.mark.xfail(skip=True)
+def test_create_mbias_stats_plots():
+    raise NotImplemented
 
+
+# noinspection PyMethodMayBeStatic
 @pytest.mark.acceptance_test
 class TestMbiasPlots:
-    def test_runs_through_on_user_config(self, run_mbias_stats_plots,
-                                         make_interactive):
+    def test_runs_through(self, run_mbias_stats_plots,
+                          make_interactive):
         """Trigger fixture to run mbias_plots, then check results
 
         The run_mbias_stats_plots fixture runs mbias_plots and returns
@@ -1786,6 +1797,23 @@ class TestMbiasPlots:
             with TmpChdir(run_mbias_stats_plots):
                 plots = list(mqc.filepaths.mbias_plots_trunk.parent.glob('*.html'))
             assert len(plots) >= 1
+
+    def test_fails_with_inappropriate_config_file(self, tmpdir,
+                                                  full_mbias_stats_fp,
+                                                  trimmed_mbias_stats_fp):
+
+        # Leave --mbias_plot_config to default. The default config file
+        # has too many elements in the post_agg_filters
+        # This must raise a ValueError
+        command_list = ['mqc', 'mbias_plots',
+                        '--output_dir', tmpdir,
+                        '--sample_name', SAMPLE_NAME,
+                        '--sample_meta', 'population=hsc,rep=1',
+                        '--datasets',
+                        f'full={full_mbias_stats_fp},trimmed={trimmed_mbias_stats_fp}',
+                        ]
+        with pytest.raises(subprocess.CalledProcessError):
+            subprocess.run(command_list, check=True)
 
 
 

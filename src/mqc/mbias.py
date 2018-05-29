@@ -2296,9 +2296,10 @@ def create_aggregated_tables(
                 mbias_stats_df=curr_mbias_stats_df)
 
 
-def aggregate_table(mbias_stats_df: pd.DataFrame,
-                    unordered_variables: Set[str],
-                    pre_agg_filters: Optional[dict] = None) -> pd.DataFrame:
+def aggregate_table(
+        mbias_stats_df: pd.DataFrame,
+        unordered_variables: Set[str],
+        pre_agg_filters: Optional[Dict[str, List]] = None) -> pd.DataFrame:
     """ Prepare aggregated M-bias stats variant for the corresponding plot
 
     Will first apply filtering as per the pre_agg_filter dict. This dict
@@ -2315,7 +2316,7 @@ def aggregate_table(mbias_stats_df: pd.DataFrame,
             n_meth and n_unmeth. May contain beta_value column.
         unordered_variables: All variables which will be used in the
             corresponding plot
-        pre_agg_filters: dict mapping index levels to lists of values
+        pre_agg_filters: dict mapping index levels to *lists* of values
             which should exclusively be retained
 
     Returns: The filtered and aggregated DataFrame.
@@ -2397,23 +2398,43 @@ def calculate_plot_df(mbias_stats_df, complete_aes, flens_to_display,
 # TODO: remove duplicate function
 def create_mbias_stats_plots(mbias_plot_configs: List[MbiasPlotConfig],
                              aggregated_mbias_stats: AggregatedMbiasStats) -> None:
-    for plot_config in mbias_plot_configs:
+    for curr_plot_config in mbias_plot_configs:
         per_dataset_dfs = []
-        for curr_dataset_fp in plot_config.datasets.values():
-            per_dataset_dfs.append(aggregated_mbias_stats.get_aggregated_stats(
+        for curr_dataset_fp in curr_plot_config.datasets.values():
+            curr_df = aggregated_mbias_stats.get_aggregated_stats(
                 params = MbiasStatAggregationParams(
                     dataset_fp=curr_dataset_fp,
-                    variables=plot_config.aes.get_all_agg_variables_unordered(),
-                    pre_agg_filters=plot_config.pre_agg_filters
-                )))
+                    variables=curr_plot_config.aes.get_all_agg_variables_unordered(),
+                    pre_agg_filters=curr_plot_config.pre_agg_filters
+                ))
+            if curr_plot_config.post_agg_filters:
+                relevant_post_agg_filters = {
+                    k: v for k, v in curr_plot_config.post_agg_filters.items()
+                    if k in curr_df.index.names}
+                if relevant_post_agg_filters:
+                    # Raise if elements which should pass the filter
+                    # are missing (This will not be necessary in
+                    # the future, as this error will be raised
+                    # automatically in one of the next pandas versions
+                    for index_col_name, elem_list in relevant_post_agg_filters.items():
+                        unknown_elems = (
+                                set(elem_list)
+                                - set(curr_df.index.get_level_values(index_col_name).unique()))
+                        if unknown_elems:
+                            raise ValueError(
+                                'Post-agg filter contains unknown elements.\n'
+                                f'Filter: {relevant_post_agg_filters}'
+                                f'Data head: {curr_df.head()}')
+                    curr_df = curr_df.loc[nidxs(**relevant_post_agg_filters), :]
+            per_dataset_dfs.append(curr_df)
         full_plot_df = pd.concat(
             per_dataset_dfs, axis=0,
-            keys=plot_config.datasets.keys(),
+            keys=curr_plot_config.datasets.keys(),
             names=['dataset'] + per_dataset_dfs[0].index.names)
-        chart = create_single_mbias_stat_plot(plot_config, full_plot_df)
+        chart = create_single_mbias_stat_plot(curr_plot_config, full_plot_df)
         target_fp = (mqc.filepaths.mbias_plots_trunk.with_name(
             mqc.filepaths.mbias_plots_trunk.name
-            + plot_config.get_str_repr_for_filename_construction()
+            + curr_plot_config.get_str_repr_for_filename_construction()
             + '.html'))
         print(target_fp)
         target_fp.parent.mkdir(parents=True, exist_ok=True)
@@ -2423,10 +2444,15 @@ def create_mbias_stats_plots(mbias_plot_configs: List[MbiasPlotConfig],
 def create_single_mbias_stat_plot(plot_config: MbiasPlotConfig,
                                   df: pd.DataFrame) -> alt.Chart:
 
+    x_zoom =alt.selection_interval(bind='scales', encodings=['x'],
+                               zoom="wheel![event.shiftKey]")
+    y_zoom =alt.selection_interval(bind='scales', encodings=['y'])
+
     chart = (alt.Chart(df.reset_index())
              .mark_line()
              .encode(**plot_config.aes.get_plot_aes_dict(include_facetting=True))
-             ).interactive()
+             .properties(selection=x_zoom + y_zoom)
+             )
     return chart
 
 
