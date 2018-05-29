@@ -54,6 +54,8 @@ all_stats_files = expand(mbias_counter_pattern_by_pid, pid=config['pids']),
 adj_cut_sites_obj_by_pid = f"{output_rpp_dir}/{{pid}}/meth/qc_stats/{{pid}}_adjusted_cutting_sites_obj_{motifs_msv_str}.p"
 full_mbias_stats_pattern_by_pid = f"{output_rpp_dir}/{{pid}}/meth/qc_stats/{{pid}}_mbias-stats_{motifs_msv_str}.p"
 trimmed_mbias_stats_pattern_by_pid = f"{output_rpp_dir}/{{pid}}/meth/qc_stats/{{pid}}_mbias-stats_masked_{motifs_msv_str}.p"
+full_phredfiltered_mbias_stats_by_pid = f"{output_rpp_dir}/{{pid}}/meth/qc_stats/{{pid}}_mbias-stats_phred-threshold_{motifs_msv_str}.p.p"
+trimmed_phredfiltered_mbias_stats_by_pid = f"{output_rpp_dir}/{{pid}}/meth/qc_stats/{{pid}}_mbias-stats_masked_phred-threshold_{motifs_msv_str}.p.p"
 all_evaluate_stats_files = expand(full_mbias_stats_pattern_by_pid, pid=config['pids']),
 
 ## plot mbias
@@ -175,15 +177,19 @@ rule evaluate_mbias:
         --output_dir {params.output_dir}
         """
 
-
+def get_datasets_str(wildcards, input):
+    res =(f'full={input.full_mbias_stats},trimmed={input.trimmed_mbias_stats},'
+          f'full_phred-threshold={input.full_phredfiltered_mbias_stats},'
+          f'trimmed_phred-threshold={input.trimmed_phredfiltered_mbias_stats}')
+    return res
 
 # Use default mbias plot config
 rule plot_mbias:
     input:
         full_mbias_stats=full_mbias_stats_pattern_by_pid,
         trimmed_mbias_stats=trimmed_mbias_stats_pattern_by_pid,
-        # full_phredfiltered_mbias_stats=phredfiltered_full_mbias_stats_pattern_by_pid,
-        # trimmed_phredfiltered_mbias_stats=phredfiltered_trimmed_mbias_stats_pattern_by_pid,
+        full_phredfiltered_mbias_stats=full_phredfiltered_mbias_stats_by_pid,
+        trimmed_phredfiltered_mbias_stats=trimmed_phredfiltered_mbias_stats_by_pid,
         mbias_plot_config=test_mbias_plot_config_json,
     output:
         touch(mbias_plot_done_by_pid)
@@ -193,14 +199,16 @@ rule plot_mbias:
         mem = '32g',
         cores = '8',
         name = f'plot_mbias_{{pid}}_{motifs_msv_str}',
-        sample_meta = get_sample_metadata
+        sample_meta = get_sample_metadata,
+        datasets = get_datasets_str
     shell:
         """
         mqc mbias_plots \
         --sample_name {wildcards.pid} \
         --sample_meta {params.sample_meta} \
         --output_dir {params.output_dir} \
-        --datasets full={input.full_mbias_stats},trimmed={input.trimmed_mbias_stats} \
+        --datasets {params.datasets} \
+
         """
 
 

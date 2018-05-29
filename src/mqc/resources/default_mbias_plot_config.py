@@ -169,76 +169,82 @@ default_config = {
     #     ],
     # },
 
-    # # BS-strand or mate methylation bias
-    # # ------------------------------------------------------------------
-    # # See paper about mate bias due to software version
-    # "strand_mate_meth_bias": {
-    #     "datasets": ["full_phred-threshold",
-    #                  "trimmed_phred-threshold"],
-    #     "aes_mappings": [
-    #
-    #         {
-    #             'x': 'bs_strand',
-    #             'y': 'beta_value',
-    #             # 'color': [None, 'phred'],
-    #             'color': 'phred',
-    #             'row': 'dataset',
-    #         },
-    #
-    #         {
-    #             'x': 'bs_strand',
-    #             'y': 'beta_value',
-    #             'color': 'phred',
-    #             'row': 'dataset',
-    #             'column': 'seq_context',
-    #         },
-    #
-    #         # {
-    #         #     'x': 'bs_strand',
-    #         #     'y': 'value',
-    #         #     'color': 'phred',
-    #         #     'row': 'dataset',
-    #         #     'column': 'statistic',
-    #         # },
-    #         #
-    #         #
-    #         #
-    #
-    #     ],
-    # },
+    # BS-strand or mate methylation bias
+    # ------------------------------------------------------------------
+    # See paper about mate bias due to software version
+    "strand_mate_meth_bias": {
+        "datasets": ["full_phred-threshold",
+                     "trimmed_phred-threshold"],
+        "post_agg_filters": {
+            'phred': [9, 14, 19, 24, 29, 34],
+        },
+        "aes_mappings": [
 
-    # # Sequence context bias due to phred filtering
-    # # ------------------------------------------------------------------
-    # # - for comparison of general sequence context bias, one could also
-    # #   compare multiple samples
-    #
-    # # TODO: add phred-trheshold dfs in demo snakefile
-    # "seq_context_plots": {
-    #     'plot_params': {
-    #         'plot': ['bar', ['line', 'point']],
-    #         'x_axis': {'breaks': 'auto'}
-    #     },
-    #     "datasets": ["full_phred-threshold",
-    #                  "trimmed_phred-threshold"],
-    #     "aes_mappings": [
-    #
-    #         {
-    #             "x": "seq_context",
-    #             "y": "beta_value",
-    #             "row": "dataset",
-    #             "column": "bs_strand",
-    #             "color": "phred"
-    #         },
-    #
-    #         # {
-    #         #     "x": "seq_context",
-    #         #     "y": "values",
-    #         #     "row": 'bs_strand',
-    #         #     "column": 'statistic',
-    #         #     "color": "phred"
-    #         # },
-    #         #
-    #     ],
-    # }
+            {
+                'x': 'bs_strand',
+                'y': 'beta_value',
+                # 'color': [None, 'phred'],    repeat plot...
+                'color': 'phred',
+                'row': 'dataset',
+            },
+
+            {
+                'x': 'bs_strand',
+                'y': 'beta_value',
+                'color': 'phred',
+                'row': 'dataset',
+                'column': 'seq_context',
+            },
+
+            # {
+            #     'x': 'bs_strand',
+            #     'y': 'value',
+            #     'color': 'phred',
+            #     'row': 'dataset',
+            #     'column': 'statistic',
+            # },
+            #
+            #
+            #
+
+        ],
+    },
+
+    # Sequence context bias due to phred filtering
+    # ------------------------------------------------------------------
+    # - for comparison of general sequence context bias, one could also
+    #   compare multiple samples
+
+    # TODO: add phred-trheshold dfs in demo snakefile
+    "seq_context_plots": {
+        # 'plot_params': {
+        #     'plot': ['bar', ['line', 'point']],
+        #     'x_axis': {'breaks': 'auto'}
+        # },
+        "datasets": ["full_phred-threshold",
+                     "trimmed_phred-threshold"],
+        "post_agg_filters": {
+            'phred': [9, 14, 19, 24, 29, 34],
+        },
+        "aes_mappings": [
+
+            {
+                "x": "seq_context",
+                "y": "beta_value",
+                "row": "dataset",
+                "column": "bs_strand",
+                "color": "phred"
+            },
+
+            # {
+            #     "x": "seq_context",
+            #     "y": "values",
+            #     "row": 'bs_strand',
+            #     "column": 'statistic',
+            #     "color": "phred"
+            # },
+            #
+        ],
+    }
 
 }

@@ -1798,6 +1798,10 @@ class TestMbiasPlots:
                 plots = list(mqc.filepaths.mbias_plots_trunk.parent.glob('*.html'))
             assert len(plots) >= 1
 
+    # TODO: improve; currently this fails because of several reasons, ...
+    # at least:
+    # - the default config file expects phred-threshold datasets
+    # - the post_agg filters have levels which don't exist in the test data
     def test_fails_with_inappropriate_config_file(self, tmpdir,
                                                   full_mbias_stats_fp,
                                                   trimmed_mbias_stats_fp):
