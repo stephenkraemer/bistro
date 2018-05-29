@@ -1,3 +1,13 @@
+# Troubleshooting
+# ----------------
+# - Note that toml currently does not coerce integers to floats in mixed
+# arrays. Therefore, this: [1, 2.1] will raise a TomlDecodeError with message
+# 'not a homogeneous array'. Instead, explicitly specify floats: [1.0, 2.1]
+# The PyCharm TOML plugin has different colorings for ints and float which
+# can be helpful
+# - booleans are JSON style, not python style, ie lowercase. The TomlDecodeError
+# message is cryptic: 'invalid date or number'
+
 [stats]
   max_flen = 500
   max_flen_with_single_flen_resolution = 150
@@ -6,9 +16,11 @@
   phred_bin_size = 5
   seq_context_size = 5
 
+# TODO: clean up
 [plots]
   mbias_flens_to_display = [60, 75, 90, 100, 120, 150, 190, 290, 490]
   mbias_phreds_to_display = [0, 5, 10, 15, 20, 25, 30, 35, 40]
+
 
 [conversion_error_calling]
   max_number_of_unconv_cytosines = 2
@@ -42,25 +54,27 @@
 [parallelization]
   pos_per_process = 1000
 
-[mbias_plots]
-    distance_between_displayed_flen = 30
 
 [coverage_analysis]
   max_per_motif_cov = 80
 
 # Paths section must be at end of file!
+# TODO: limit to trunk paths
 [paths]
   qc_stats_dir                  = 'qc_stats'
   mbias_counts                  = "{qc_stats_dir}/{name}_mbias-counts_{motifs_str}"
   mbias_stats_trunk             = "{qc_stats_dir}/{name}_mbias-stats_{motifs_str}"
   mbias_stats_p                 = "{qc_stats_dir}/{name}_mbias-stats_{motifs_str}.p"
   mbias_stats_tsv               = "{qc_stats_dir}/{name}_mbias-stats_{motifs_str}.tsv"
+  mbias_stats_masked_trunk          = "{qc_stats_dir}/{name}_mbias-stats_masked_{motifs_str}"
   mbias_stats_masked_p          = "{qc_stats_dir}/{name}_mbias-stats_masked_{motifs_str}.p"
   mbias_stats_masked_tsv        = "{qc_stats_dir}/{name}_mbias-stats_masked_{motifs_str}.tsv"
+  mbias_stats_classic_trunk         = "{qc_stats_dir}/{name}_mbias-stats_{motifs_str}_classic"
   mbias_stats_classic_p         = "{qc_stats_dir}/{name}_mbias-stats_{motifs_str}_classic.p"
   mbias_stats_phred_threshold_trunk = "{qc_stats_dir}/{name}_mbias-stats_phred-threshold_{motifs_str}.p"
   mbias_stats_masked_phred_threshold_trunk = "{qc_stats_dir}/{name}_mbias-stats_masked_phred-threshold_{motifs_str}.p"
   mbias_stats_heatmap_trunk   = "{qc_stats_dir}/{name}_{motifs_str}_mbias-stats_heatmap"
+  adjusted_cutting_sites_df_trunk = "{qc_stats_dir}/{name}_adjusted_cutting_sites_df_{motifs_str}"
   adjusted_cutting_sites_obj_p  = "{qc_stats_dir}/{name}_adjusted_cutting_sites_obj_{motifs_str}.p"
   adjusted_cutting_sites_df_p   = "{qc_stats_dir}/{name}_adjusted_cutting_sites_df_{motifs_str}.p"
   adjusted_cutting_sites_df_tsv = "{qc_stats_dir}/{name}_adjusted_cutting_sites_df_{motifs_str}.tsv"

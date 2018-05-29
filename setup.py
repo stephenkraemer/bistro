@@ -158,6 +158,7 @@ setup(name='mqc',
       },
 
       install_requires=[
+          'altair',
           'click',
           'feather-format',
           'ipywidgets',
@@ -168,12 +169,14 @@ setup(name='mqc',
           'plotnine',
           'python-magic>=0.4.13',
           'toml',
+          'dataclasses',
           # 'rpy2',  only for mbias plots if plotting with R ggplot2
           'scikit-learn',
           'scipy',
           'seaborn',
           'statsmodels',
           'toolz',
+          'more_itertools'
       ] + required_pysam,
 
       extras_require={

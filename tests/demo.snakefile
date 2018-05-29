@@ -52,9 +52,13 @@ all_stats_files = expand(mbias_counter_pattern_by_pid, pid=config['pids']),
 
 ## evaluate_mbias
 adj_cut_sites_obj_by_pid = f"{output_rpp_dir}/{{pid}}/meth/qc_stats/{{pid}}_adjusted_cutting_sites_obj_{motifs_msv_str}.p"
-mbias_stats_patterns_by_pid = f"{output_rpp_dir}/{{pid}}/meth/qc_stats/{{pid}}_mbias-stats_{motifs_msv_str}.p"
-all_evaluate_stats_files = expand(mbias_stats_patterns_by_pid, pid=config['pids']),
+full_mbias_stats_pattern_by_pid = f"{output_rpp_dir}/{{pid}}/meth/qc_stats/{{pid}}_mbias-stats_{motifs_msv_str}.p"
+trimmed_mbias_stats_pattern_by_pid = f"{output_rpp_dir}/{{pid}}/meth/qc_stats/{{pid}}_mbias-stats_masked_{motifs_msv_str}.p"
+all_evaluate_stats_files = expand(full_mbias_stats_pattern_by_pid, pid=config['pids']),
 
+## plot mbias
+test_mbias_plot_config_json = os.path.expanduser('~/projects/mqc/src/mqc/resources/mbias_plots_config.json')
+mbias_plot_done_by_pid = f"{output_rpp_dir}/{{pid}}/meth/qc_stats/mbias_stats/plots.done"
 ## call
 call_file_patterns_by_pid = expand("{output_rpp_dir}/{{pid}}/meth/meth_calls/"
                                    "mcalls_{{pid}}_{single_motif}_{chrom}.bed.gz",
@@ -96,6 +100,7 @@ rule all:
         all_index_files,
         all_stats_files,
         all_evaluate_stats_files,
+        expand(mbias_plot_done_by_pid, pid=config['pids']),
         # all_mcall_files,
         # all_coverage_counter_files,
         # all_evaluate_calls_files,
@@ -152,7 +157,7 @@ rule evaluate_mbias:
     input:
         mbias_counter = mbias_counter_pattern_by_pid
     output:
-        mbias_stats_patterns_by_pid
+        full_mbias_stats_pattern_by_pid
     params:
         output_dir = output_dir_by_pid,
         walltime = '00:45:00',
@@ -169,6 +174,35 @@ rule evaluate_mbias:
         --sample_meta {params.sample_meta} \
         --output_dir {params.output_dir}
         """
+
+
+
+# Use default mbias plot config
+rule plot_mbias:
+    input:
+        full_mbias_stats=full_mbias_stats_pattern_by_pid,
+        trimmed_mbias_stats=trimmed_mbias_stats_pattern_by_pid,
+        # full_phredfiltered_mbias_stats=phredfiltered_full_mbias_stats_pattern_by_pid,
+        # trimmed_phredfiltered_mbias_stats=phredfiltered_trimmed_mbias_stats_pattern_by_pid,
+        mbias_plot_config=test_mbias_plot_config_json,
+    output:
+        touch(mbias_plot_done_by_pid)
+    params:
+        output_dir = output_dir_by_pid,
+        walltime = '00:45:00',
+        mem = '32g',
+        cores = '8',
+        name = f'plot_mbias_{{pid}}_{motifs_msv_str}',
+        sample_meta = get_sample_metadata
+    shell:
+        """
+        mqc mbias_plots \
+        --sample_name {wildcards.pid} \
+        --sample_meta {params.sample_meta} \
+        --output_dir {params.output_dir} \
+        --datasets full={input.full_mbias_stats},trimmed={input.trimmed_mbias_stats} \
+        """
+
 
 
 mcall_command = (

@@ -1,5 +1,6 @@
 import copy
 import os.path as op
+import re
 from collections import OrderedDict
 
 import click
@@ -87,6 +88,33 @@ def evaluate_mbias(ctx, config_file, motifs, output_dir,
                                   default_config_file_path=default_config_file,
                                   user_config_file_path=user_config_file)
     compute_mbias_stats(config)
+
+#==============================================================================
+#                             mqc mbias_plots
+#==============================================================================
+from mqc.mbias import mbias_stat_plots
+@mqc.command()
+@click.option('--output_dir', required=True,
+              type=click.Path(exists=False, file_okay=False,
+                              writable=True, resolve_path=True))
+@click.option('--sample_name', required=True)
+@click.option('--sample_meta',
+              help="Pass additional metadata as"
+                   " 'key=value,key2=value2' [optional]")
+@click.option('--mbias_plot_config')
+@click.option('--datasets', required=True)
+def mbias_plots(output_dir, sample_name, sample_meta, mbias_plot_config,
+                datasets):
+    if sample_meta:
+        sample_meta = dict_from_kwarg_cli_option(sample_meta)
+    else:
+        sample_meta = {}
+    sample_meta['sample_name'] = sample_name
+    datasets_dict = dict_from_kwarg_cli_option(datasets)
+    mbias_stat_plots(output_dir=output_dir,
+                     sample_meta=sample_meta,
+                     compact_mbias_plot_config_dict_fp=mbias_plot_config,
+                     dataset_name_to_fp=datasets_dict)
 
 
 #==============================================================================
@@ -205,3 +233,10 @@ def evaluate_calls(ctx, config_file, motifs, output_dir, sample_name, sample_met
                                   default_config_file_path=default_config_file,
                                   user_config_file_path=user_config_file)
     analyze_coverage(config)
+
+# ==============================================================================
+# Util functions
+# ==============================================================================
+def dict_from_kwarg_cli_option(value: str):
+    return {s.split('=')[0] : s.split('=')[1] for s in value.split(',')}
+

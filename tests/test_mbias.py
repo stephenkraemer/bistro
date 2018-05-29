@@ -1,13 +1,18 @@
 #-
+import json
+import os
 import pickle
 import shutil
 import tempfile
 from collections import namedtuple, defaultdict
+from operator import itemgetter
 from pathlib import Path
 from textwrap import dedent
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, patch, call
+import toolz as tz
 import pandas as pd
 import toml
+from io import StringIO
 
 idxs = pd.IndexSlice
 import numpy as np
@@ -28,9 +33,24 @@ from mqc.mbias import (MbiasCounter,
                        map_seq_ctx_to_motif,
                        convert_cutting_sites_df_to_array,
                        compute_mbias_stats,
-                       # mbias_stat_plots,
+                       compute_beta_values,
+                       get_plot_configs,
+    # mbias_stat_plots,
+                       aggregate_table,
+                       MbiasPlotConfig,
+    # map_dataset_specs_to_filepaths,
+                       aggregate_table,
+                       create_aggregated_tables,
+                       MbiasPlotParams,
+                       MbiasPlotMapping,
+                       PLOTNINE_THEMES,
+                       MBIAS_STATS_DIMENSION_PLOT_LABEL_MAPPING,
+                       create_single_mbias_stat_plot,
+                       AggregatedMbiasStats,
+                       MbiasStatAggregationParams,
                        )
-from mqc.utils import get_resource_abspath
+from mqc.utils import get_resource_abspath, NamedIndexSlice, subset_dict, TmpChdir
+import mqc.filepaths
 
 import matplotlib
 
@@ -39,9 +59,10 @@ from matplotlib.axes import Axes
 import matplotlib.pyplot as plt
 # import seaborn as sns
 import mqc.flag_and_index_values as mfl
-# import plotnine as gg
+import plotnine as gg
 
-from typing import List
+from typing import List, Tuple, Union, Callable
+
 #-
 
 # TODO: I currently test that any non-zero qc_fail_flag leads to discard from M-bias stats counting. When I update the behavior so that phred score fails are kept in the stats, the tests here also need to be updated accordingly
@@ -1020,36 +1041,752 @@ class TestAnalyseMbiasCounts:
 
         compute_mbias_stats(config)
 
+# M-bias plots
+# ==============================================================================
 
-@pytest.fixture(scope='module',
-                params = ['CG', 'CG,CHG,CHH'])
-def run_mbias_stats_plots(request, mbias_plot_config_file):
+
+#-
+def create_test_mbias_stats_df(
+        strata_curve_tuples:
+        List[Tuple[Union[Tuple, Callable], np.ndarray, Union[np.ndarray, int]]]) \
+        -> pd.DataFrame:
+    """ Create small mbias stats dataframe for testing
+
+    Args:
+        strata_curve_tuples: specifies index slices (tuple or callable)
+        where beta values (np.ndarray) should be entered with coverage
+        (np.ndarray or int)
+
+    Returns:
+        mbias stats dataframe with mbias stats entered into the
+        appropriate slices. Undefined strata have n_meth = n_unmeth =
+        10 and thus a beta value of 0.5
+    """
+
+    def get_categorical(ordered_str_labels):
+        return pd.Categorical(ordered_str_labels,
+                              categories=ordered_str_labels,
+                              ordered=True)
+
+    ordered_seq_contexts = ['CCCCC', 'GGCGG']
+    flen_bin_labels = [50, 100, 150, 200]
+    phred_bin_labels = [20, 40]
+    max_read_length = 100
+
+    dim_levels = [get_categorical(['CG', 'CHH']),
+                  get_categorical(ordered_seq_contexts),
+                  get_categorical(['c_bc', 'c_bc_rv', 'w_bc', 'w_bc_rv']),
+                  flen_bin_labels,
+                  phred_bin_labels,
+                  range(1, max_read_length + 1),
+                  get_categorical(['n_meth', 'n_unmeth'])]
+
+    midx = pd.MultiIndex.from_product(dim_levels,
+                                      names=["motif", "seq_context", "bs_strand", "flen",
+                                             "phred", "pos", "meth_status"])
+    mbias_stats_df = pd.DataFrame(index=midx)
+
+    mbias_stats_df['counts'] = 10
+    mbias_stats_df = mbias_stats_df.unstack(level=-1)
+    mbias_stats_df.columns = ['n_meth', 'n_unmeth']
+    mbias_stats_df['beta_value'] = 0.5
+    mbias_stats_df
+
+    for idx, beta, coverage in strata_curve_tuples:
+        n_meth = np.round((beta * coverage)).astype(int)
+        n_unmeth = coverage - n_meth
+        if not isinstance(n_meth, np.ndarray):
+            n_meth = np.tile(n_meth, max_read_length)
+            n_unmeth = np.tile(n_unmeth, max_read_length)
+
+        rep_times_float = mbias_stats_df.loc[idx, :].shape[0] / max_read_length
+        assert rep_times_float.is_integer()
+        mbias_stats_df.loc[idx, 'n_meth'] = np.tile(n_meth, int(rep_times_float))
+        mbias_stats_df.loc[idx, 'n_unmeth'] = np.tile(n_unmeth, int(rep_times_float))
+        mbias_stats_df = mbias_stats_df.assign(beta_value = compute_beta_values)
+
+    return mbias_stats_df
+#-
+
+
+@pytest.fixture()
+def mbias_plot_config():
+    return {
+        "defaults": {
+            'plot_params': {
+                "panel_height_cm": 6,
+                "panel_width_cm": 6,
+                "theme": "paper",
+                'y_axis': {'breaks': 5,
+                           'limits': {
+                               'beta_value': [(0, 1), (0.5, 1), 'auto'],
+                               'n_meth': 'auto',
+                               'n_unmeth': 'auto', },
+                           'share': True,
+                           'rotate_labels': False,
+                           },
+                'x_axis': {'breaks': [0, 30, 60, 90, 120, 150],
+                           'limits': {
+                               'phred': 45,
+                           },
+                           'share': True,
+                           'rotate_labels': True},
+                'plot': ['line'],
+            },
+            "post_agg_filters": {
+                'flen': [60, 75, 90, 100, 120, 150, 190, 290, 490],
+                'phred': [0, 5, 10, 15, 20, 25, 30, 35, 40],
+            },
+        },
+        "group1": {
+            "datasets": ["full", ["full", "trimmed"]],
+            # necessary because currently only trimming for CG
+            "pre_agg_filters": {
+                'motif': ['CG']
+            },
+            'post_agg_filters': {
+                'flen': [100, 150],
+            },
+            "aes_mappings": [
+                {'x': 'pos', 'y': 'beta_value',
+                 "row": "dataset", "column": ("mate", "bs_strand"), "color": "None"},
+            ],
+        },
+        'group2': {
+            "datasets": ["trimmed"],
+            "pre_agg_filters": {
+                'motif': ['CG', 'CHH'],
+                'seq_context': ['CCCCC']
+            },
+            "plot_params": {
+                'y_axis': {'limits': {'beta_value': [(0.2, 0.9)]}}
+            },
+            "aes_mappings": [
+                {'x': 'pos', 'y': 'value',
+                 "row": 'dataset', 'color': 'flen', "column": ("mate", "statistic")},
+            ],
+        },
+    }
+
+
+# TODO: force absolute dataset filepaths
+class TestGetMbiasPlotConfigs:
+    def test_produces_list_of_mbiasplotconfigs_from_defaults_and_group_definitions(
+            self, mbias_plot_config):
+
+        dataset_name_to_fp = {'trimmed': '/path/to/trimmed',
+                              'full': '/path/to/full'}
+
+        computed_table_of_required_plots = get_plot_configs(mbias_plot_config,
+                                                            dataset_name_to_fp)
+
+        group1_config = dict(
+            pre_agg_filters = mbias_plot_config['group1']['pre_agg_filters'],
+            post_agg_filters = tz.merge(mbias_plot_config['defaults']['post_agg_filters'],
+                                        mbias_plot_config['group1']['post_agg_filters']),
+            plot_params=MbiasPlotParams(
+                **mbias_plot_config['defaults']['plot_params']),
+            aes_mapping=MbiasPlotMapping(
+                **mbias_plot_config['group1']['aes_mappings'][0]),
+        )
+
+        expected_table_of_required_plots = [
+            MbiasPlotConfig(
+                datasets=subset_dict('full', dataset_name_to_fp),
+                **group1_config
+            ),
+            MbiasPlotConfig(
+                datasets=subset_dict(['full', 'trimmed'], dataset_name_to_fp),
+                **group1_config,
+            ),
+            MbiasPlotConfig(
+                datasets=subset_dict('trimmed', dataset_name_to_fp),
+                plot_params=MbiasPlotParams(
+                    **tz.assoc_in(
+                        mbias_plot_config['defaults']['plot_params'],
+                        ['y_axis', 'limits', 'beta_value'],
+                        [(0.2, 0.9)])
+                    ),
+                aes_mapping=MbiasPlotMapping(
+                    **mbias_plot_config['group2']['aes_mappings'][0]),
+                post_agg_filters = mbias_plot_config['defaults']['post_agg_filters'],
+                pre_agg_filters = mbias_plot_config['group2']['pre_agg_filters'],
+            ),
+            ]
+
+        message = (str(expected_table_of_required_plots[0])
+                   + '\n' + str(computed_table_of_required_plots[0]))
+
+        assert (expected_table_of_required_plots
+                == computed_table_of_required_plots), message
+
+
+    @pytest.mark.parametrize('missing_key',
+                             [('group1', 'datasets'),
+                              ('group1', 'aes_mappings', 0, 'x'),
+                              ('group2', 'aes_mappings')])
+    def test_raises_when_plot_group_config_is_incomplete(self, missing_key,
+                                                         mbias_plot_config):
+        dict_to_modify = tz.get_in(missing_key[:-1],
+                                   mbias_plot_config, no_default=True)
+        dict_to_modify.pop(missing_key[-1])
+
+        with pytest.raises(ValueError):
+            get_plot_configs(mbias_plot_config,
+                             dataset_name_to_fp={})
+
+
+
+# def test_map_dataset_specs_to_filepaths():
+#     config = {'default_plot_params': {'a': 1,
+#                                       'b': 2 },
+#               'plot_group1': {'datasets': ['mbias_stats', 'mbias_stats_masked'],
+#                               'other_stuff': [1,2,3] },
+#               'plot_group2': {'datasets': ['mbias_stats_classic'],
+#                               'other_stuff': [1, 2, 3]},
+#               }
+#     map_dataset_specs_to_filepaths(config)
+#
+#     assert config['plot_group1']['datasets'] == [
+#         mqc.filepaths.mbias_stats,
+#         mqc.filepaths.mbias_stats_masked
+#     ]
+#
+#     assert config['plot_group2']['datasets'] == [
+#         mqc.filepaths.mbias_stats_classic
+#     ]
+
+
+def test_create_aggregated_tables(mocker, tmpdir, mbias_plot_config):
+
+    dataset1 = pd.DataFrame({'a': [1, 2, 3]})
+    dataset1_fp = str(tmpdir / 'dataset1.p')
+    dataset1.to_pickle(dataset1_fp)
+    dataset2 = pd.DataFrame({'b': [2, 2, 3]})
+    dataset2_fp = str(tmpdir / 'dataset2.p')
+    dataset2.to_pickle(dataset2_fp)
+    dataset_name_to_fp = dict(dataset1=dataset1_fp,
+                              dataset2=dataset2_fp)
+
+    aes_dict = dict(x='x_col', y='y_col', color='color_col', row='row_col')
+
+    # To determine the correct aggregation tasks, MbiasPlotConfig functionality,
+    # in particular determining the aggregation variables, is necessary -
+    # so don't use a Mock here
+    plot_configs = [
+        MbiasPlotConfig(datasets=subset_dict('dataset1', dataset_name_to_fp),
+                        aes_mapping=MbiasPlotMapping(**aes_dict, column='col1'),
+                        plot_params=mbias_plot_config['defaults']['plot_params'],
+                        pre_agg_filters={'motifs': ['CG']}
+                        ),
+        MbiasPlotConfig(datasets=subset_dict('dataset1', dataset_name_to_fp),
+                        aes_mapping=MbiasPlotMapping(**aes_dict, column='col2'),
+                        plot_params=mbias_plot_config['defaults']['plot_params'],
+                        pre_agg_filters={'motifs': ['CHG']}
+                        ),
+        MbiasPlotConfig(datasets=subset_dict('dataset2', dataset_name_to_fp),
+                        aes_mapping=MbiasPlotMapping(**aes_dict, column='col3'),
+                        plot_params=mbias_plot_config['defaults']['plot_params'],
+                        pre_agg_filters={'motifs': ['CG']}
+                        ),
+        MbiasPlotConfig(datasets=subset_dict('dataset2', dataset_name_to_fp),
+                        aes_mapping=MbiasPlotMapping(**aes_dict, column='col4'),
+                        plot_params=mbias_plot_config['defaults']['plot_params'],
+                        pre_agg_filters={'motifs': ['CHG']}
+                        ),
+    ]
+
+    mocker.patch(
+        'mqc.mbias.AggregatedMbiasStats.precompute_aggregated_stats')
+    aggregated_mbias_stats = AggregatedMbiasStats()
+
+    create_aggregated_tables(mbias_plot_configs=plot_configs,
+                             aggregated_mbias_stats=aggregated_mbias_stats,
+                             dataset_filepath_mapping=dataset_name_to_fp)
+
+    shared_variables = {'x_col', 'color_col', 'row_col'}
+    expected_calls = [
+        dict(params=MbiasStatAggregationParams(
+            dataset_fp=dataset1_fp,
+            variables=shared_variables | {'col1'},
+            pre_agg_filters={'motifs': ['CG']}),
+            mbias_stats_df=dataset1),
+        dict(params=MbiasStatAggregationParams(
+            dataset_fp=tmpdir / 'dataset1.p',
+            variables=shared_variables | {'col2'},
+            pre_agg_filters={'motifs': ['CHG']}),
+            mbias_stats_df=dataset1),
+        dict(params=MbiasStatAggregationParams(
+            dataset_fp=tmpdir / 'dataset2.p',
+            variables=shared_variables | {'col3'},
+            pre_agg_filters={'motifs': ['CG']}),
+            mbias_stats_df=dataset2),
+        dict(params=MbiasStatAggregationParams(
+            dataset_fp=tmpdir / 'dataset2.p',
+            variables=shared_variables | {'col4'},
+            pre_agg_filters={'motifs': ['CHG']}),
+            mbias_stats_df=dataset2),
+    ]
+    call_args_list = aggregated_mbias_stats.precompute_aggregated_stats.call_args_list
+    assert len(call_args_list) == 4
+
+    for args, kwargs in call_args_list:
+        for curr_expected_call in expected_calls:
+            if (curr_expected_call['mbias_stats_df'].equals(kwargs['mbias_stats_df'])
+                and curr_expected_call['params'] == kwargs['params']):
+                break
+        else:
+            raise ValueError('Did not find call: ',
+                             curr_expected_call, call_args_list)
+
+
+@pytest.fixture()
+def aggregate_table_mbias_stats_df():
+    return pd.read_csv(StringIO(dedent("""\
+            motif    bs_strand    flen    pos    n_meth  n_unmeth
+            CG             c_bc         100     1      1       1
+            CG             c_bc         100     2      2       2
+            CG             c_bc         200     1      3       3
+            CG             c_bc         200     2      4       4
+            CG             w_bc         100     1      5       5
+            CG             w_bc         100     2      6       6
+            CG             w_bc         200     1      7       7
+            CG             w_bc         200     2      8       8
+            CH             c_bc         100     1      1       1
+            CH             c_bc         100     2      2       2
+            CH             c_bc         200     1      3       3
+            CH             c_bc         200     2      4       4
+            CH             w_bc         100     1      5       5
+            CH             w_bc         100     2      6       6
+            CH             w_bc         200     1      7       7
+            CH             w_bc         200     2      8       8
+            """)),
+                       sep='\s+', header=0,
+                       index_col=['motif', 'bs_strand', 'flen', 'pos'])
+
+
+class TestAggregateTable:
+
+    def test_applies_filters_and_sum_aggregation(
+            self, aggregate_table_mbias_stats_df):
+
+        agg_data = aggregate_table(
+            mbias_stats_df=aggregate_table_mbias_stats_df,
+            unordered_variables={'pos', 'bs_strand', 'motif'},
+            pre_agg_filters={'motif': ['CG']})
+
+        # Aggregation always triggers a recomputation of beta values, therefore
+        # we don't need beta values in the input data, and do still expect them
+        # in the aggregation result
+        expected_agg_data = pd.read_csv(StringIO(dedent(
+            '''\
+            motif    bs_strand    pos    n_meth n_unmeth   beta_value
+            CG        c_bc         1      4      4          0.5
+            CG        c_bc         2      6     6         0.5
+            CG        w_bc         1      12     12         0.5
+            CG        w_bc         2      14     14         0.5
+            ''')), sep='\s+', header=0, index_col=['motif', 'bs_strand', 'pos'])
+
+        pd.testing.assert_frame_equal(agg_data, expected_agg_data)
+
+    def test_raises_when_filters_or_variables_do_not_match_index_level_names(
+            self, aggregate_table_mbias_stats_df):
+
+        with pytest.raises(ValueError):
+            agg_data = aggregate_table(
+                mbias_stats_df=aggregate_table_mbias_stats_df,
+                unordered_variables={'pos', 'bs_strand', 'motif'},
+                pre_agg_filters={'MOTIF': ['CG']})
+
+        with pytest.raises(ValueError):
+            agg_data = aggregate_table(
+                mbias_stats_df=aggregate_table_mbias_stats_df,
+                unordered_variables={'POS', 'bs_strand', 'motif'},
+                pre_agg_filters={'motif': ['CG']})
+
+
+class TestMbiasPlotMapping:
+    @pytest.mark.xfail(skip=True)
+    def test_get_facetting_cmd(self):
+        raise NotImplemented
+
+    @pytest.mark.parametrize(
+        'kwargs,correct_set',
+        [
+            (dict(x='pos', y='beta_value', column=('mate', 'bs_strand')),
+             {'pos', 'mate', 'bs_strand'}),
+            (dict(x='pos', y='value', column=('statistic', 'bs_strand')),
+             {'pos', 'bs_strand', 'statistic'}),
+            (dict(x='pos', y='beta_value'),
+             {'pos'}),
+            # don't include dataset variable!
+            (dict(x='pos', y='beta_value', row='dataset'),
+             {'pos'}),
+        ])
+    def test_get_all_variables_unordered(self, kwargs, correct_set):
+        computed_set = (MbiasPlotMapping(**kwargs)
+                        .get_all_agg_variables_unordered())
+        assert computed_set == correct_set
+    #
+    # def test1(self):
+    #     raise NotImplemented
+
+
+@pytest.mark.xfail(skip=True)
+class TestCreateSingleMbiasStatPlot:
+    def test_create_single_mbias_stat_plot(self):
+
+        mbias_stats_df_test = create_test_mbias_stats_df(
+            [
+                (idxs[:, :, :, 100], [70] * 100, [30] * 100),
+                (idxs[:, :, :, 200], [60] * 100, [40] * 100),
+             ]
+        )
+        previous_working_dir = os.getcwd()
+        with tempfile.TemporaryDirectory as tmpdir:
+            # TODO: more robust reverse chdir at the end of test
+            os.chdir(tmpdir)
+
+            plot_config = MbiasPlotConfig(
+                # TODO: fix
+                datasets='mbias_stats_df_test',
+                aes_mapping=dict(
+                    x='pos', y='beta_value',
+                    color='flen', row='bs_strand',
+                    motifs=['CG'], wrap=2,
+                ),
+                plot_params=dict(mbias_flens_to_display=[100, 200],
+                                 mbias_phreds_to_display=[20, 40],
+                                 panel_height=9,
+                                 panel_width=9,
+                                 theme='poster',
+                                 x_breaks=10, y_breaks=5, ylim_tuples=[(0, 1), (0.5, 1)])
+            )
+
+            agg_mbias_stats_df = (mbias_stats_df_test
+                                  .loc['CG':'CG', :]
+                                  .query('flen in @plot_config.plot_params.mbias_flens_to_display')
+                                  .groupby(['flen', 'pos', 'bs_strand'])
+                                  .sum()
+                                  .assign(beta_value=compute_beta_values)
+                                  )
+            agg_mbias_stats_df
+
+            create_single_mbias_stat_plot(agg_mbias_stats_df,
+                                          plot_config)
+
+            computed_mbias_plot_bytes = (get_mbias_plot_path(plot_config)
+                                         ['ylim-(0.5, 1)']
+                                         .with_suffix('.png').read_bytes())
+
+            pp = plot_config.plot_params
+
+            g = (gg.ggplot(data=agg_mbias_stats_df.reset_index(),
+                           mapping=plot_config.aes.get_plot_aes_dict())
+                 + gg.geom_line()
+                 + gg.facet_wrap('bs_strand', ncol=2)
+                 + PLOTNINE_THEMES[plot_config.plot_params.theme]
+                 + gg.scale_x_continuous(breaks=np.arange(0, 101, 10))
+                 + gg.scale_y_continuous(breaks=np.arange(0, 1.01, 0.2), limits=[0.5, 1])
+                 + gg.labs(x=MBIAS_STATS_DIMENSION_PLOT_LABEL_MAPPING['pos'],
+                           y=MBIAS_STATS_DIMENSION_PLOT_LABEL_MAPPING['beta_value'],
+                           title=plot_config.datasets,
+                           )
+                 )
+            expected_png_path = Path('expected_mbias_plot.png')
+            g.save(filename=str(expected_png_path),
+                   width=pp.panel_width, height=pp.panel_height)
+
+            expected_mbias_plot_bytes = expected_png_path.read_bytes()
+
+            assert computed_mbias_plot_bytes == expected_mbias_plot_bytes
+
+        os.chdir(previous_working_dir)
+
+
+    def test_plots_frequency_plots():
+
+        mbias_stats_df_test = create_test_mbias_stats_df(
+            [
+                (idxs[:, :, :, 100], [70] * 100, [30] * 100),
+                (idxs[:, :, :, 200], [60] * 100, [40] * 100),
+            ]
+        )
+        previous_working_dir = os.getcwd()
+        with tempfile.TemporaryDirectory as tmpdir:
+            # TODO: more robust chdir to previous working dir
+            os.chdir(tmpdir)
+
+            plot_config = MbiasPlotConfig(
+                datasets='mbias_stats_df_test',
+                aes_mapping=dict(x='pos', y='value',
+                                 color='bs_strand', col='statistic',
+                                 motifs=['CG'], wrap=None),
+                plot_params=dict(mbias_flens_to_display=[100, 200],
+                                 mbias_phreds_to_display=[20, 40],
+                                 panel_height=9,
+                                 panel_width=9,
+                                 theme='poster',
+                                 x_breaks=10, y_breaks=5,
+                                 ylim_tuples=[(0, 1), (0.5, 1)])
+            )
+
+            agg_mbias_stats_df = (mbias_stats_df_test
+                                  .loc['CG':'CG', :]
+                                  .groupby(['pos', 'bs_strand'])
+                                  .sum()
+                                  .assign(beta_value=compute_beta_values)
+                                  )
+            agg_mbias_stats_df
+
+            create_single_mbias_stat_plot(agg_mbias_stats_df,
+                                          plot_config)
+
+            computed_mbias_plot_bytes = (get_mbias_plot_path(plot_config)
+                                         ['ylim-(0.5, 1)']
+                                         .with_suffix('.png').read_bytes())
+
+            agg_mbias_stats_df.index.name = 'statistic'
+            agg_mbias_stats_df = (agg_mbias_stats_df
+                                  .stack()
+                                  .to_frame('value'))
+
+            pp = plot_config.plot_params
+
+            g = (gg.ggplot(data=agg_mbias_stats_df.reset_index(),
+                           mapping=plot_config.aes.get_plot_aes_dict())
+                 + gg.geom_line()
+                 + gg.facet_wrap('statistic', ncol=None)
+                 + PLOTNINE_THEMES[plot_config.plot_params.theme]
+                 + gg.scale_x_continuous(breaks=np.arange(0, 101, 10))
+                 + gg.scale_y_continuous(breaks=np.arange(0, 1.01, 0.2), limits=[0.5, 1])
+                 + gg.labs(x=MBIAS_STATS_DIMENSION_PLOT_LABEL_MAPPING['pos'],
+                           y=MBIAS_STATS_DIMENSION_PLOT_LABEL_MAPPING['value'],
+                           title=plot_config.datasets,
+                           )
+                 )
+            expected_png_path = Path('expected_mbias_plot.png')
+            g.save(filename=str(expected_png_path),
+                   width=pp.panel_width, height=pp.panel_height)
+
+            expected_mbias_plot_bytes = expected_png_path.read_bytes()
+
+            assert computed_mbias_plot_bytes == expected_mbias_plot_bytes
+
+        os.chdir(previous_working_dir)
+
+
+class TestAggregatedMbiasStats:
+
+    def test_fp_creation(self):
+        aggregated_mbias_stats = AggregatedMbiasStats()
+        params = MbiasStatAggregationParams(
+            dataset_fp='/path/to/dataset.p',
+            variables=['varA', 'varB'],
+            pre_agg_filters={'flen': [1, 2, 3]}
+        )
+        fp = aggregated_mbias_stats._create_agg_dataset_fp(params)
+        assert fp == (mqc.filepaths.aggregated_mbias_stats_dir
+        / (f'{params.dataset_fp.replace("/", "-")}'
+           f'_{"-".join(params.variables)}'
+           f'_{json.dumps(params.pre_agg_filters).replace(" ", "-")}.p'))
+
+    def test_stats_are_only_computed_if_there_is_no_recent_copy_present(
+            self, mocker, tmpdir):
+
+        with TmpChdir(tmpdir):
+            aggregated_mbias_stats = AggregatedMbiasStats()
+            mbias_stats_df = pd.DataFrame({'a': [1,2,3]})
+
+            aggregate_mbias_stats_mock: MagicMock = mocker.patch(
+                'mqc.mbias.aggregate_table', return_value=mbias_stats_df)
+            params = MbiasStatAggregationParams(
+                dataset_fp='path/to/dataset.p',
+                variables=['varA', 'varB'],
+                pre_agg_filters={'flen': [1, 2, 3]}
+            )
+            Path(params.dataset_fp).parent.mkdir(parents=True, exist_ok=False)
+            Path(params.dataset_fp).touch()
+            for i in range(2):
+                aggregated_mbias_stats.precompute_aggregated_stats(
+                    params=params,
+                    mbias_stats_df=mbias_stats_df
+                )
+            assert aggregate_mbias_stats_mock.called_once_with(
+                call(mbias_stats_df=mbias_stats_df,
+                     variables=params.variables,
+                     pre_agg_filters=params.pre_agg_filters)
+            )
+
+
+
+@pytest.mark.xfail(skip=True)
+class TestMbiasPlotConfig:
+    def test_raises_if_filters_are_not_defined_correctly(self):
+        raise NotImplemented
+    def test_raises_if_datasets_are_not_defined_correctly(self):
+        raise NotImplemented
+    def test_hash(self):
+        raise NotImplemented
+
+@pytest.fixture()
+def test_mbias_plot_config_file() -> str:
+    """Return path to test M-bias plot config file
+
+    Note that this does not append the specification of the config dict
+    to be used (e.g. '*::default_config)
+    """
+    return Path(__file__).parent / 'test_files' / 'test_mbias_plot_config.py'
+
+# TODO: remove
+# @pytest.fixture()
+# def test_mbias_plot_config_file() -> str:
+#     """ Provide filepath to temp JSON M-bias plots config file"""
+#
+#     with tempfile.TemporaryDirectory() as tmpdir:
+#         json_fp = os.path.join(tmpdir, 'mbias_plot_config.json')
+#
+#         mbias_plot_config = {
+#             "defaults": {
+#                 'plot_params': {
+#                     "panel_height_cm": 6,
+#                     "panel_width_cm": 6,
+#                     "theme": "paper",
+#                     'y_axis': {'breaks': 5,
+#                                'limits': {
+#                                    'beta_value': [(0, 1), (0.5, 1), 'auto'],
+#                                    'n_meth': 'auto',
+#                                    'n_unmeth': 'auto', },
+#                                'share': True
+#                                },
+#                     'x_axis': {'breaks': [0, 30, 60, 90, 120, 150],
+#                                'share': True,
+#                                'rotate_labels': True},
+#                     'plot': ['line'],
+#                 },
+#                 "pre_plot_filters": {
+#                     'flen': [60, 75, 90, 100, 120, 150, 190, 290, 490],
+#                     'phred': [0, 5, 10, 15, 20, 25, 30, 35, 40],
+#                 },
+#             },
+#             "group1": {
+#                 "datasets": [["full", "trimmed"]],
+#                 # necessary because currently only trimming for CG
+#                 "pre_agg_filters": {
+#                     'motif': ['CG']
+#                 },
+#                 "aes_mappings": [
+#                     {'x': 'pos', 'y': 'beta_value',
+#                      "row": "dataset", "column": "bs_strand", "color": None},
+#                     {'x': 'pos', 'y': 'beta_value',
+#                      "row": "dataset", "column": "bs_strand", "color": "flen"},
+#                     {'x': 'pos', 'y': 'beta_value',
+#                      "row": "dataset", "column": "bs_strand", "color": None},
+#                 ],
+#             },
+#             "group2": {
+#                 "datasets": ["full", "trimmed"],
+#                 # necessary because currently only trimming for CG
+#                 "aes_mappings": [
+#                      {'x': 'pos', 'y': 'beta_value',
+#                       "row": "motif", "column": "bs_strand", "color": None},
+#                 ],
+#             },
+#         }
+#
+#         with open(json_fp, 'wt') as fout:
+#             json.dump(mbias_plot_config, fout)
+#
+#         yield json_fp
+#
+#     return None
+
+@pytest.fixture()
+def full_mbias_stats_fp():
+    tmpdir = tempfile.mkdtemp()
+    fp = os.path.join(tmpdir, 'full_mbias_stats_df.p')
+    df = create_test_mbias_stats_df(
+        [
+            (NamedIndexSlice(motif='CHH'), 0.05, 20),
+            (NamedIndexSlice(motif='CG'), 0.8, 20),
+            (NamedIndexSlice(motif='CG', flen=slice(1, 110)),
+             np.concatenate([np.tile(0.01, 9), np.tile(0.8, 91)]), 30),
+        ]
+    )
+    df.to_pickle(fp)
+    yield fp
+    shutil.rmtree(tmpdir)
+
+@pytest.fixture()
+def trimmed_mbias_stats_fp(tmpdir):
+    fp = tmpdir / 'full_mbias_stats_df.p'
+    df = create_test_mbias_stats_df(
+        [
+            (NamedIndexSlice(motif='CHH'), 0.05, 20),
+            (NamedIndexSlice(motif='CG'), 0.8, 20),
+            (NamedIndexSlice(motif='CG', flen=slice(1, 110)),
+             np.concatenate([np.tile(np.nan, 9), np.tile(0.8, 91)]), 30),
+        ]
+    )
+    df.to_pickle(fp)
+    yield fp
+
+
+# Test with and without user-supplied config file
+@pytest.fixture(params=[
+    str(test_mbias_plot_config_file()) + '::default_config',
+    None])
+def run_mbias_stats_plots(
+        request, test_mbias_plot_config_file,
+        full_mbias_stats_fp,trimmed_mbias_stats_fp):
+
 
     output_dir = tempfile.mkdtemp()
 
-    subprocess.run(['mqc', 'mbias_plots',
-                    '--config_file', mbias_plot_config_file,
-                    '--motifs', request.param,
+    command_list = ['mqc', 'mbias_plots',
+                    '--output_dir', output_dir,
                     '--sample_name', SAMPLE_NAME,
-                    '--output_dir', mbias_plot_config_file['run']],
-                   check=True)
+                    '--sample_meta', 'population=hsc,rep=1',
+                    '--datasets',
+                    f'full={full_mbias_stats_fp},trimmed={trimmed_mbias_stats_fp}',
+                    ]
 
-    default_config_file = get_resource_abspath('config.default.toml')
-    cli_params = {'motifs_str': request.param,
-                  'sample_name': SAMPLE_NAME,
-                  'sample_meta': None,
-                  'output_dir': output_dir}
-    config = assemble_config_vars(cli_params,
-                                  default_config_file_path=default_config_file,
-                                  user_config_file_path=user_config_file)
+    if request.param is not None:
+        command_list += ['--mbias_plot_config', request.param]
 
-    yield config
+    subprocess.run(command_list, check=True)
+
+    yield output_dir
+
     shutil.rmtree(output_dir)
+
 
 @pytest.mark.acceptance_test
 class TestMbiasPlots:
-    def test_runs_through(self, run_mbias_stats_plots):
-        config = run_mbias_stats_plots
-        plots = Path(config['paths']['mbias_plots_trunk'] + '*.png').glob()
-        assert len(plots) > 1
+    def test_runs_through_on_user_config(self, run_mbias_stats_plots,
+                                         make_interactive):
+        """Trigger fixture to run mbias_plots, then check results
+
+        The run_mbias_stats_plots fixture runs mbias_plots and returns
+        the base output dir used for the test run.
+
+        In interactive mode, the output_dir is opened in firefox, to
+        allow viewing the figures
+        """
+        if make_interactive:
+            subprocess.run(['firefox', run_mbias_stats_plots])
+            while True:
+                answer=input('Everything ok?: y/n\n')
+                if answer in ['y', 'n']:
+                    if answer == 'n':
+                        raise AssertionError
+                    break
+            assert True
+        else:
+            with TmpChdir(run_mbias_stats_plots):
+                plots = list(mqc.filepaths.mbias_plots_trunk.parent.glob('*.html'))
+            assert len(plots) >= 1
+
+
+
 
