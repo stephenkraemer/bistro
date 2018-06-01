@@ -1417,7 +1417,7 @@ class TestMbiasPlotMapping:
             (dict(x='pos', y='beta_value', column=('mate', 'bs_strand')),
              {'pos', 'mate', 'bs_strand'}),
             (dict(x='pos', y='value', column=('statistic', 'bs_strand')),
-             {'pos', 'bs_strand', 'statistic'}),
+             {'pos', 'bs_strand'}),
             (dict(x='pos', y='beta_value'),
              {'pos'}),
             # don't include dataset variable!

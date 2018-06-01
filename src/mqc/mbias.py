@@ -1931,6 +1931,12 @@ class MbiasPlotParams:
             return self.__dict__ == other.__dict__
         return False
 
+    def __str__(self):
+        return str(self.__dict__)
+
+    def __repr__(self):
+        return str(self.__dict__)
+
 
 class MbiasPlotMapping:
     """Contains encoding and facetting information"""
@@ -2025,6 +2031,11 @@ class MbiasPlotMapping:
 
         return base_dict
 
+    def get_facetting_vars(self, column_name='column', row_name='row'):
+        return {k: v for k, v in {column_name: self.column,
+                                  row_name: self.row}.items()
+                if v is not None}
+
     def get_all_agg_variables_unordered(self) -> set:
         """Get dictionary with all variables to be used in agg. groupby
 
@@ -2037,7 +2048,7 @@ class MbiasPlotMapping:
         """
         return {x for x in more_itertools.collapse(
             [self.x, self.column, self.row, self.color, self.detail])
-                if x is not None and x != 'dataset'}
+                if x is not None and x not in ['dataset', 'statistic']}
 
     # # TODO: adjust for tuples in col and row
     # def get_facetting_cmd(self):
@@ -2059,6 +2070,11 @@ class MbiasPlotMapping:
             return self.__dict__ == other.__dict__
         return False
 
+    def __str__(self):
+        return str(self.__dict__)
+
+    def __repr__(self):
+        return str(self.__dict__)
 
 class MbiasPlotConfig:
     def __init__(self,
@@ -2438,11 +2454,21 @@ def create_mbias_stats_plots(mbias_plot_configs: List[MbiasPlotConfig],
             + '.html'))
         print(target_fp)
         target_fp.parent.mkdir(parents=True, exist_ok=True)
-        chart.save(str(target_fp))
+        try:
+            chart.save(str(target_fp))
+        except ValueError as e:
+            print('Error working on: ', curr_plot_config)
+            raise e
+
 
 
 def create_single_mbias_stat_plot(plot_config: MbiasPlotConfig,
                                   df: pd.DataFrame) -> alt.Chart:
+
+    assert set(df.columns.values) == {'n_meth', 'n_unmeth', 'beta_value'}
+    if plot_config.aes.y == 'value':
+        df.columns.name = 'statistic'
+        df = df.stack().to_frame('value')
 
     x_zoom =alt.selection_interval(bind='scales', encodings=['x'],
                                zoom="wheel![event.shiftKey]")
@@ -2450,9 +2476,16 @@ def create_single_mbias_stat_plot(plot_config: MbiasPlotConfig,
 
     chart = (alt.Chart(df.reset_index())
              .mark_line()
-             .encode(**plot_config.aes.get_plot_aes_dict(include_facetting=True))
+             .encode(**plot_config.aes.get_plot_aes_dict(include_facetting=False))
              .properties(selection=x_zoom + y_zoom)
              )
+
+    facet_dict = plot_config.aes.get_facetting_vars()
+    if facet_dict:
+        chart = (chart
+                 .facet(**facet_dict)
+                 .resolve_scale(x='shared', y='independent')
+                 )
     return chart
 
 

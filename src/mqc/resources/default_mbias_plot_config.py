@@ -74,6 +74,10 @@ default_config = {
             'phred': [9, 14, 19, 24, 29, 34, 39, 40],
         },
 
+        "pre_agg_filters": {
+            'motif': ['CG']
+        },
+
     },
 
     # Plot groups
@@ -136,38 +140,35 @@ default_config = {
     #     "aes_mappings": [],
     # },
 
-    # # Coverage plots
-    # # ------------------------------------------------------------------
-    # 'Coverage plots': {
-    #     "datasets": [["full", "trimmed"]],
-    #     "pre_agg_filters": {
-    #         'motif': ['CG']
-    #     },
-    #     "plot_params": {
-    #         'sharey': False,
-    #     },
-    #     "aes_mappings": [
-    #
-    #         # M-bias plot
-    #         {
-    #             'x': 'pos',
-    #             'y': 'value',
-    #             'color': None,
-    #             "row": 'dataset',
-    #             "column": "bs_strand"
-    #         },
-    #
-    #         # Fragment-length stratified M-bias plot
-    #         {
-    #             'x': 'pos',
-    #             'y': 'value',
-    #             'color': 'flen',
-    #             "row": 'dataset',
-    #             "column": "bs_strand"
-    #         },
-    #
-    #     ],
-    # },
+    # Coverage plots
+    # ------------------------------------------------------------------
+    'Coverage plots': {
+        "datasets": ["full", "trimmed"],
+        "pre_agg_filters": {
+            'motif': ['CG']
+        },
+        "aes_mappings": [
+
+            # M-bias plot
+            {
+                'x': 'pos',
+                'y': 'value',
+                'color': None,
+                "row": 'bs_strand',
+                "column": "statistic"
+            },
+
+            # Fragment-length stratified M-bias plot
+            {
+                'x': 'pos',
+                'y': 'value',
+                'color': 'flen',
+                "row": 'bs_strand',
+                "column": "statistic"
+            },
+
+        ],
+    },
 
     # BS-strand or mate methylation bias
     # ------------------------------------------------------------------
@@ -196,16 +197,16 @@ default_config = {
                 'column': 'seq_context',
             },
 
-            # {
-            #     'x': 'bs_strand',
-            #     'y': 'value',
-            #     'color': 'phred',
-            #     'row': 'dataset',
-            #     'column': 'statistic',
-            # },
-            #
-            #
-            #
+            {
+                'x': 'bs_strand',
+                'y': 'value',
+                'color': 'phred',
+                'row': 'dataset',
+                'column': 'statistic',
+            },
+
+
+
 
         ],
     },
@@ -231,19 +232,19 @@ default_config = {
             {
                 "x": "seq_context",
                 "y": "beta_value",
-                "row": "dataset",
+                "row": None,
                 "column": "bs_strand",
                 "color": "phred"
             },
 
-            # {
-            #     "x": "seq_context",
-            #     "y": "values",
-            #     "row": 'bs_strand',
-            #     "column": 'statistic',
-            #     "color": "phred"
-            # },
-            #
+            {
+                "x": "seq_context",
+                "y": "value",
+                "row": 'bs_strand',
+                "column": 'statistic',
+                "color": "phred"
+            },
+
         ],
     }
 
