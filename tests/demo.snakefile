@@ -8,17 +8,21 @@ How do I run this?
 -----------------
 /home/kraemers/projects/mqc/tests/demo_snakefile.py
 
+cd /icgc/dkfzlsdf/project/mouse_hematopoiesis/sequencing/whole_genome_bisulfite_tagmentation_sequencing/view-by-pid
+pids_csv=$(echo mpp?_? hsc_? | tr ' ' ,)
+echo $pids_csv
+cd
+
 snakemake \
 --snakefile ~/projects/mqc/tests/demo.snakefile \
---config pids=mpp1_3 motifs=CG \
---jobs 1 \
-
---jobscript /home/kraemers/projects/mqc/tests/jobscript_lsf.sh \
+--config pids=$pids_csv motifs=CG \
 --dryrun
 
---cluster "bsub -R rusage[mem={params.mem}G] -M {params.mem}G -n {params.cores} -J {params.name} -W {params.walltime}" \
---cluster "qsub -S /bin/bash -l walltime={params.walltime},mem={params.mem}g,nodes=1:ppn={params.cores} -N {params.name}" \
+--jobs 1000 \
 --jobscript /home/kraemers/projects/mqc/tests/jobscript_lsf.sh \
+--cluster "bsub -R rusage[mem={params.mem}G] -M {params.mem}G -n {params.cores} -J {params.name} -W {params.walltime}" \
+
+--cluster "qsub -S /bin/bash -l walltime={params.walltime},mem={params.mem}g,nodes=1:ppn={params.cores} -N {params.name}" \
 
 """
 
@@ -159,11 +163,14 @@ rule evaluate_mbias:
     input:
         mbias_counter = mbias_counter_pattern_by_pid
     output:
-        full_mbias_stats_pattern_by_pid
+        full_mbias_stats_pattern_by_pid,
+        trimmed_mbias_stats_pattern_by_pid,
+        full_phredfiltered_mbias_stats_by_pid,
+        trimmed_phredfiltered_mbias_stats_by_pid,
     params:
         output_dir = output_dir_by_pid,
-        walltime = '00:45:00',
-        mem = '32g',
+        walltime = '01:00',
+        mem = '40',
         cores = '8',
         name = f'evalute_mbias_{{pid}}_{motifs_msv_str}',
         sample_meta = get_sample_metadata
@@ -195,9 +202,9 @@ rule plot_mbias:
         touch(mbias_plot_done_by_pid)
     params:
         output_dir = output_dir_by_pid,
-        walltime = '00:45:00',
-        mem = '32g',
-        cores = '8',
+        walltime = '00:25',
+        mem = '40',
+        cores = '1',
         name = f'plot_mbias_{{pid}}_{motifs_msv_str}',
         sample_meta = get_sample_metadata,
         datasets = get_datasets_str
@@ -208,9 +215,7 @@ rule plot_mbias:
         --sample_meta {params.sample_meta} \
         --output_dir {params.output_dir} \
         --datasets {params.datasets} \
-
         """
-
 
 
 mcall_command = (

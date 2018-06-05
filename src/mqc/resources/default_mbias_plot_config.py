@@ -71,7 +71,7 @@ default_config = {
 
         "post_agg_filters": {
             'flen': [60, 75, 90, 100, 120, 150, 190, 290, 490],
-            'phred': [9, 14, 19, 24, 29, 34, 39, 40],
+            # 'phred': [9, 14, 19, 24, 29, 34, 39, 40],
         },
 
         "pre_agg_filters": {
@@ -176,9 +176,9 @@ default_config = {
     "strand_mate_meth_bias": {
         "datasets": ["full_phred-threshold",
                      "trimmed_phred-threshold"],
-        "post_agg_filters": {
-            'phred': [9, 14, 19, 24, 29, 34],
-        },
+        # "post_agg_filters": {
+            # 'phred': [9, 14, 19, 24, 29, 34],
+        # },
         "aes_mappings": [
 
             {
@@ -224,9 +224,9 @@ default_config = {
         # },
         "datasets": ["full_phred-threshold",
                      "trimmed_phred-threshold"],
-        "post_agg_filters": {
-            'phred': [9, 14, 19, 24, 29, 34],
-        },
+        # "post_agg_filters": {
+        #     'phred': [9, 14, 19, 24, 29, 34],
+        # },
         "aes_mappings": [
 
             {

@@ -21,6 +21,8 @@ import matplotlib
 import numpy as np
 import pandas as pd
 
+from figure_report import Report
+
 matplotlib.use('Agg')  # import before pyplot import!
 import matplotlib.pyplot as plt
 import importlib
@@ -1813,15 +1815,15 @@ def mbias_stat_plots(
         output_dir: str, sample_meta: dict,
         dataset_name_to_fp: dict,
         compact_mbias_plot_config_dict_fp: Optional[str] = None):
-    """ M-bias plot generation manager
+    """ Analysis workflow creating the M-bias plots and report
 
-    Creates all M-bias plot specified through the config dictionary.
-    The config file refers to shorthand dataset names. These
-    names are mapped to filepaths in the dataset_name_to_fp dict.
+    Creates all M-bias plots specified through the compact
+    dict representation of the MbiasAnalysisConfig. The config
+    file refers to shorthand dataset names. These names
+    are mapped to filepaths in the dataset_name_to_fp dict.
 
-    This function is accessible through the mbias_plots tool. Here, the
-    config dictionary is defined via the path to a JSON config file. The
-    datasets are given as comma-separated key=value pairs.
+    This function is accessible through the cli mbias_plots tool.
+    The datasets are given as comma-separated key=value pairs.
 
     Args:
         output_dir:
@@ -1829,7 +1831,7 @@ def mbias_stat_plots(
             be possible to make the output_dir the working directory.
         compact_mbias_plot_config_dict_fp:
             Path to the python module containing the M-bias plot config
-            dict, plus the name of the desired config dict, append
+            dict, plus the name of the desired config dict, appended
             with '::'. See mqc/resources/default_mbias_plot_config.py
             for an example. The default config file also contains
             more documentation about the structure of the config file.
@@ -1838,14 +1840,11 @@ def mbias_stat_plots(
 
     Notes:
         Roadmap:
+            - this function will be refactored into a general PlotAnalysis class
             - add sample metadata to output dfs? Currently the sample
               metadata are unused
-
-
     """
-    # TODO: check that dataset filepaths are absolute? Or check that files exist right in the begining? document that relative to output_dir?
-    # TODO: assert that all dataset files are there
-    # TODO: check json config for 'None' strings - likely null was meant, raise
+
     # All filepaths are relative paths, need to go to correct output dir
     try:
         os.chdir(output_dir)
@@ -1877,6 +1876,16 @@ def mbias_stat_plots(
 
     create_mbias_stats_plots(mbias_plot_configs=mbias_plot_configs,
                              aggregated_mbias_stats=aggregated_mbias_stats)
+
+    mbias_report_config = MbiasAnalysisConfig.from_compact_config_dict(
+        compact_mbias_plot_config_dict,
+        dataset_name_to_fp
+    ).get_report_config()
+
+    Report({'M-bias': mbias_report_config}).generate(
+        mqc.filepaths.qc_report_dir
+    )
+
     # (Path(output_dir) / 'test.png').touch()
 
 
@@ -2410,6 +2419,118 @@ def calculate_plot_df(mbias_stats_df, complete_aes, flens_to_display,
 
     return plot_df
 
+class MbiasAnalysisConfig:
+    """Configuration of the analysis workflow creating M-bias plots"""
+    def __init__(self, grouped_mbias_plot_configs: dict,
+                 dataset_name_to_fp: dict):
+        """MbiasAnalysiConfig default constructor
+
+        In most cases, one of the convenience
+        constructors is the better choice.
+
+
+        Args:
+            grouped_mbias_plot_configs:
+                Mapping of section names to List[MbiasPlotConfig].
+                The section names are used during plot generation.
+            dataset_name_to_fp:
+                Mapping of dataset shorthand names to dataset filepaths
+
+        Notes:
+            - Roadmap
+                - allow multi-level (nested) sections. This will require switching
+                  to recursive processing function in the clients of this class
+        """
+        self.grouped_mbias_plot_configs = grouped_mbias_plot_configs
+        self.dataset_name_to_fp = dataset_name_to_fp
+
+    @staticmethod
+    def from_compact_config_dict(mbias_plot_config, dataset_name_to_fp):
+        """Constructor based on compact config dict for the analysis
+
+        Args:
+            mbias_plot_config: User-specified dictionary detailing the required
+                M-bias plots in compact form. See default_mbias_plot_config.py
+                for example
+            dataset_name_to_fp: Mapping of the shorthand dataset names
+                from the compact plot config to the actual filepaths
+
+        Returns:
+            MbiasAnalysisConfig instance
+        """
+
+
+        mbias_plot_config = deepcopy(mbias_plot_config)
+        try:
+            defaults = mbias_plot_config.pop('defaults')
+        except KeyError:
+            defaults = {}
+
+        grouped_mbias_plot_configs = {}
+        for plot_group_name, plot_group_dict in mbias_plot_config.items():
+
+            grouped_mbias_plot_configs[plot_group_name] = []
+            plot_group_dict = update_nested_dict(
+                base_dict=defaults, custom_dict=plot_group_dict,
+                allow_new_keys=True)
+
+            try:
+                for curr_datasets, curr_aes_mapping in product(
+                        plot_group_dict['datasets'], plot_group_dict['aes_mappings']):
+                    assert isinstance(curr_datasets, (str, list)), \
+                        f'Curr_dataset spec {curr_datasets} is not str, list'
+                    grouped_mbias_plot_configs[plot_group_name].append(MbiasPlotConfig(
+                        datasets=subset_dict(curr_datasets, dataset_name_to_fp),
+                        aes_mapping=MbiasPlotMapping(
+                            **curr_aes_mapping
+                        ),
+                        pre_agg_filters = plot_group_dict.get('pre_agg_filters'),
+                        post_agg_filters = plot_group_dict.get('post_agg_filters'),
+                        plot_params=MbiasPlotParams(**plot_group_dict['plot_params'])
+                    ))
+            except (KeyError, TypeError) as e:
+                raise ValueError(f'Incomplete configuration for {plot_group_name}. '
+                                 f'Original message: {e}')
+
+        return MbiasAnalysisConfig(grouped_mbias_plot_configs=grouped_mbias_plot_configs,
+                                   dataset_name_to_fp=dataset_name_to_fp)
+
+    def get_report_config(self) -> dict:
+        """Return config dict in the format used by figure_report.Report
+
+        Returns:
+            A mapping of sections to their contained figures, with
+            titles. The M-bias plot config objects are turned
+            into figure definition dicts, ie are represented by
+            the filepath where the plot can be found, as well as
+            a title derived from the MbiasPlotConfig information.
+        """
+
+        report_dict = {}
+
+        def get_figure_config(mbias_plot_config: MbiasPlotConfig):
+            title = 'Datasets: ' + ', '.join(mbias_plot_config.datasets) + '\n\n'
+            title += json.dumps(mbias_plot_config
+                                    .aes
+                                    .get_plot_aes_dict(include_facetting=True),
+                                sort_keys=True) + '\n'
+            # When the MbiasPlotStrip class is created, this can be replaced
+            # by calling its filepath query method
+            path = (mqc.filepaths.mbias_plots_trunk.name
+                    + mbias_plot_config.get_str_repr_for_filename_construction()
+                    + '.json')
+            figure_config = {'path': path, 'title': title}
+            return figure_config
+
+        for group_name, mbias_plot_configs_list in self.grouped_mbias_plot_configs.items():
+            report_dict[group_name] = {'figures': []}
+            for mbias_plot_config in mbias_plot_configs_list:
+                report_dict[group_name]['figures'].append(
+                    get_figure_config(mbias_plot_config)
+                )
+
+        return report_dict
+
 
 # TODO: remove duplicate function
 def create_mbias_stats_plots(mbias_plot_configs: List[MbiasPlotConfig],
@@ -2451,7 +2572,7 @@ def create_mbias_stats_plots(mbias_plot_configs: List[MbiasPlotConfig],
         target_fp = (mqc.filepaths.mbias_plots_trunk.with_name(
             mqc.filepaths.mbias_plots_trunk.name
             + curr_plot_config.get_str_repr_for_filename_construction()
-            + '.html'))
+            + '.json'))
         print(target_fp)
         target_fp.parent.mkdir(parents=True, exist_ok=True)
         try:

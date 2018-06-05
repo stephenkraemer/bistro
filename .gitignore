@@ -9,3 +9,5 @@ mqc.egg-info/
 build
 dist/
 src/mqc/trashbin/
+doc/mqc_workboard.org
+**/.#*

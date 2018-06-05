@@ -43,6 +43,7 @@ from mqc.mbias import (MbiasCounter,
                        create_aggregated_tables,
                        MbiasPlotParams,
                        MbiasPlotMapping,
+                       MbiasAnalysisConfig,
                        PLOTNINE_THEMES,
                        MBIAS_STATS_DIMENSION_PLOT_LABEL_MAPPING,
                        create_single_mbias_stat_plot,
@@ -1169,6 +1170,106 @@ def mbias_plot_config():
         },
     }
 
+@pytest.fixture()
+def expected_hierarchical_mbias_plot_config_dict(mbias_plot_config):
+
+    dataset_name_to_fp = {'trimmed': '/path/to/trimmed',
+                          'full': '/path/to/full'}
+
+    group1_config = dict(
+        pre_agg_filters = mbias_plot_config['group1']['pre_agg_filters'],
+        post_agg_filters = tz.merge(mbias_plot_config['defaults']['post_agg_filters'],
+                                    mbias_plot_config['group1']['post_agg_filters']),
+        plot_params=MbiasPlotParams(
+            **mbias_plot_config['defaults']['plot_params']),
+        aes_mapping=MbiasPlotMapping(
+            **mbias_plot_config['group1']['aes_mappings'][0]),
+    )
+
+    expected_config_dict = {
+        'group1': [
+            MbiasPlotConfig(
+                datasets=subset_dict('full', dataset_name_to_fp),
+                **group1_config
+            ),
+            MbiasPlotConfig(
+                datasets=subset_dict(['full', 'trimmed'], dataset_name_to_fp),
+                **group1_config,
+            ),
+        ],
+        'group2': [
+            MbiasPlotConfig(
+                datasets=subset_dict('trimmed', dataset_name_to_fp),
+                plot_params=MbiasPlotParams(
+                    **tz.assoc_in(
+                        mbias_plot_config['defaults']['plot_params'],
+                        ['y_axis', 'limits', 'beta_value'],
+                        [(0.2, 0.9)])
+                ),
+                aes_mapping=MbiasPlotMapping(
+                    **mbias_plot_config['group2']['aes_mappings'][0]),
+                post_agg_filters = mbias_plot_config['defaults']['post_agg_filters'],
+                pre_agg_filters = mbias_plot_config['group2']['pre_agg_filters'],
+            ),
+        ]
+    }
+
+    return expected_config_dict
+
+
+class TestMbiasAnalysisConfig:
+    def test_construct_from_compact_dict_representation(
+            self, mbias_plot_config,
+            expected_hierarchical_mbias_plot_config_dict):
+
+        dataset_name_to_fp = {'trimmed': '/path/to/trimmed',
+                              'full': '/path/to/full'}
+
+        computed_hierarchical_config = (
+            MbiasAnalysisConfig
+                .from_compact_config_dict(mbias_plot_config,
+                                          dataset_name_to_fp)
+                .grouped_mbias_plot_configs)
+
+        assert (computed_hierarchical_config
+                == expected_hierarchical_mbias_plot_config_dict)
+
+    def test_get_report_config(
+            self,
+            mbias_plot_config,
+            expected_hierarchical_mbias_plot_config_dict):
+
+        def get_figure_config(mbias_plot_config: MbiasPlotConfig):
+            title = 'Datasets: ' + ', '.join(mbias_plot_config.datasets) + '\n\n'
+            title += json.dumps(mbias_plot_config.aes.get_plot_aes_dict(include_facetting=True),
+                                sort_keys=True) + '\n'
+            figure_config = {'path': (
+                    mqc.filepaths.mbias_plots_trunk.name +
+                    mbias_plot_config.get_str_repr_for_filename_construction()
+                    + '.json'), 'title': title}
+            return figure_config
+
+        d = expected_hierarchical_mbias_plot_config_dict
+        expected_plot_config = {
+            'group1': {'figures': [
+                get_figure_config(d['group1'][0]),
+                get_figure_config(d['group1'][1]),
+            ]},
+            'group2': {'figures': [
+                get_figure_config(d['group2'][0]),
+            ]}
+        }
+
+        dataset_name_to_fp = {'trimmed': '/path/to/trimmed',
+                              'full': '/path/to/full'}
+
+        computed_report_config = (
+            MbiasAnalysisConfig
+                .from_compact_config_dict(mbias_plot_config,
+                                          dataset_name_to_fp)
+                .get_report_config())
+
+        assert expected_plot_config == computed_report_config
 
 # TODO: force absolute dataset filepaths
 class TestGetMbiasPlotConfigs:
@@ -1795,7 +1896,7 @@ class TestMbiasPlots:
             assert True
         else:
             with TmpChdir(run_mbias_stats_plots):
-                plots = list(mqc.filepaths.mbias_plots_trunk.parent.glob('*.html'))
+                plots = list(mqc.filepaths.mbias_plots_trunk.parent.glob('*.json'))
             assert len(plots) >= 1
 
     # TODO: improve; currently this fails because of several reasons, ...

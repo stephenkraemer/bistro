@@ -17,6 +17,7 @@ aggregated_mbias_stats_dir = qc_stats_dir / 'mbias_stats/aggregated_stats_for_pl
 mbias_plots_trunk = qc_stats_dir / (
     'mbias_stats/plots/mbias-plot_'
 )
+qc_report_dir = qc_stats_dir / 'mbias_stats/plots'
 
 
 # mbias_counts                  = "{qc_stats_dir}/{name}_mbias-counts_{motifs_str}"
