@@ -137,11 +137,16 @@ def mbias_plots(output_dir, sample_name, sample_meta, mbias_plot_config,
 @click.option('--cores', default=1)
 @click.option('--use_mbias_fit', is_flag=True)
 @click.option('--strat_beta_dist', is_flag=True)
-
+@click.option('--output_formats', default='bed',
+              help='any csv combination of [bed bismark stratified_bed].'
+                   ' The options bed and stratified_bed are mutually exclusive.'
+                   ' Further output formats will soon be added, in particular VCF'
+                   ' for methylation calling with SNP calls')
 @click.pass_context
 def call(ctx, bam, index_files,
-          output_dir, config_file,
-          sample_name, sample_meta, cores, use_mbias_fit, strat_beta_dist):
+         output_dir, config_file,
+         sample_name, sample_meta, cores, use_mbias_fit, strat_beta_dist,
+         output_formats):
     """Methylation calling"""
 
     default_config_file = get_resource_abspath('config.default.toml')
@@ -154,6 +159,13 @@ def call(ctx, bam, index_files,
     motifs_str = index_files[0].split('_')[-2]
     cli_params['motifs_str'] = motifs_str
     cli_params['motifs'] = motifs_str.split('-')
+
+    output_formats = output_formats.split(',')
+    assert set(output_formats) <= set('bed bismark stratified_bed'.split()), \
+        f'Aborting: unknown output formats in {output_formats}'
+    assert not ('bed' in output_formats
+                and 'stratified_bed' in output_formats), \
+        f'Aborting: cannot produce bed and stratified_bed at the same time'
 
     config = assemble_config_vars(cli_params,
                                   default_config_file_path=default_config_file,

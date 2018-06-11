@@ -67,6 +67,7 @@ class TestCoverageCounterProcessing:
             assert coverage_counter.counter_array[motif_idx_dict['chg'], 40]
 
 
+    @pytest.mark.xfail(strict=True)
     @pytest.mark.acceptance_test
     @pytest.mark.parametrize('motifs', MOTIF_SETS)
     def test_cov_counter_file_output(self, motifs):

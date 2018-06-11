@@ -13,6 +13,8 @@ pids_csv=$(echo mpp?_? hsc_? | tr ' ' ,)
 echo $pids_csv
 cd
 
+pids_csv='mpp1_3'
+
 snakemake \
 --snakefile ~/projects/mqc/tests/demo.snakefile \
 --config pids=$pids_csv motifs=CG \
@@ -66,14 +68,22 @@ all_evaluate_stats_files = expand(full_mbias_stats_pattern_by_pid, pid=config['p
 test_mbias_plot_config_json = os.path.expanduser('~/projects/mqc/src/mqc/resources/mbias_plots_config.json')
 mbias_plot_done_by_pid = f"{output_rpp_dir}/{{pid}}/meth/qc_stats/mbias_stats/plots.done"
 ## call
-call_file_patterns_by_pid = expand("{output_rpp_dir}/{{pid}}/meth/meth_calls/"
+mcall_bed_patterns_by_pid = expand("{output_rpp_dir}/{{pid}}/meth/meth_calls/"
                                    "mcalls_{{pid}}_{single_motif}_{chrom}.bed.gz",
                                    output_rpp_dir=output_rpp_dir,
                                    single_motif=single_motifs,
                                    chrom=all_chroms)
+
+mcall_bismark_patterns_by_pid = expand("{output_rpp_dir}/{{pid}}/meth/meth_calls/"
+                                       "bismark_{{pid}}_{single_motif}_chr-{chrom}.bed.gz",
+                                       output_rpp_dir=output_rpp_dir,
+                                       single_motif=single_motifs,
+                                       chrom=all_chroms)
+
 coverage_count_patterns_by_pid = [f"{output_rpp_dir}/{{pid}}/meth/qc_stats/{{pid}}_coverage-counts_{motifs_msv_str}.tsv",
                                   f"{output_rpp_dir}/{{pid}}/meth/qc_stats/{{pid}}_coverage-counts_{motifs_msv_str}.p"]
-all_mcall_files = expand(call_file_patterns_by_pid, pid=config['pids']),
+all_mcall_files = expand(mcall_bed_patterns_by_pid + mcall_bismark_patterns_by_pid,
+                         pid=config['pids']),
 all_coverage_counter_files = expand(coverage_count_patterns_by_pid, pid=config['pids']),
 
 ## evaluate_calls
@@ -106,8 +116,8 @@ rule all:
         all_index_files,
         all_stats_files,
         all_evaluate_stats_files,
-        expand(mbias_plot_done_by_pid, pid=config['pids']),
-        # all_mcall_files,
+        # expand(mbias_plot_done_by_pid, pid=config['pids']),
+        all_mcall_files,
         # all_coverage_counter_files,
         # all_evaluate_calls_files,
 
@@ -226,25 +236,26 @@ mcall_command = (
     ' --sample_name {wildcards.pid}'
     ' --sample_meta {params.sample_meta}'
     ' --cores {params.cores}'
+    ' --output_formats bed,bismark'
+    ' --use_mbias_fit'
     ' {input.index_files}'
 )
-# ' --use_mbias_fit'
-
 rule call:
     input:
         bam=bam_pattern_by_pid,
         index_files = all_index_files,
-        # adj_cut_sites_obj = adj_cut_sites_obj_by_pid,
+        adj_cut_sites_obj = adj_cut_sites_obj_by_pid,
     params:
-        mem = '8g',
+        mem = '26',
         cores = '12',
         output_dir = output_dir_by_pid,
-        walltime = '42:00:00',
+        walltime = '8:00',
         name = f'mcall_{motifs_msv_str}_{{pid}}',
         sample_meta = get_sample_metadata
     output:
-        mcall_files = call_file_patterns_by_pid,
-        coverage_files = coverage_count_patterns_by_pid,
+        mcall_bed_patterns_by_pid,
+        mcall_bismark_patterns_by_pid,
+        # coverage_files = coverage_count_patterns_by_pid,
     shell: mcall_command
 
 

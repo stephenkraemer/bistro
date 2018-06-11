@@ -17,7 +17,7 @@ from mqc.pileup.pileup import stepwise_pileup_generator
 from mqc.qc_filters import PhredFilter, MapqFilter
 from mqc.trimming import Trimmer
 from mqc.visitors import Counter, Visitor
-from mqc.writers import BedWriter
+from mqc.writers import BedWriter, BismarkWriter
 
 
 # from mqc.mbias import MbiasData, AdjustedMbiasCuttingSites, MbiasCounter
@@ -244,6 +244,7 @@ class QcAndMethCallingRun(PileupRun):
     """Methylation calling with QC filtering and stats collection"""
 
     def _get_visitors(self, chrom) -> Dict[str, Visitor]:
+
         visitors = OrderedDict(
             mapq_filter=MapqFilter(self.config),
             trimmer=Trimmer(self.config, self.cutting_sites),
@@ -251,19 +252,31 @@ class QcAndMethCallingRun(PileupRun):
             phred_filter=PhredFilter(self.config),
         )
 
-        if self.config['run']['strat_beta_dist']:
-            visitors['meth_caller'] = StratifiedMethCaller()
-            visitors['beta_counter'] = StratifiedBetaCounter()
-        else:
-            visitors['meth_caller'] = MethCaller()
+        output_formats = self.config['run']['output_formats']
 
-        visitors['mcall_writer'] = BedWriter(self.config, chrom=chrom)
-        visitors['coverage_counter'] = CoverageCounter(self.config)
+        if 'bed' in output_formats and 'stratified_bed' in output_formats:
+            raise ValueError('Output formats bed and stratified_bed '
+                             'are not possible together')
+
+        if 'bed' in output_formats:
+            visitors['meth_caller'] = MethCaller()
+            visitors['mcall_writer'] = BedWriter(self.config, chrom=chrom)
+
+        if 'stratified_bed' in output_formats:
+            raise NotImplementedError
+            # visitors['meth_caller'] = StratifiedMethCaller()
+            # if self.config['run']['strat_beta_dist']:
+            #     visitors['beta_counter'] = StratifiedBetaCounter()
+            # visitors['mcall_writer'] = StratifiedBedWriter
+
+        if 'bismark' in output_formats:
+            visitors['bismark_writer'] = BismarkWriter(
+                calls_by_chrom_motif_fp=self.config['paths']['bismark_calls_by_chrom_motif'],
+                motifs=self.config['run']['motifs'],
+                chrom=chrom
+            ).setup()
 
         return visitors
-
-
-
 
 
 def _filter_for_counters(visitors) -> Dict:
