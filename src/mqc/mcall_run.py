@@ -244,6 +244,26 @@ class QcAndMethCallingRun(PileupRun):
     """Methylation calling with QC filtering and stats collection"""
 
     def _get_visitors(self, chrom) -> Dict[str, Visitor]:
+        """Assemble visitors for methylation calling run
+
+        First, apply different QC-related visitors which tag the reads
+        which should be discarded.
+
+        Then add the McallWriters as specified in the output_formats
+        config option. For most current and future writers,
+        it will be necessary to add a Visitor preparing the
+        data to be written before the McallWriter. E.g. bed ->
+        MethCaller, stratified_bed -> StratifiedMethCaller, or in
+        the future VCF -> SnpCaller, epiread -> EpireadAssembler. Only
+        the BismarkWriter does not depend on any prior Visitor.
+
+        Writing both bed and stratified bed output is currently
+        not implemented, because the stratified bed also contains
+        all information from the standard bed, just with some
+        additional informations and a different header / column order.
+
+        This would be easy to implement if requested.
+        """
 
         visitors = OrderedDict(
             mapq_filter=MapqFilter(self.config),

@@ -121,8 +121,7 @@ def mbias_plots(output_dir, sample_name, sample_meta, mbias_plot_config,
 #                             mqc call
 #==============================================================================
 @mqc.command()
-@click.option('--bam', required=True,
-              type=input_click_path)
+@click.option('--bam', required=True, type=input_click_path)
 @click.argument('index_files', nargs=-1,
                 type=click.Path(resolve_path=True, exists=True, dir_okay=False))
 # TODO: which checks are necessary
@@ -147,7 +146,13 @@ def call(ctx, bam, index_files,
          output_dir, config_file,
          sample_name, sample_meta, cores, use_mbias_fit, strat_beta_dist,
          output_formats):
-    """Methylation calling"""
+    """Methylation calling tool
+
+    Command line tool for generating QC-filtered methylation calls
+    in various output formats, using common filtering strategies.
+
+    This tool wraps the base QcAndMethCallingRun.
+    """
 
     default_config_file = get_resource_abspath('config.default.toml')
 

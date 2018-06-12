@@ -51,13 +51,13 @@ class McallWriter(Visitor, metaclass=ABCMeta):
     def __init__(self, calls_by_chrom_motif_fp: str,
                  motifs: List[str], header_no_newline: Optional[str],
                  chrom: str):
-        """Convert MotifPileup info into meth. calling output
+        """Write MotifPileup info to mcall file
 
         Args:
-            calls_by_chrom_motif_fp: most contain {motif} field
+            calls_by_chrom_motif_fp: must contain
+                [motif] and [chrom] fields
             motifs: list of motifs covered in the run
-            header_no_newline: header line for all output files,
-                may be omitted
+            header_no_newline: optional header line for all output files
             chrom: chrom ID
         """
         self.calls_by_chrom_motif_fp = str(calls_by_chrom_motif_fp)
@@ -67,14 +67,14 @@ class McallWriter(Visitor, metaclass=ABCMeta):
         self.chrom = chrom
 
     def setup(self):
+        """Open file objects for each motif covered by the run, add header"""
+
         self._open_mcall_files()
         if self.header_no_newline:
             self._write_header_line()
         return self
 
     def _open_mcall_files(self):
-        """Open file objects for each motif covered by the run"""
-
         for motif in self.motifs:
             out_fp = (self.calls_by_chrom_motif_fp
                       .replace('[motif]', motif)
@@ -96,7 +96,8 @@ class BismarkWriter(McallWriter):
         """Generate output as specified by Bismark methylation extractor
 
         Args:
-            calls_by_chrom_motif_fp: most contain {motif} field
+            calls_by_chrom_motif_fp: must contain
+                [motif] and [chrom] fields
             motifs: list of motifs covered in the run
             chrom: chrom ID
         """
@@ -120,6 +121,13 @@ class BismarkWriter(McallWriter):
         }
 
     def process(self, motif_pileup: MotifPileup) -> None:
+        """Extract Bismark output lines from MotifPileup
+
+        Ignores reads with discard-flags (qc fail, trimming or overlap)
+
+        Only considers reads with 'methylated' or 'unmethylated' status,
+        not SNPs, NA, Ref...
+        """
         pos_str = str(motif_pileup.idx_pos.start)
         curr_fout = self.meth_calls_fobj_dict[motif_pileup.idx_pos.motif]
         curr_symbol_table = self.symbol_table[motif_pileup.idx_pos.motif]

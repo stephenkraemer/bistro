@@ -1,26 +1,20 @@
 import gzip
 import os.path as op
-import re
-from itertools import product
-
 import pickle
-from pathlib import Path
-
 import pytest
+import re
 import shutil
 import subprocess
 import tempfile
-from textwrap import dedent
-
 import toml
+from itertools import product
+from pathlib import Path
+from textwrap import dedent
 
 from mqc.config import assemble_config_vars
 from mqc.mbias import FixedRelativeCuttingSites
 from mqc.utils import get_resource_abspath
 
-""" All motifs test
-"""
-# __file__ = '/home/stephen2/projects/mqc/mqc/mqc/tests/blabla.py'
 TESTS_DIR = op.dirname(__file__)
 TEST_BAM = op.join(TESTS_DIR, 'test_files', 'test_mcall.sorted.bam')
 DEFAULT_CONFIG_FILE = get_resource_abspath('config.default.toml')
@@ -33,7 +27,6 @@ MIN_PHRED = 35
 
 @pytest.fixture(scope='module')
 def index_file_paths_dict():
-    # TODO: add ref genome to index files to match standard index file path template
     return {
         'CG': [op.join(TEST_FILES_DIR, 'test_mcall_CG_1.bed.gz'),
                op.join(TEST_FILES_DIR, 'test_mcall_CG_2.bed.gz')],
@@ -42,51 +35,16 @@ def index_file_paths_dict():
     }
 
 
-@pytest.fixture(scope='module')
-def expected_results_dict():
-    return {'1': {'CG': dedent(f"""\
-                            #chrom	start	end	motif	score	strand	beta_value	n_meth	n_total
-                            1	11298399	11298400	CG	.	+	{1:.6f}	5	5
-                            1	11298400	11298401	CG	.	-	nan	0	0
-                            1	11299330	11299331	CG	.	+	{1:.6f}	3	3
-                            1	11299331	11299332	CG	.	-	{1:.6f}	4	4
-                            """),
-                  'CHG': dedent(f"""\
-                            #chrom	start	end	motif	score	strand	beta_value	n_meth	n_total
-                            1	3258371	3258372	CHG	.	+	{0:.6f}	0	3
-                            1	3258373	3258374	CHG	.	-	{0:.6f}	0	3
-                            """),
-                  'CHH': dedent(f"""\
-                            #chrom	start	end	motif	score	strand	beta_value	n_meth	n_total
-                            1	3258374	3258375	CHH	.	-	{0:.6f}	0	3
-                            1	3258376	3258377	CHH	.	+	{0:.6f}	0	3
-                            """),
-                  },
-            '2': {'CG': dedent(f"""\
-                            #chrom	start	end	motif	score	strand	beta_value	n_meth	n_total
-                            2	9042611	9042612	CG	.	+	{1:.6f}	4	4
-                            2	9042612	9042613	CG	.	-	{1:.6f}	1	1
-                            2	9042613	9042614	CG	.	+	{1:.6f}	5	5
-                            2	9042614	9042615	CG	.	-	{1:.6f}	1	1
-                            """),
-                  'CHG': dedent(f"""\
-                            #chrom	start	end	motif	score	strand	beta_value	n_meth	n_total
-                            2	3281431	3281432	CHG	.	-	{0:.6f}	0	3
-                            """),
-                  'CHH': dedent(f"""\
-                            #chrom	start	end	motif	score	strand	beta_value	n_meth	n_total
-                            2	3281432	3281433	CHH	.	-	{0:.6f}	0	3
-                            2	3281434	3281435	CHH	.	+	{0:.6f}	0	1
-                            """),
-                  }
-            }
-
-
 def space_to_tab(s):
     return re.sub(' +', '\t', s)
 
+
 @pytest.fixture(scope="module")
-def cutting_sites_obj_fp():
+def cutting_sites_obj_fp() -> FixedRelativeCuttingSites:
+    """Provide FixedRelativeCuttingSites as fixture
+
+    Used to test the --use_mbias_fit option
+    """
     config_stub = toml.loads(dedent("""
             [trimming]
               max_flen_considered_for_trimming = 500
@@ -110,7 +68,32 @@ def cutting_sites_obj_fp():
 
 @pytest.fixture(scope='module',
                 params=['correct_fixed_cut_sites', 'all_zero_fixed_cut_sites'])
-def config_file_path(request, cutting_sites_obj_fp):
+def config_file_path(request, cutting_sites_obj_fp: FixedRelativeCuttingSites):
+    """Provide custom config files for testing fixed and adjusted cutting sites
+
+    Provides two variants of a user-supplied config
+    file for the acceptance tests of the call tool.
+
+    The config file 'correct_fixed_cut_sites.toml' provides correct
+    definitions of the fixed cutting sites that were used for
+    generation of the expected results. The other config file
+    variant, 'all_zero_fixed_cut_sites', deliberately provides
+    wrong cutting sites (no cutting at all). This variant is
+    intended to be used together with a cutting sites object,
+    as would be created from the M-bias stats analysis. If the
+    provided cutting sites object (the config file contains the
+    correct path) is not used appropriately, there is no correct
+    fallback option in the config file and the test will fail.
+
+    Args:
+        cutting_sites_obj_fp: provided through fixture
+
+    Returns:
+        Paths to two config files:
+            '{tmpdir}/correct_fixed_cut_sites.toml',
+            '{tmpdir}/all_zero_fixed_cut_sites.toml'.
+
+    """
 
     config_file_dir = tempfile.mkdtemp()
     user_config_file_path = op.join(config_file_dir, f"{request.param}.toml")
@@ -155,134 +138,22 @@ def config_file_path(request, cutting_sites_obj_fp):
     shutil.rmtree(config_file_dir)
 
 
-@pytest.fixture(scope="module")
-def base_command_list(config_file_path):
-
-    base_command_list = ['mqc', 'call',
-                         '--bam', TEST_BAM,
-                         '--config_file', config_file_path,
-                         '--sample_name', SAMPLE_NAME,
-                         '--sample_meta', SAMPLE_META,
-                         '--cores', '2']
-
-    if 'all_zero_fixed_cut_sites' in config_file_path:
-        base_command_list += ['--use_mbias_fit']
-
-    return base_command_list
-
-
-def get_text_of_call_files(output_dir, motifs_str, user_config_file):
-    config = assemble_config_vars(
-        command_line_args_dict=dict(output_dir=output_dir,
-                                    sample_name=SAMPLE_NAME,
-                                    sample_meta=SAMPLE_META,
-                                    motifs_str=motifs_str),
-        default_config_file_path=DEFAULT_CONFIG_FILE,
-        user_config_file_path=user_config_file)
-
-    def read_calls(chrom, motif):
-        mcall_fp = (config['paths']['meth_calls_basepath']
-                    + f"_{SAMPLE_NAME}_{motif}_{chrom}.bed.gz")
-        with gzip.open(mcall_fp, 'rt') as fobj:
-            file_content = fobj.read()
-        return file_content
-
-    motifs = motifs_str.split('-')
-    computed_calls = {(chrom, curr_motif): read_calls(chrom, curr_motif)
-                      for chrom, curr_motif in product(['1', '2'], motifs)}
-
-    return computed_calls
-
-
-@pytest.fixture(scope='module')
-def cg_run_file_contents(base_command_list, index_file_paths_dict, config_file_path):
-
-    # using a non-existent output dir is intentional
-    # mqc should create the output dir recursively
-    tmpdir = tempfile.mkdtemp()
-    cg_only_output_dir = op.join(tmpdir, 'hsc_1')
-    subprocess.check_call(base_command_list
-                          + ['--output_dir', cg_only_output_dir]
-                          + index_file_paths_dict['CG'])
-    computed_calls = get_text_of_call_files(cg_only_output_dir,
-                                            motifs_str='CG',
-                                            user_config_file=config_file_path)
-    yield computed_calls
-    shutil.rmtree(tmpdir)
-
-
-@pytest.fixture(scope='module')
-def all_motifs_run_file_contents(base_command_list, index_file_paths_dict, config_file_path):
-
-    # using a non-existent output dir is intentional
-    # mqc should create the output dir recursively
-    tmpdir = tempfile.mkdtemp()
-    all_motifs_output_dir = op.join(tmpdir, 'all-motifs')
-    subprocess.check_call(base_command_list
-                          + ['--output_dir', all_motifs_output_dir]
-                          + index_file_paths_dict['CG-CHG-CHH'])
-    computed_calls = get_text_of_call_files(all_motifs_output_dir,
-                                            motifs_str='CG-CHG-CHH',
-                                            user_config_file=config_file_path)
-    yield computed_calls
-    shutil.rmtree(tmpdir)
-
-
-@pytest.mark.acceptance_test
-@pytest.mark.parametrize('motif_str,chrom',
-                         (('CG', '1'),
-                          ('CG', '2')))
-def test_makes_correct_calls_for_cg_only_run(
-        motif_str, chrom, cg_run_file_contents, expected_results_dict):
-
-    computed_calls = cg_run_file_contents[(chrom, motif_str)]
-    expected_calls = expected_results_dict[chrom][motif_str]
-
-    msg = dedent(f"""\
-    Computed
-    --------
-    {computed_calls}
-    
-    Expected
-    --------
-    {expected_calls}
-    """)
-
-    assert computed_calls == expected_calls, msg
-
-
-@pytest.mark.acceptance_test
-@pytest.mark.parametrize('motif_str,chrom',
-                         (('CG',  '1'),
-                          ('CG',  '2'),
-                          ('CHG', '1'),
-                          ('CHG', '2'),
-                          ('CHH', '1'),
-                          ('CHH', '2'),)
-                         )
-def test_makes_correct_calls_for_all_motifs_run(
-        motif_str, chrom, all_motifs_run_file_contents, expected_results_dict):
-
-    computed_calls = all_motifs_run_file_contents[(chrom, motif_str)]
-    expected_calls = expected_results_dict[chrom][motif_str]
-
-    msg = dedent(f"""\
-    Computed
-    --------
-    {computed_calls}
-    
-    Expected
-    --------
-    {expected_calls}
-    """)
-
-    assert computed_calls == expected_calls, msg
-
-
+# noinspection PyShadowingNames
 @pytest.mark.parametrize('output_formats', 'bismark bismark,bed bed'.split())
 @pytest.mark.parametrize('motifs_str', ['CG', 'CG-CHG-CHH'])
 def test_call_tool(tmpdir, config_file_path, index_file_paths_dict,
                    motifs_str, output_formats, make_interactive):
+    """Test call tool across various combinations of options
+
+    Args:
+        config_file_path: fixture, providing paths to custom config
+            files. The config files are used to support testing the
+            trimming functionality. See fixture doc for details.
+    """
+
+    # When new output formats are added:
+    # - add to output_formats parametrization (above)
+    # - add to all_output_formats variable (below)
 
     tmpdir = str(tmpdir)
 
@@ -297,11 +168,18 @@ def test_call_tool(tmpdir, config_file_path, index_file_paths_dict,
     # add index files as positional arguments
     command_args += index_file_paths_dict[motifs_str]
 
+    # If the config file with deliberately wrong config of the fixed
+    # cutting sites is used, we must use the cutting sites object
+    # defined in this config file
     if Path(config_file_path).stem == 'all_zero_fixed_cut_sites':
         command_args += ['--use_mbias_fit']
 
     subprocess.run(command_args, check=True)
 
+    # interactive testing allows inspecting results in the browser
+    # which may be helpful during development
+    # for automated testing, don't set the make_interactive flag of
+    # pytest!
     if not make_interactive:
         config = assemble_config_vars(
             command_line_args_dict=dict(
@@ -313,6 +191,9 @@ def test_call_tool(tmpdir, config_file_path, index_file_paths_dict,
                 motifs_str=motifs_str),
             default_config_file_path=DEFAULT_CONFIG_FILE,
             user_config_file_path=config_file_path)
+
+        # The mcall files will be present per motif and chrom
+        # we always process chromosomes 1 and 2 on the test BAM file
         output_path_templates = dict(
             bed=(config['paths']['meth_calls_basepath'] +
                  f'_{SAMPLE_NAME}_{{motif}}_{{chrom}}.bed.gz'),
@@ -320,6 +201,13 @@ def test_call_tool(tmpdir, config_file_path, index_file_paths_dict,
                      .replace('[', '{').replace(']', '}'))
         )
 
+        # Check that all expected files are there, but no unexpected
+        # files were produced
+        # --------------------------------------------------------------
+        # To find out which mcall files should not be there:
+        # 1. Compute all files which may possibly be created
+        # 2. Compute files which should be created
+        # 3. Find the complement 1 - 2
         all_motifs = 'CG CHG CHH'.split()
         all_output_formats = 'bed bismark'.split()
         all_chroms = '1 2'.split()
@@ -333,22 +221,37 @@ def test_call_tool(tmpdir, config_file_path, index_file_paths_dict,
             motifs, output_formats, chroms))
 
         for motif, output_format, chrom in spec_tuples_for_expected_output:
-            assert Path(output_path_templates[output_format].format(motif=motif, chrom=chrom)).exists()
+            assert (Path(output_path_templates[output_format]
+                         .format(motif=motif, chrom=chrom)).exists())
 
-        for motif, output_format, chrom in all_possible_file_spec_tuples - spec_tuples_for_expected_output:
-            assert not Path(output_path_templates[output_format].format(motif=motif, chrom=chrom)).exists()
+        for motif, output_format, chrom in (
+                all_possible_file_spec_tuples - spec_tuples_for_expected_output):
+            assert not (Path(output_path_templates[output_format]
+                             .format(motif=motif, chrom=chrom)).exists())
+
+        # Check that file contents are correct
+        # --------------------------------------------------------------
+        # All output files are collected in a flat dict (subset of the
+        # elements in EXPECTED_RESULTS_DICT2) and then compared at once
+        # This way, the diff provided by pytest shows all failures and
+        # does not abort after the first faulty file. Achieving this
+        # through a further parametrization of this test function
+        # would be quite complicated - this is the better trade off.
 
         computed_file_contents = {}
         expected_file_contents = {}
         for motif, output_format, chrom in spec_tuples_for_expected_output:
             computed_file_contents[motif, output_format, chrom] = (
-                gzip.open(output_path_templates[output_format].format(motif=motif, chrom=chrom), 'rt').read())
+                gzip.open(output_path_templates[output_format]
+                          .format(motif=motif, chrom=chrom), 'rt').read())
             expected_file_contents[motif, output_format, chrom] = (
                 EXPECTED_RESULTS_DICT2[motif, output_format, chrom]
             )
         assert computed_file_contents == expected_file_contents
 
     else:
+        # interactive test to be used during development only
+        # run pytest with --make_interactive flag
         subprocess.run(['firefox', tmpdir])
         ans = input('Everything ok? y/n')
         if ans == 'y':
@@ -359,10 +262,18 @@ def test_call_tool(tmpdir, config_file_path, index_file_paths_dict,
 # ============================================================================ #
 # Expected methylation calling outputs                                         #
 # ============================================================================ #
+#
 # Contains correct calls for all combinations of
-# - output formats: bed, stratified_bed, bismark  [more to be added, e.g. vcf]
+# - output formats: bed, stratified_bed, bismark [more to come, e.g. vcf]
 # - motifs: CG, CHG, CHH
 # - test data chromosomes: 1, 2
+#
+# The correct file contents were created manually, based on the
+# cutting sites defined in the config file. The same cutting sites
+# are defined in both the fixed cutting sites section of the 'correct
+# config file' and in the CuttingSites object provided through
+# the 'faulty config file'. See config file fixture for details.
+
 
 EXPECTED_RESULTS_DICT2 = {
 
@@ -466,49 +377,3 @@ EXPECTED_RESULTS_DICT2 = {
         HWI-ST1153:88:D1E30ACXX:1:1114:17740:51566      -       2       3281434 h
         """)),
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

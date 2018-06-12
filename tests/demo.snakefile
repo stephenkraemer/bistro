@@ -18,11 +18,12 @@ pids_csv='mpp1_3'
 snakemake \
 --snakefile ~/projects/mqc/tests/demo.snakefile \
 --config pids=$pids_csv motifs=CG \
---dryrun
-
 --jobs 1000 \
 --jobscript /home/kraemers/projects/mqc/tests/jobscript_lsf.sh \
 --cluster "bsub -R rusage[mem={params.mem}G] -M {params.mem}G -n {params.cores} -J {params.name} -W {params.walltime}" \
+--forcerun call \
+--dryrun
+
 
 --cluster "qsub -S /bin/bash -l walltime={params.walltime},mem={params.mem}g,nodes=1:ppn={params.cores} -N {params.name}" \
 
@@ -237,9 +238,9 @@ mcall_command = (
     ' --sample_meta {params.sample_meta}'
     ' --cores {params.cores}'
     ' --output_formats bed,bismark'
-    ' --use_mbias_fit'
     ' {input.index_files}'
 )
+# ' --use_mbias_fit'
 rule call:
     input:
         bam=bam_pattern_by_pid,

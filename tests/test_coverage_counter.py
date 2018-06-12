@@ -32,6 +32,17 @@ EXPECTED_COVERAGE = {'CG': pd.DataFrame({'motif': ['CG', 'CG', 'CG'],
                                                  'coverage': [2, 8, 4, 2, 1],
                                                  'counts': np.array([2, 1, 1, 0, 1], dtype='u4')})}
 
+
+# Note on CoverageCounter and its tests
+# ----------------------------------------------------------------------
+# When introducing bismark output, I decided to stop updating the
+# CoverageCounter code for now. It is likely that the coverage counter
+# functionality will be moved outside of the core algorithm. Therefore,
+# I have not updated the acceptance test to reflect api changes when
+# multiple output formats (bismark in this step) were introduced
+# Further, the automatic inclusion of coverage counter with bed
+# file output was removed. To start using coverage count again, just
+# insert it as visitor and update these tests to the new call tool API
 class TestCoverageCounterProcessing:
     def test_updates_cov_counter_array(self):
 
@@ -103,5 +114,3 @@ class TestCoverageCounterProcessing:
                 msg = f"Computed ({df_type} dataframe): {computed_df_slice}" \
                       f" \nExpected coverage: {expected_df}"
                 assert computed_df_slice.equals(expected_df), msg
-
-
