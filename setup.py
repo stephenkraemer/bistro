@@ -158,25 +158,26 @@ setup(name='mqc',
       },
 
       install_requires=[
+          # 'rpy2',  only for mbias plots if plotting with R ggplot2
           'altair',
           'click',
+          'dataclasses',
+          # 'dpcontracts',  (github)
           'feather-format',
           'ipywidgets',
           'joblib',
           'matplotlib',
+          'more_itertools'
           'numpy',
           'pandas',
           'plotnine',
           'python-magic>=0.4.13',
-          'toml',
-          'dataclasses',
-          # 'rpy2',  only for mbias plots if plotting with R ggplot2
           'scikit-learn',
           'scipy',
           'seaborn',
           'statsmodels',
+          'toml',
           'toolz',
-          'more_itertools'
       ] + required_pysam,
 
       extras_require={

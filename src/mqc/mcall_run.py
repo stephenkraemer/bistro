@@ -1,17 +1,19 @@
 """Manage runs across a set of index positions"""
-
+import json
 import multiprocessing as mp
-import pickle
+import sys
 from abc import abstractmethod, ABCMeta
 from collections import OrderedDict
 from copy import deepcopy
+from pathlib import Path
 from typing import Dict, List
 
+import pandas as pd
 import pysam
-from mqc.coverage import CoverageCounter
+
 from mqc.index import IndexFile
-from mqc.mbias import MbiasCounter, FixedRelativeCuttingSites
-from mqc.mcaller import MethCaller, StratifiedMethCaller, StratifiedBetaCounter
+from mqc.mbias import MbiasCounter, CuttingSitesReplacementClass
+from mqc.mcaller import MethCaller
 from mqc.overlap import OverlapHandler
 from mqc.pileup.pileup import stepwise_pileup_generator
 from mqc.qc_filters import PhredFilter, MapqFilter
@@ -34,11 +36,49 @@ def collect_stats(config):
 
 
 def run_mcalling(config):
-    if config['run']['use_mbias_fit']:
-        with open(config['paths']['adjusted_cutting_sites_obj_p'], 'rb') as fin:
-            cutting_sites = pickle.load(fin)
-    else:
-        cutting_sites =  FixedRelativeCuttingSites(config)
+
+    trimm_command, trimm_param = config['run']['trimming'].split('::')
+    max_read_length = config['run']['max_read_length']
+
+    if trimm_command == 'read_end':
+        # TODO: fill
+        raise NotImplementedError
+
+    elif trimm_command == 'frag_end':
+        param_err_message = (f'Cannot interprete the parameter {trimm_param} '
+                             f'for command {trimm_command}')
+        try:
+            trimm_param_dict = json.loads(trimm_param)
+            set(trimm_param_dict.keys()) == {*'c_bc c_bc_rv w_bc w_bc_rv'.split()}
+        except AttributeError:
+            print(param_err_message, file=sys.stderr)
+            raise
+        if not isinstance(trimm_param_dict['c_bc'], list):
+            raise ValueError(param_err_message)
+
+        cutting_sites = CuttingSitesReplacementClass.from_rel_to_frag_end_cutting_sites(
+            cut_site_spec=trimm_param_dict, max_read_length=max_read_length)
+
+    elif trimm_command == 'cutting_sites':
+
+        assert Path(trimm_param).exists(), f'Can not find cutting sites df {trimm_param}'
+        suffix = Path(trimm_param).suffix
+        assert suffix in ['.p', '.feather', '.tsv'], \
+            f'Cutting sites dataframe file does not have a supported format ({suffix})'
+
+        if suffix == '.p':
+            cutting_sites_df = pd.read_pickle(trimm_param)
+        elif suffix == '.feather':
+            # TODO-important: fill
+            raise NotImplementedError
+        else:  # tsv
+            # TODO-important: fill
+            raise NotImplementedError
+
+        cutting_sites = CuttingSitesReplacementClass(cutting_sites_df=cutting_sites_df,
+                                                     max_read_length=max_read_length)
+
+    # noinspection PyUnboundLocalVariable
     second_run = QcAndMethCallingRun(config,
                                      cutting_sites=cutting_sites)
     second_run.run_parallel()
@@ -235,6 +275,7 @@ class MbiasDeterminationRun(PileupRun):
     """
 
     def _get_visitors(self, chrom) -> Dict[str, Visitor]:
+        # noinspection PyTypeChecker
         return OrderedDict(
             mbias_counter=MbiasCounter(self.config),
         )
@@ -267,7 +308,7 @@ class QcAndMethCallingRun(PileupRun):
 
         visitors = OrderedDict(
             mapq_filter=MapqFilter(self.config),
-            trimmer=Trimmer(self.config, self.cutting_sites),
+            trimmer=Trimmer(cutting_sites=self.cutting_sites),
             overlap_handler=OverlapHandler(),
             phred_filter=PhredFilter(self.config),
         )

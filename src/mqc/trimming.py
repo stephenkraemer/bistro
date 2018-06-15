@@ -1,4 +1,4 @@
-from mqc.mbias import CuttingSites
+from mqc.mbias import CuttingSitesReplacementClass
 from mqc.visitors import Visitor
 from mqc.pileup.pileup import MotifPileup
 from mqc.flag_and_index_values import bsseq_strand_indices, methylation_status_flags
@@ -23,10 +23,10 @@ class Trimmer(Visitor):
     are passed
     """
 
-    def __init__(self, config, cutting_sites: CuttingSites):
-        self.cutting_sites = cutting_sites
-        self.cutting_sites_array = cutting_sites.get_array()
-        self.max_flen = config["trimming"]["max_flen_considered_for_trimming"]
+    def __init__(self, cutting_sites: CuttingSitesReplacementClass):
+        self.cutting_sites_array = cutting_sites.as_array()
+        flen_idx = list(cutting_sites.df.index.names).index('flen')
+        self.max_flen = self.cutting_sites_array.shape[flen_idx] - 1
 
     def process(self, motif_pileup: MotifPileup):
         for read in motif_pileup.reads:
@@ -42,7 +42,7 @@ class Trimmer(Visitor):
             start_of_plateau = self.cutting_sites_array[bstrand_idx, tlen, 0]
             end_of_plateau = self.cutting_sites_array[bstrand_idx, tlen, 1]
 
-            if not (start_of_plateau <= read.pos_in_read <= end_of_plateau):
+            if not (start_of_plateau <= read.pos_in_read < end_of_plateau):
                 # one could use different trimming modes and set different flag values for the trimming flag
                 # currently, only the first bit is used
                 read.trimm_flag = 1

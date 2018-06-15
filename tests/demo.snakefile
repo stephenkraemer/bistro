@@ -13,7 +13,8 @@ pids_csv=$(echo mpp?_? hsc_? | tr ' ' ,)
 echo $pids_csv
 cd
 
-pids_csv='mpp1_3'
+pids_csv='mpp1_1,mpp1_2,mpp1_3'
+pids_csv='hsc_2'
 
 snakemake \
 --snakefile ~/projects/mqc/tests/demo.snakefile \
@@ -21,7 +22,8 @@ snakemake \
 --jobs 1000 \
 --jobscript /home/kraemers/projects/mqc/tests/jobscript_lsf.sh \
 --cluster "bsub -R rusage[mem={params.mem}G] -M {params.mem}G -n {params.cores} -J {params.name} -W {params.walltime}" \
---forcerun call \
+--forcerun evaluate_mbias \
+--keep-going \
 --dryrun
 
 
@@ -59,6 +61,7 @@ all_stats_files = expand(mbias_counter_pattern_by_pid, pid=config['pids']),
 
 ## evaluate_mbias
 adj_cut_sites_obj_by_pid = f"{output_rpp_dir}/{{pid}}/meth/qc_stats/{{pid}}_adjusted_cutting_sites_obj_{motifs_msv_str}.p"
+adj_cut_sites_df_by_pid = f"{output_rpp_dir}/{{pid}}/meth/qc_stats/{{pid}}_adjusted_cutting_sites_df_{motifs_msv_str}.p"
 full_mbias_stats_pattern_by_pid = f"{output_rpp_dir}/{{pid}}/meth/qc_stats/{{pid}}_mbias-stats_{motifs_msv_str}.p"
 trimmed_mbias_stats_pattern_by_pid = f"{output_rpp_dir}/{{pid}}/meth/qc_stats/{{pid}}_mbias-stats_masked_{motifs_msv_str}.p"
 full_phredfiltered_mbias_stats_by_pid = f"{output_rpp_dir}/{{pid}}/meth/qc_stats/{{pid}}_mbias-stats_phred-threshold_{motifs_msv_str}.p.p"
@@ -117,7 +120,7 @@ rule all:
         all_index_files,
         all_stats_files,
         all_evaluate_stats_files,
-        # expand(mbias_plot_done_by_pid, pid=config['pids']),
+        expand(mbias_plot_done_by_pid, pid=config['pids']),
         all_mcall_files,
         # all_coverage_counter_files,
         # all_evaluate_calls_files,
@@ -174,10 +177,11 @@ rule evaluate_mbias:
     input:
         mbias_counter = mbias_counter_pattern_by_pid
     output:
-        full_mbias_stats_pattern_by_pid,
+        # full_mbias_stats_pattern_by_pid,
         trimmed_mbias_stats_pattern_by_pid,
         full_phredfiltered_mbias_stats_by_pid,
         trimmed_phredfiltered_mbias_stats_by_pid,
+        adj_cut_sites_df_by_pid,
     params:
         output_dir = output_dir_by_pid,
         walltime = '01:00',
@@ -192,7 +196,8 @@ rule evaluate_mbias:
         --motifs {config[motifs_csv]} \
         --sample_name {wildcards.pid} \
         --sample_meta {params.sample_meta} \
-        --output_dir {params.output_dir}
+        --output_dir {params.output_dir} \
+        --use_cached_mbias_stats
         """
 
 def get_datasets_str(wildcards, input):
@@ -238,6 +243,8 @@ mcall_command = (
     ' --sample_meta {params.sample_meta}'
     ' --cores {params.cores}'
     ' --output_formats bed,bismark'
+    ' --trimming cutting_sites::{input.cutting_sites_df}'
+    ' --max_read_length 101'
     ' {input.index_files}'
 )
 # ' --use_mbias_fit'
@@ -245,7 +252,7 @@ rule call:
     input:
         bam=bam_pattern_by_pid,
         index_files = all_index_files,
-        adj_cut_sites_obj = adj_cut_sites_obj_by_pid,
+        cutting_sites_df = adj_cut_sites_df_by_pid,
     params:
         mem = '26',
         cores = '12',

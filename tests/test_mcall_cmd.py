@@ -1,4 +1,5 @@
 import gzip
+import json
 import os.path as op
 import pickle
 import pytest
@@ -12,7 +13,7 @@ from pathlib import Path
 from textwrap import dedent
 
 from mqc.config import assemble_config_vars
-from mqc.mbias import FixedRelativeCuttingSites
+from mqc.mbias import FixedRelativeCuttingSites, CuttingSitesReplacementClass
 from mqc.utils import get_resource_abspath
 
 TESTS_DIR = op.dirname(__file__)
@@ -40,35 +41,23 @@ def space_to_tab(s):
 
 
 @pytest.fixture(scope="module")
-def cutting_sites_obj_fp() -> FixedRelativeCuttingSites:
-    """Provide FixedRelativeCuttingSites as fixture
-
-    Used to test the --use_mbias_fit option
-    """
-    config_stub = toml.loads(dedent("""
-            [trimming]
-              max_flen_considered_for_trimming = 500
-              [trimming.relative_to_fragment_ends_dict]
-                w_bc    = [0, 20]
-                c_bc    = [0, 20]
-                w_bc_rv = [15, 0]
-                c_bc_rv = [15, 0]
-                
-            [data_properties]
-              max_read_length_bp = 101
-    """))
-    fixed_cutting_sites = FixedRelativeCuttingSites(config_stub)
+def cutting_sites_obj_fp_fix():
+    """Provide FixedRelativeCuttingSites as fixture"""
+    cutting_sites = CuttingSitesReplacementClass.from_rel_to_frag_end_cutting_sites(
+        cut_site_spec=dict(w_bc    = [0, 20], c_bc    = [0, 20],
+                           w_bc_rv = [15, 0], c_bc_rv = [15, 0]),
+        max_read_length=101)
     tmpdir = tempfile.mkdtemp()
-    fixed_cutting_sites_fp = op.join(tmpdir, 'cutting_sites.p')
-    with open(fixed_cutting_sites_fp, 'wb') as fout:
-        pickle.dump(fixed_cutting_sites, fout)
-    yield fixed_cutting_sites_fp
+    cutting_sites_df_fp = op.join(tmpdir, 'cutting_sites_df.p')
+    cutting_sites.df.to_pickle(cutting_sites_df_fp)
+    yield cutting_sites_df_fp
     shutil.rmtree(tmpdir)
 
 
+# noinspection PyIncorrectDocstring,PyShadowingNames
 @pytest.fixture(scope='module',
                 params=['correct_fixed_cut_sites', 'all_zero_fixed_cut_sites'])
-def config_file_path(request, cutting_sites_obj_fp: FixedRelativeCuttingSites):
+def config_file_path(request):
     """Provide custom config files for testing fixed and adjusted cutting sites
 
     Provides two variants of a user-supplied config
@@ -84,9 +73,6 @@ def config_file_path(request, cutting_sites_obj_fp: FixedRelativeCuttingSites):
     provided cutting sites object (the config file contains the
     correct path) is not used appropriately, there is no correct
     fallback option in the config file and the test will fail.
-
-    Args:
-        cutting_sites_obj_fp: provided through fixture
 
     Returns:
         Paths to two config files:
@@ -124,9 +110,6 @@ def config_file_path(request, cutting_sites_obj_fp: FixedRelativeCuttingSites):
                 c_bc    = [0, 0]
                 w_bc_rv = [0, 0]
                 c_bc_rv = [0, 0]
-            
-            [paths]
-              adjusted_cutting_sites_obj_p  = "{cutting_sites_obj_fp}"
               
             """)
 
@@ -139,10 +122,11 @@ def config_file_path(request, cutting_sites_obj_fp: FixedRelativeCuttingSites):
 
 
 # noinspection PyShadowingNames
+@pytest.mark.acceptance_test
 @pytest.mark.parametrize('output_formats', 'bismark bismark,bed bed'.split())
 @pytest.mark.parametrize('motifs_str', ['CG', 'CG-CHG-CHH'])
 def test_call_tool(tmpdir, config_file_path, index_file_paths_dict,
-                   motifs_str, output_formats, make_interactive):
+                   motifs_str, output_formats, make_interactive, cutting_sites_obj_fp_fix):
     """Test call tool across various combinations of options
 
     Args:
@@ -157,6 +141,13 @@ def test_call_tool(tmpdir, config_file_path, index_file_paths_dict,
 
     tmpdir = str(tmpdir)
 
+    pos_to_remove_from_frag_end = dict(
+        w_bc    = [0, 20],
+        c_bc    = [0, 20],
+        w_bc_rv = [15, 0],
+        c_bc_rv = [15, 0],
+    )
+
     command_args = ['mqc', 'call',
                     '--bam', TEST_BAM,
                     '--config_file', config_file_path,
@@ -164,6 +155,8 @@ def test_call_tool(tmpdir, config_file_path, index_file_paths_dict,
                     '--sample_meta', SAMPLE_META,
                     '--output_formats', output_formats,
                     '--output_dir', tmpdir,
+                    '--trimming', f"frag_end::{json.dumps(pos_to_remove_from_frag_end)}",
+                    '--max_read_length', '101',
                     '--cores', '2']
     # add index files as positional arguments
     command_args += index_file_paths_dict[motifs_str]
@@ -172,7 +165,7 @@ def test_call_tool(tmpdir, config_file_path, index_file_paths_dict,
     # cutting sites is used, we must use the cutting sites object
     # defined in this config file
     if Path(config_file_path).stem == 'all_zero_fixed_cut_sites':
-        command_args += ['--use_mbias_fit']
+        command_args += ['--trimming', f'cutting_sites::{cutting_sites_obj_fp_fix}']
 
     subprocess.run(command_args, check=True)
 
@@ -247,7 +240,8 @@ def test_call_tool(tmpdir, config_file_path, index_file_paths_dict,
             expected_file_contents[motif, output_format, chrom] = (
                 EXPECTED_RESULTS_DICT2[motif, output_format, chrom]
             )
-        assert computed_file_contents == expected_file_contents
+        assert computed_file_contents == expected_file_contents, \
+            computed_file_contents
 
     else:
         # interactive test to be used during development only

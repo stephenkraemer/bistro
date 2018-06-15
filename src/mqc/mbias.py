@@ -1,26 +1,24 @@
 #-
-import importlib
 import itertools
 import json
 import os
 import os.path as op
 import pickle
-import shelve
-from pathlib import Path
-
-import toolz as tz
 from abc import ABCMeta, abstractmethod
-from collections import namedtuple
 from copy import deepcopy
-from itertools import product
+from itertools import product, count
 from math import floor, ceil
-from typing import Dict, List, Union, Tuple, Optional, Sequence, Set
-from dataclasses import dataclass
+from pathlib import Path
+from typing import Dict, List, Union, Optional, Set
+# from dpcontracts import invariant
 
 import matplotlib
 import numpy as np
 import pandas as pd
-
+import scipy.signal
+import scipy.stats
+import toolz as tz
+from dataclasses import dataclass
 from figure_report import Report
 
 matplotlib.use('Agg')  # import before pyplot import!
@@ -32,6 +30,7 @@ from plotnine import *
 from sklearn import linear_model
 
 import mqc.flag_and_index_values as mfl
+from mqc.flag_and_index_values import bsseq_strand_indices as bstrand_idxs
 # noinspection PyUnresolvedReferences
 from mqc.pileup.bsseq_pileup_read import BSSeqPileupRead
 from mqc.pileup.pileup import MotifPileup
@@ -99,6 +98,8 @@ class MbiasCounter(Counter):
     - bs strands are labelled in lowercase, e.g. c_bc [categorical]
     - single fragment lengths are labelled with the flen as int
     - binned fragment lengths are labelled with the rightmost flen in the bin
+    - the last fragment length bin is guaranteed to end with the max_flen
+    - the last bin may therefore be smaller than the specified bin size
     - phred scores are always binned, and are also labelled with the rightmost phred score in the bin
     - pos labels: 1-based (note that array indexing is 0-based)
     - meth. status labels: n_meth, n_unmeth [categorical]
@@ -724,6 +725,29 @@ def mask_mbias_stats_df(mbias_stats_df, cutting_sites_df):
             .filter(mask_trimming_zones, dropna=False,
                     cutting_sites_df=cutting_sites_df)
             )
+
+def mask_mbias_stats_df_replacement(mbias_stats_df, cutting_sites_df):
+    """Cover pos in trimming zones (depends on bs_strand, flen...) with NA
+
+    takes between 2:15 min and 4:30 min
+    """
+
+    print("Masking dataframe")
+
+    def mask_trimming_zones(group_df, cutting_sites_df):
+        bs_strand, flen, pos = group_df.name
+        left, right = cutting_sites_df.loc[(bs_strand, flen), ['start', 'end']]
+        if left <= pos < right:
+            return True
+        else:
+            return False
+
+    return (mbias_stats_df
+            .groupby(['bs_strand', 'flen', 'pos'])
+            .filter(mask_trimming_zones, dropna=False,
+                    cutting_sites_df=cutting_sites_df)
+            )
+
 
 
 # def get_plotnine_poster_theme():
@@ -1673,46 +1697,49 @@ config['paths']['mbias_counts'] = (
 
 
 def compute_mbias_stats(config):
-    """ Run standard analysis on Mbias-Stats
+    """ Run standard analysis on Mbias-Stats"""
 
-    Parameters
-    ----------
-    config: dict
-        config['run']['no_cache'] -> don't read previously computed
-         mbias stats df from disc
-    """
+    # TODO: remove or improve
 
     # TODO: get phred threshold dfs from cache
     fps = config['paths']
 
     os.makedirs(fps['qc_stats_dir'], exist_ok=True, mode=0o770)
 
-    print("Computing M-bias stats from M-bias counter array")
-    mbias_stats_df = compute_mbias_stats_df(fps['mbias_counts'] + '.p')
-    mbias_stats_df = add_mate_info(mbias_stats_df)
-    mbias_stats_df = mbias_stats_df.sort_index()
+    # TODO: pickle is delted by snakemake?
+    if (Path(fps['mbias_stats_trunk'] + '.p').exists()
+        and config['run']['use_cached_mbias_stats']):
+        print('Reading mbias stats from previously computed pickle')
+        mbias_stats_df = pd.read_pickle(fps['mbias_stats_trunk'] + '.p')
+        print(mbias_stats_df.head())
+    else:
+        print("Computing M-bias stats from M-bias counter array")
+        mbias_stats_df = compute_mbias_stats_df(fps['mbias_counts'] + '.p')
+        mbias_stats_df = add_mate_info(mbias_stats_df)
+        mbias_stats_df = mbias_stats_df.sort_index()
 
-    # TODO: Important: fix hardcoding
-    mbias_stats_df = mbias_stats_df.loc[idxs[:, :, :, :, :, :, 1:150], :]
+        # TODO: Important: fix hardcoding
+        mbias_stats_df = mbias_stats_df.loc[idxs[:, :, :, :, :, :, 1:150], :]
 
-    # discard phreds which are not present in bins
-    print('Discarding unused phred scores')
-    n_total = mbias_stats_df["n_meth"] + mbias_stats_df["n_unmeth"]
-    phred_group_sizes = n_total.groupby("phred").sum()
-    phred_bin_has_counts = (phred_group_sizes > 0)
-    existing_phred_scores = phred_group_sizes.index.values[phred_bin_has_counts]
-    mbias_stats_df = mbias_stats_df.loc[idxs[:, :, :, :, :, existing_phred_scores], :]
-    mbias_stats_df.index = mbias_stats_df.index.remove_unused_levels()
+        # discard phreds which are not present in bins
+        print('Discarding unused phred scores')
+        n_total = mbias_stats_df["n_meth"] + mbias_stats_df["n_unmeth"]
+        phred_group_sizes = n_total.groupby("phred").sum()
+        phred_bin_has_counts = (phred_group_sizes > 0)
+        existing_phred_scores = phred_group_sizes.index.values[phred_bin_has_counts]
+        mbias_stats_df = mbias_stats_df.loc[idxs[:, :, :, :, :, existing_phred_scores], :]
+        mbias_stats_df.index = mbias_stats_df.index.remove_unused_levels()
 
-    # # interactive testing
-    # mbias_stats_df = pd.read_pickle(fps["mbias_stats_p"])
-    # flen_sel = config['plots']['mbias_flens_to_display']
-    # # careful with slice, depends on whether mate is already present
-    # mbias_stats_df = mbias_stats_df.loc[idxs[["CG"], :, :, :, flen_sel], :].copy()
+        # # interactive testing
+        # mbias_stats_df = pd.read_pickle(fps["mbias_stats_p"])
+        # flen_sel = config['plots']['mbias_flens_to_display']
+        # # careful with slice, depends on whether mate is already present
+        # mbias_stats_df = mbias_stats_df.loc[idxs[["CG"], :, :, :, flen_sel], :].copy()
 
-    save_df_to_trunk_path(mbias_stats_df, fps["mbias_stats_trunk"])
+        save_df_to_trunk_path(mbias_stats_df, fps["mbias_stats_trunk"])
 
     # Could be parallelized
+    print('Computing derived stats')
     compute_derived_mbias_stats(mbias_stats_df, config)
 
     print("DONE")
@@ -1774,13 +1801,32 @@ def compute_derived_mbias_stats(mbias_stats_df, config):
     print("Computing cutting sites")
     classic_mbias_stats_df = compute_classic_mbias_stats_df(mbias_stats_df)
 
-    adjusted_cutting_sites = AdjustedCuttingSites(
-        classic_mbias_stats_df, config)
-    adjusted_cutting_sites_df = adjusted_cutting_sites.get_df()
+    # TODO: important: get params from config or function call
+    classic_mbias_stats_df_with_n_total = classic_mbias_stats_df.assign(
+        n_total = lambda df: df['n_meth'] + df['n_unmeth']
+    )
+    # TODO-important: use config instead of hard coding
+    cutting_sites_replacement = CuttingSitesReplacementClass.from_mbias_stats(
+        mbias_stats_df=classic_mbias_stats_df_with_n_total.loc['CG', :],
+        max_read_length=101,
+        allow_slope=True,
+        min_plateau_length=30, max_slope=0.0006,
+        plateau_flen=210,
+        plateau_bs_strands=['w_bc', 'c_bc']
+    )
 
     print("Computing masked M-bias stats DF")
-    masked_mbias_stats_df = mask_mbias_stats_df(
-        mbias_stats_df, adjusted_cutting_sites_df)
+    masked_mbias_stats_df = mask_mbias_stats_df_replacement(
+        mbias_stats_df, cutting_sites_replacement.df)
+
+    if False:
+        adjusted_cutting_sites = AdjustedCuttingSites(
+            classic_mbias_stats_df, config)
+        adjusted_cutting_sites_df = adjusted_cutting_sites.get_df()
+
+        print("Computing masked M-bias stats DF")
+        masked_mbias_stats_df = mask_mbias_stats_df(
+            mbias_stats_df, adjusted_cutting_sites_df)
 
     print("Adding phred filtering info")
     phred_threshold_df = convert_phred_bins_to_thresholds(mbias_stats_df)
@@ -1797,9 +1843,10 @@ def compute_derived_mbias_stats(mbias_stats_df, config):
     fps["mbias_stats_masked_trunk"] = fps['mbias_stats_masked_p'].replace('.p', '')
     fps["adjusted_cutting_sites_df_trunk"] = fps["adjusted_cutting_sites_df_p"].replace('.p', '')
 
-    with open(fps['adjusted_cutting_sites_obj_p'], 'wb') as fobj:
-        pickle.dump(adjusted_cutting_sites, fobj)
-    save_df_to_trunk_path(adjusted_cutting_sites_df,
+    if False:
+        with open(fps['adjusted_cutting_sites_obj_p'], 'wb') as fobj:
+            pickle.dump(adjusted_cutting_sites, fobj)
+    save_df_to_trunk_path(cutting_sites_replacement.df,
                           fps["adjusted_cutting_sites_df_trunk"])
     save_df_to_trunk_path(classic_mbias_stats_df,
                           fps["mbias_stats_classic_trunk"])
@@ -2693,3 +2740,586 @@ def save_df_to_trunk_path(df, trunk_path):
     df.to_pickle(trunk_path + '.p')
     print("Saving feather")
     df.reset_index().to_feather(trunk_path + '.feather')
+
+
+def cutting_sites_df_has_correct_format(cutting_sites_df: pd.DataFrame):
+    return (not cutting_sites_df.empty
+            and list(cutting_sites_df.columns.values) == ['start', 'end']
+            and (cutting_sites_df.dtypes == np.int64).all()
+            and ['bs_strand', 'flen'] == list(cutting_sites_df.index.names)
+            and cutting_sites_df.columns.name == 'cutting_site'
+            and cutting_sites_df.index.get_level_values('bs_strand').dtype.name == 'category'
+            )
+# Adding more index levels is in general not a problem
+# Some methods would have to be adapted. With no guarantee of completeness
+# - as_array()
+# @invariant('Meets cutting site df format',
+#            lambda inst: cutting_sites_df_has_correct_format(inst.df))
+class CuttingSitesReplacementClass:
+
+    def __init__(self, cutting_sites_df, max_read_length):
+        self.df = cutting_sites_df
+        self.max_read_length = max_read_length
+
+    @staticmethod
+    def from_mbias_stats(mbias_stats_df, max_read_length, **kwargs):
+        cutting_sites_df = BinomPvalueBasedCuttingSiteDetermination(
+            mbias_stats_df=mbias_stats_df,
+            max_read_length=max_read_length,
+            **kwargs).compute_cutting_site_df()
+        return CuttingSitesReplacementClass(
+            cutting_sites_df=cutting_sites_df,
+            max_read_length=max_read_length)
+
+    @staticmethod
+    def from_rel_to_frag_end_cutting_sites(cut_site_spec: dict, max_read_length):
+
+        max_flen = max_read_length + max([elem[1] for elem in cut_site_spec.values()])
+
+        midx = pd.MultiIndex.from_product([
+            pd.Categorical(bstrand_idxs._fields, ordered=True),
+            range(0, max_flen + 1)], names=['bs_strand', 'flen'])
+        end_col = np.tile(list(range(0, max_flen + 1)), 4).astype('i8')
+        cutting_sites_df = pd.DataFrame(
+            {'start': -1, 'end': end_col}, index=midx)
+        cutting_sites_df.columns.name = 'cutting_site'
+
+        for strand in bstrand_idxs._fields:
+            cutting_sites_df.loc[strand, 'start'] = cut_site_spec[strand][0]
+            cutting_sites_df.loc[[strand], 'end'] = (cutting_sites_df.loc[[strand], 'end'] -
+                                                    cut_site_spec[strand][1])
+        bad_fragment_pos_are_outside_of_read_length = cutting_sites_df['end'] >= max_read_length
+        cutting_sites_df.loc[bad_fragment_pos_are_outside_of_read_length, 'end'] = \
+            max_read_length + 1
+        cutting_sites_df.loc[cutting_sites_df['start'] >= cutting_sites_df['end'], :] = 0
+        # implies:
+        # cutting_sites_df.loc[cutting_sites_df['end'] < 0, 'end'] = 0
+        # cutting_sites_df.loc[cutting_sites_df['end'] == 0, 'start'] = 0
+
+        return CuttingSitesReplacementClass(
+            cutting_sites_df=cutting_sites_df,
+            max_read_length=max_read_length
+        )
+
+    def as_array(self):
+        full_midx = pd.MultiIndex.from_product([
+            pd.Categorical(bstrand_idxs._fields, ordered=True),
+            range(self.df.index.get_level_values('flen').min(),
+                  self.df.index.get_level_values('flen').max() + 1)
+        ], names=['bs_strand', 'flen'])
+        df = self.df.reindex(index=full_midx).fillna(method='bfill')
+
+        df = df.astype('i8', errors='raise', copy=True)
+        df = df.stack().to_frame('cut_pos').reset_index()
+
+        df['bs_strand'].cat.categories = range(4)
+        df['cutting_site'] = df['cutting_site'].replace({'start': 0, 'end': 1})
+
+        max_flen = df['flen'].max()
+        arr = np.zeros((4, (max_flen + 1), 2), dtype='i8')
+        arr[df['bs_strand'], df['flen'], df['cutting_site']] = df['cut_pos']
+
+        return arr
+
+    def plot(self, path):
+        # TODO: account for motif or assume this will always be CG?
+        if 'motif' in self.df.index.names:
+            row_facetting_dict = {'row': 'motif'}
+        else:
+            row_facetting_dict = {}
+        plot_df = self.df.copy()
+        plot_df.columns.name = 'cut_end'
+        plot_df = plot_df.stack().to_frame('cut_pos').reset_index()
+        print(plot_df.head())
+        (alt.Chart(plot_df)
+         .mark_line()
+         .encode(x='flen:Q', y='cut_pos:Q', color='cut_end:N')
+         .facet(column='bs_strand:N',
+                # row='cut_end:N'
+                **row_facetting_dict
+                )
+         ).interactive().save(path, webdriver='firefox')
+
+
+class BinomPvalueBasedCuttingSiteDetermination:
+
+    def __init__(self, mbias_stats_df, max_read_length,
+                 allow_slope=False,
+                 min_plateau_length=30, max_slope=0.0006, plateau_flen=210,
+                 plateau_bs_strands=('c_bc', 'w_bc'),
+                 ):
+        self.plateau_flen = plateau_flen
+        self.max_slope = max_slope
+        self.max_read_length = max_read_length
+        self.plateau_bs_strands = plateau_bs_strands
+        self.min_plateau_length = min_plateau_length
+        self.allow_slope = allow_slope
+        self.mbias_stats_df = mbias_stats_df
+
+        # TODO-imporant: activate
+        # assert self.mbias_stats_df.index.get_level_values('pos').max() <= self.max_read_length, \
+        #     'M-bias stats dataframe contains positions beyond the maximal read length'
+
+
+    def compute_cutting_site_df(self) -> pd.DataFrame:
+
+        # TODO-important: setting the plateau length by hard coding is not robust
+
+        # TODO-important: fix hardcoded bug solution
+        fn_mbias_stats_df = self.mbias_stats_df.query('pos < 102')
+        fn_mbias_stats_df = fn_mbias_stats_df.fillna(0)
+        n_meth_wide = fn_mbias_stats_df['n_meth'].unstack(level='pos', fill_value=0)
+        n_total_wide = fn_mbias_stats_df['n_total'].unstack(level='pos', fill_value=0)
+        beta_values_wide = fn_mbias_stats_df['beta_value'].unstack('pos', fill_value=0)
+
+        estimated_plateau_height, estimated_plateau_height_with_slope, slope = (
+            self._estimate_plateau_height(fn_mbias_stats_df))
+        strip_low_bound = estimated_plateau_height - 0.02
+        strip_high_bound = estimated_plateau_height + 0.02
+        estimated_plateau_heights = (
+                estimated_plateau_height_with_slope + np.arange(
+            n_meth_wide.shape[1]) * slope)
+
+        if estimated_plateau_height == -1 or slope > self.max_slope:
+            df = pd.DataFrame(
+                index=fn_mbias_stats_df.unstack('pos').index,
+            )
+            df['start'] = 0
+            df['end'] = 0
+            return df
+
+        windowed_counts = self._compute_pre_and_successor_counts(
+            n_meth_wide, n_total_wide)
+
+        windowed_p_values = self._get_windowed_p_values(
+            estimated_plateau_heights, n_meth_wide, strip_high_bound,
+            strip_low_bound, windowed_counts)
+
+        predecessor_p_values_integrated = self.integrate_p_values(
+            beta_values=windowed_counts['beta_value', 'predecessors'],
+            high_p_values=windowed_p_values['predecessors', 'high'],
+            low_p_values=windowed_p_values['predecessors', 'low'],
+            strip_low_bound=strip_low_bound,
+            strip_high_bound=strip_high_bound)
+
+
+        p_values_wide_low = pd.DataFrame(self._get_p_values(k=n_meth_wide,
+                                                            n=n_total_wide,
+                                                            p=strip_low_bound),
+                                         index=n_meth_wide.index,
+                                         columns=n_meth_wide.columns)
+
+        p_values_wide_high = pd.DataFrame(self._get_p_values(k=n_meth_wide,
+                                                             n=n_total_wide,
+                                                             p=strip_high_bound),
+                                          index=n_meth_wide.index,
+                                          columns=n_meth_wide.columns)
+
+        p_values_wide_integrated = self.integrate_p_values(
+            beta_values=beta_values_wide,
+            high_p_values=p_values_wide_high,
+            low_p_values=p_values_wide_low,
+            strip_low_bound=strip_low_bound,
+            strip_high_bound=strip_high_bound,
+        )
+
+        cutting_sites_list = []
+        try:
+            flen_idx = list(fn_mbias_stats_df.index.names).index('flen')
+        except ValueError:
+            flen_idx = None
+        for i in range(p_values_wide_integrated.shape[0]):
+            if flen_idx:
+                flen = p_values_wide_integrated.index[i][flen_idx]
+            else:
+                flen = None
+            cutting_sites_list.append(self._find_breakpoints2(
+                # neighbors=predecessor_p_values_integrated.iloc[i, :],
+                neighbors=p_values_wide_integrated.iloc[i, :],
+                row=p_values_wide_integrated.iloc[i, :], flen=flen))
+        df = pd.DataFrame(cutting_sites_list, index=n_meth_wide.index)
+
+
+        group_levels = list(df.index.names)
+        group_levels.remove('flen')
+        # bug in groupby in pandas 0.23, need to take elaborate construct
+        min_flen = df.index.get_level_values('flen')[0]
+        def fn(df):
+            window_size = 21
+            return (df
+                    .rolling(window=window_size, center=True, min_periods=1)
+                    .apply(self._smooth_cutting_sites, raw=False,
+                           kwargs=dict(window_size=window_size,
+                                       min_flen=min_flen)))
+        df = (df
+                   .groupby(group_levels, group_keys=False)
+                   .apply(fn)
+                   )
+
+        df.loc[
+        df['end'] - df['start'] < self.min_plateau_length, :] = 0
+
+        df = df.astype('i8')
+
+        df.columns.name = 'cutting_site'
+
+        return df
+
+
+    @staticmethod
+    def integrate_p_values(beta_values, high_p_values, low_p_values, strip_low_bound,
+                           strip_high_bound):
+        res = high_p_values.copy()
+        max_mask = low_p_values > high_p_values
+        res[max_mask] = low_p_values[max_mask]
+        in_window_mask = beta_values.apply(
+            lambda ser: ser.between(strip_low_bound, strip_high_bound),
+            axis=0
+        )
+        res[in_window_mask] = 1
+        return res
+
+    def _get_windowed_p_values(self, estimated_plateau_heights, n_meth_wide,
+                               strip_high_bound, strip_low_bound,
+                               windowed_counts):
+        windowed_p_values = {}
+        windowed_p_values['predecessors'] = pd.DataFrame(
+            self._get_p_values(k=windowed_counts['n_meth', 'predecessors'],
+                               n=windowed_counts['n_total', 'predecessors'],
+                               p=estimated_plateau_heights),
+            index=n_meth_wide.index, columns=n_meth_wide.columns)
+        windowed_p_values['predecessors', 'low'] = pd.DataFrame(
+            self._get_p_values(k=windowed_counts['n_meth', 'predecessors'],
+                               n=windowed_counts['n_total', 'predecessors'],
+                               p=strip_low_bound, ), index=n_meth_wide.index,
+            columns=n_meth_wide.columns)
+        windowed_p_values['predecessors', 'high'] = pd.DataFrame(
+            self._get_p_values(k=windowed_counts['n_meth', 'predecessors'],
+                               n=windowed_counts['n_total', 'predecessors'],
+                               p=strip_high_bound, ), index=n_meth_wide.index,
+            columns=n_meth_wide.columns)
+        windowed_p_values['successors'] = pd.DataFrame(
+            self._get_p_values(k=windowed_counts['n_meth', 'successors'],
+                               n=windowed_counts['n_total', 'successors'],
+                               p=estimated_plateau_heights),
+            index=n_meth_wide.index, columns=n_meth_wide.columns)
+        return windowed_p_values
+
+    @staticmethod
+    def _get_p_values(k, n, p):
+        binom_prob = scipy.stats.binom.cdf(k=k, n=n, p=p)
+        binom_prob[binom_prob > 0.5] = 1 - binom_prob[binom_prob > 0.5]
+        # TODO-important: times 2 correct?
+        return binom_prob * 2
+
+    def _compute_pre_and_successor_counts(self, n_meth_wide, n_total_wide):
+        successor_filter = np.concatenate([np.tile(1, 10), np.tile(0, 11)])
+        predecessor_filter = successor_filter[::-1]
+        windowed_counts = {}
+        windowed_counts['n_meth', 'predecessors'] = (n_meth_wide.apply(
+            lambda ser: np.convolve(ser.values, predecessor_filter,
+                                    mode='same'), axis=0))
+        windowed_counts['n_meth', 'successors'] = (n_meth_wide.apply(
+            lambda ser: np.convolve(ser.values, successor_filter, mode='same'),
+            axis=0))
+        windowed_counts['n_total', 'predecessors'] = (n_total_wide.apply(
+            lambda ser: np.convolve(ser.values, predecessor_filter,
+                                    mode='same'), axis=0))
+        windowed_counts['n_total', 'successors'] = (n_total_wide.apply(
+            lambda ser: np.convolve(ser.values, successor_filter, mode='same'),
+            axis=0))
+        windowed_counts['beta_value', 'successors'] = (
+                windowed_counts['n_meth', 'successors'] / windowed_counts[
+            'n_total', 'successors']
+
+        )
+        windowed_counts['beta_value', 'predecessors'] = (
+                windowed_counts['n_meth', 'predecessors'] / windowed_counts[
+            'n_total', 'predecessors']
+
+        )
+        return windowed_counts
+
+    def _estimate_plateau_height(self, mbias_stats_df):
+
+        mbias_curve_for_plateau_detection = (mbias_stats_df
+                                             .loc[nidxs(bs_strand=self.plateau_bs_strands), :]
+                                             .query('flen >= @self.plateau_flen')
+                                             .groupby(level='pos').sum())
+        mbias_curve_for_plateau_detection = (
+            mbias_curve_for_plateau_detection.assign(
+                beta_value=compute_beta_values))
+
+        estimated_plateau_height_with_slope, slope = self._estimate_plateau_with_slope(
+            n_meth=mbias_curve_for_plateau_detection['n_meth'],
+            coverage_arr=mbias_curve_for_plateau_detection['n_total'], )
+        # estimated_plateau_height, slope = self._estimate_most_plausible_linear_model_with_slope(
+        #     n_meth_arr=global_mbias_curve['n_meth'],
+        #     coverage_arr=global_mbias_curve['n_total'],
+        #     beta_value_arr=global_mbias_curve['beta_value']
+        # )
+        estimated_plateau_height, _tmp = self._estimate_plateau(
+            n_meth=mbias_curve_for_plateau_detection['n_meth'],
+            coverage_arr=mbias_curve_for_plateau_detection['n_total'], )
+        return estimated_plateau_height, estimated_plateau_height_with_slope, slope
+
+    def _smooth_cutting_sites(self, ser, window_size, min_flen):
+
+        # rolling windows don't prepend/append nan at the edges of the df
+        # have to prepend ourselves, makes following logic easier
+        if ser.shape[0] < window_size:
+            if ser.index.get_level_values('flen')[0] == min_flen:
+                arr = np.concatenate([np.tile(np.nan, window_size - ser.shape[0]),
+                                      ser.values])
+            else:
+                arr = np.concatenate([ser.values,
+                                      np.tile(np.nan, window_size - ser.shape[0])])
+        else:
+            arr = ser.values
+
+        window_half_size = np.int(window_size/2 - 1/2)
+        left_repr_value, left_repr_value_counts = self.get_representative_value(
+            arr[0:window_half_size])
+        right_repr_value, right_repr_value_counts = self.get_representative_value(
+            arr[-window_half_size:])
+        if left_repr_value == right_repr_value:
+            return left_repr_value
+
+        else:
+            return arr[window_half_size]
+
+    @staticmethod
+    def get_representative_value(arr):
+        arr = arr[~np.isnan(arr)].astype(int)
+        repr_value = np.nan
+        repr_value_counts = np.nan
+        if arr.shape[0] >= 3:
+            counts = np.bincount(arr)
+            max_counts = np.max(counts)
+            n_max = np.sum(counts == max_counts)
+            if n_max == 1 and max_counts >= 3:
+                repr_value = np.argmax(counts)
+                repr_value_counts = max_counts
+        return repr_value, repr_value_counts
+
+    @staticmethod
+    def _compute_window_based_p_value(p_value_arr):
+        return np.min(p_value_arr)
+
+    @staticmethod
+    def _find_breakpoints(row, p_value_threshold=10**-6,
+                          n_consecutive_plateau_points=5):
+
+        def go_from_seed_to_plateau(seed_idx, direction):
+            if direction == 'forward':
+                step = 1
+            else:
+                step = -1
+            n_good_points = 0
+            for i in count(seed_idx + step, step):
+                try:
+                    if row.iloc[i] > p_value_threshold:
+                        n_good_points += 1
+                        if n_good_points > n_consecutive_plateau_points:
+                            if direction == 'forward':
+                                return i - n_consecutive_plateau_points
+                            else:
+                                return row.shape[0] + (i + n_consecutive_plateau_points) + 1
+                    else:
+                        n_good_points = 0
+                except IndexError:
+                    return -1
+
+        if row.iloc[0] < p_value_threshold:
+            left_bkp = go_from_seed_to_plateau(0, 'forward')
+            if left_bkp == -1:
+                return pd.Series(dict(start=0, end=0))
+        else:
+            left_bkp = 0
+
+        if row.iloc[-1] < p_value_threshold:
+            right_bkp = go_from_seed_to_plateau(-1, 'backward')
+            if right_bkp == -1:
+                return pd.Series(dict(start=0, end=0))
+        else:
+            right_bkp = row.shape[0] - 1
+
+        return pd.Series((dict(start=left_bkp, end=right_bkp)))
+
+    @staticmethod
+    def _find_breakpoints2(neighbors, row, p_value_threshold=10**-6,
+                           n_consecutive_plateau_points=5, flen=None):
+
+        def go_from_seed_to_plateau(seed_idx, direction, p_value_threshold=0.1):
+            if direction == 'forward':
+                step = 1
+            else:
+                step = -1
+            n_good_points = 0
+            for i in count(seed_idx + step, step):
+                try:
+                    if neighbors.iloc[i] > p_value_threshold:
+                        n_good_points += 1
+                        if n_good_points > n_consecutive_plateau_points:
+                            if direction == 'forward':
+                                return i - n_consecutive_plateau_points
+                            else:
+                                return neighbors.shape[0] + (i + n_consecutive_plateau_points) + 1
+                    else:
+                        n_good_points = 0
+                except IndexError:
+                    return -1
+
+        if neighbors.iloc[0] < p_value_threshold:
+            left_bkp = go_from_seed_to_plateau(0, 'forward')
+            if left_bkp == -1:
+                return pd.Series(dict(start=0, end=0))
+        else:
+            left_bkp = 0
+
+        if flen and flen >= neighbors.shape[0]:
+            last_pos_idx = -1
+        elif flen and flen < neighbors.shape[0]:
+            last_pos_idx = -(neighbors.shape[0] - flen + 1)
+        else:
+            last_pos_idx = -1
+
+        # TODO: coverage of zero -> p value of 1
+        # TODO: skip nan inwards
+        if neighbors.iloc[last_pos_idx] < p_value_threshold:
+            right_bkp = go_from_seed_to_plateau(last_pos_idx, 'backward')
+            if right_bkp == -1:
+                return pd.Series(dict(start=0, end=0))
+        else:
+            right_bkp = neighbors.shape[0]
+
+        return pd.Series((dict(start=left_bkp, end=right_bkp)))
+
+
+    def _estimate_most_plausible_linear_model_assuming_no_slope(
+            self, n_meth, coverage_arr):
+        """Determine the line (with no slope) which explains the most of the observed points
+
+        If several plateau heights explain the same number of points, take the median
+        plateau height.
+        """
+
+        n_linspace = 1000
+        explained_points = []
+        for curr_plateau_height in np.linspace(0,1,n_linspace):
+            explained_points.append(
+                sum(self._convert_mbias_curve_to_pvalues(
+                    n_meth=n_meth, coverage_arr=coverage_arr,
+                    plateau_heights_=curr_plateau_height)
+                    > 0.01))
+        explained_points_arr = np.array(explained_points)
+        plateau_guess = np.median(
+            np.nonzero(explained_points_arr == max(explained_points_arr))) / n_linspace
+        # also return slope
+        return plateau_guess, 0
+
+    def _estimate_plateau(self, n_meth, coverage_arr):
+        plateau_heights = np.linspace(0, 1, 1000)
+        p_value_mat = scipy.stats.binom.cdf(k=n_meth[np.newaxis, :],
+                                            n=coverage_arr[np.newaxis, :],
+                                            p=plateau_heights[:, np.newaxis])
+        p_value_mat[p_value_mat > 0.5] = 1 - p_value_mat[p_value_mat > 0.5]
+        # TODO: only take elements times 2 where it makes sense
+        p_value_mat *= 2
+        log_p_value_mat = np.log10(p_value_mat + 10**-30)
+        # TODO-important: discarding rows if more than half of the row is bad may be too harsh
+        row_is_ok = np.sum(log_p_value_mat < -4, axis=1) < n_meth.shape[0] / 2
+        log_p_value_mat = log_p_value_mat[row_is_ok, :]
+        remaining_indices = np.arange(0, 1000)[row_is_ok]
+        log_p_value_mat[log_p_value_mat < -8] = 0
+        try:
+            plateau_height_ = remaining_indices[np.argmax(np.sum(log_p_value_mat, axis=1))] / 1000
+        except ValueError:
+            # if log_p_value_mat is empty due to filtering above
+            plateau_height_ = -1
+        return plateau_height_, 0
+
+    def _estimate_plateau_with_slope(self, n_meth, coverage_arr):
+        # n_meth = np.concatenate([np.tile(0, 9), np.tile(70, 92)])
+        # coverage_arr = np.tile(100, 101)
+        plateau_heights = np.linspace(0, 1, 200)
+        slopes = np.linspace(0, 0.002, 100)
+        pos = np.arange(n_meth.shape[0])
+        ms = slopes[:, np.newaxis] * pos[np.newaxis, :]
+        mat = ms[np.newaxis, :, :] + plateau_heights[:, np.newaxis, np.newaxis]
+        mat[mat > 1] = 1
+        mat[mat < 0] = 0
+        p_value_mat = scipy.stats.binom.cdf(k=n_meth[np.newaxis, np.newaxis, :],
+                                            n=coverage_arr[np.newaxis, np.newaxis, :],
+                                            p=mat)
+        p_value_mat[p_value_mat > 0.5] = 1 - p_value_mat[p_value_mat > 0.5]
+        p_value_mat *= 2
+        log_p_value_mat = np.log10(p_value_mat + 10**-30)
+        row_is_ok = np.sum(log_p_value_mat < -4, axis=2) < n_meth.shape[0] / 2
+        log_p_value_mat[log_p_value_mat < -4] = np.nan
+        sums = np.nansum(log_p_value_mat, axis=2)
+        idx = np.nonzero(row_is_ok)
+        ok_events = sums[row_is_ok]
+        plateau_height = plateau_heights[idx[0][np.argmax(ok_events)]]
+        slope = slopes[idx[1][np.argmax(ok_events)]]
+        return plateau_height, slope
+        # remaining_indices = np.arange(0, 1000)[row_is_ok]
+        # log_p_value_mat[log_p_value_mat < -8] = 0
+        # plateau_height_ = remaining_indices[np.argmax(np.sum(log_p_value_mat, axis=1))] / 1000
+
+    @staticmethod
+    def _convert_mbias_curve_to_pvalues(n_meth, coverage_arr,
+                                        plateau_heights_: Union[int, np.ndarray]):
+
+        p_values = scipy.stats.binom.cdf(n=coverage_arr,
+                                         p=plateau_heights_, k=n_meth)
+        p_values[p_values > 0.5] = 1 - p_values[p_values > 0.5]
+        p_values = p_values * 2
+        return p_values
+
+    def _estimate_most_plausible_linear_model_with_slope(
+            self, n_meth_arr, beta_value_arr, coverage_arr):
+        """Brute force estimation"""
+
+        n_unexplained = []
+        intercepts = []
+        slopes = []
+
+        # A very naive first attempt to guess a good range for where to look for the
+        # intercept. This is function is fast enough that this would not even be necessary
+        # but it was helpful to get additional speedup for interactive work
+        hist = np.histogram(np.round(beta_value_arr, 2))
+        intercept_guess = hist[1][np.argmax(hist[0])]  # suboptimal for slopes
+
+        for intercept, slope in product(
+                np.linspace(intercept_guess - 0.15, intercept_guess + 0.15, 50),
+                np.linspace(0, 0.002, 100)):
+            n_unexplained.append(
+                self._get_n_unexplained_points(
+                    n_meth=n_meth_arr,
+                    coverage_arr=coverage_arr,
+                    intercept=intercept,
+                    slope=slope))
+            intercepts.append(intercept)
+            slopes.append(slope)
+
+        n_unexplained_arr = np.array(n_unexplained)
+        intercepts = np.array(intercepts)
+        slopes = np.array(slopes)
+        idx = np.nonzero(n_unexplained_arr == n_unexplained_arr.min())
+        return np.median(intercepts[idx]), np.median(slopes[idx])
+
+
+    @staticmethod
+    def _get_n_unexplained_points(
+            n_meth, coverage_arr, intercept, slope, p_threshold=0.01):
+        pos_arr = np.arange(0, n_meth.shape[0])
+        line_heights = intercept + pos_arr * slope
+        line_heights[line_heights > 1] = 1
+        line_heights[line_heights < 0] = 0
+        p_values = scipy.stats.binom.cdf(n=coverage_arr, p=line_heights, k=n_meth)
+        p_values[p_values > 0.5] = 1 - p_values[p_values > 0.5]
+        p_values = p_values * 2
+        n_unexplained = sum(p_values < p_threshold)
+        return n_unexplained
+

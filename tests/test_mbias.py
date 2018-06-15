@@ -14,6 +14,8 @@ import pandas as pd
 import toml
 from io import StringIO
 
+import altair as alt
+
 idxs = pd.IndexSlice
 import numpy as np
 import pytest
@@ -23,35 +25,29 @@ from collections import Sequence
 from itertools import product
 
 from mqc.config import assemble_config_vars
-from mqc.mbias import (MbiasCounter,
-                       get_sequence_context_to_array_index_table,
-                       FixedRelativeCuttingSites,
-                       fit_normalvariate_plateau,
-                       fit_percentiles,
-                       AdjustedCuttingSites,
-                       mask_mbias_stats_df,
-                       map_seq_ctx_to_motif,
-                       convert_cutting_sites_df_to_array,
-                       compute_mbias_stats,
-                       compute_beta_values,
-                       get_plot_configs,
-    # mbias_stat_plots,
-                       aggregate_table,
-                       MbiasPlotConfig,
-    # map_dataset_specs_to_filepaths,
-                       aggregate_table,
-                       create_aggregated_tables,
-                       MbiasPlotParams,
-                       MbiasPlotMapping,
-                       MbiasAnalysisConfig,
-                       PLOTNINE_THEMES,
-                       MBIAS_STATS_DIMENSION_PLOT_LABEL_MAPPING,
-                       create_single_mbias_stat_plot,
-                       AggregatedMbiasStats,
-                       MbiasStatAggregationParams,
-                       )
+from mqc.mbias import (
+    MbiasCounter, get_sequence_context_to_array_index_table,
+    FixedRelativeCuttingSites, fit_normalvariate_plateau,
+    fit_percentiles, AdjustedCuttingSites,
+    mask_mbias_stats_df, map_seq_ctx_to_motif,
+    convert_cutting_sites_df_to_array, compute_mbias_stats,
+    compute_beta_values,
+    get_plot_configs,  # mbias_stat_plots,
+    aggregate_table,
+    MbiasPlotConfig,  # map_dataset_specs_to_filepaths,
+    aggregate_table, create_aggregated_tables,
+    MbiasPlotParams, MbiasPlotMapping, MbiasAnalysisConfig,
+    PLOTNINE_THEMES,
+    MBIAS_STATS_DIMENSION_PLOT_LABEL_MAPPING,
+    create_single_mbias_stat_plot, AggregatedMbiasStats,
+    MbiasStatAggregationParams, CuttingSitesReplacementClass,
+    BinomPvalueBasedCuttingSiteDetermination,
+    cutting_sites_df_has_correct_format,
+)
 from mqc.utils import get_resource_abspath, NamedIndexSlice, subset_dict, TmpChdir
+from mqc.utils import NamedIndexSlice as nidxs
 import mqc.filepaths
+from mqc.flag_and_index_values import bsseq_strand_indices as bstrand_idxs
 
 import matplotlib
 
@@ -570,64 +566,66 @@ def michaelis_menten_curve(vmax, km, steepness, flat_plateau_start=None, reverse
 test_mbias_shapes = {
     'perfect_shape': (
         np.ones(101) * 0.75,
-        [0,100]),
+        [0, 101]),
     'left_gap_repair_nucleotides': (
         np.concatenate([np.zeros(9), np.ones(92) * 0.75]),
-        [(8,10), 100]),
+        [9, 101]),
     'right_gap_repair_nucleotides': (
         np.concatenate([np.ones(92) * 0.75, np.zeros(9)]),
-        [0, (91,93)]),
-    # 'gaps_at_both_sites': (
-    #     np.concatenate([np.zeros(5), np.ones(87) * 0.75, np.zeros(9)]),
-    #     [5, 92]),
-    # 'sigmoid_curve_1': [
-    #     sigmoid_curve(steepness=3, min_height=0.65,
-    #                   delta=0.2, longer_plateau_length=60),
-    #     [(42, 46), 100]],
-    # 'sigmoid_curve_2': [
-    #     sigmoid_curve(steepness=3, min_height=0.65, delta=0.1,
-    #                   longer_plateau_length=70, reverse=True),
-    #     [0, (65, 75)]
-    # ],
-    # 'slight_slope': [
-    #     np.linspace(0.78, 0.8, 101),
-    #     [(0,5), (95,100)],
-    # ],
-    # 'medium_slope': [
-    #     np.linspace(0.75, 0.8, 101),
-    #     [(0, 15), (85, 100)],
-    # ],
-    # 'bad_slope': [
-    #     np.linspace(0.70, 0.8, 101),
-    #     [0,0]
-    # ],
-    # 'very_bad_slope': [
-    #     np.linspace(0.60, 0.8, 101),
-    #     [0,0]
-    # ],
-    # 'intermittent_drops': [
-    #     np.repeat([.7, 0, .7, 0, .7, 0, .7],
-    #               [20, 5, 30, 10, 20, 10, 5]),
-    #     [0,0]
-    # ],
-    # 'michaelis-menten-curve1': [
-    #     michaelis_menten_curve(vmax=0.7, km=20, steepness=10),
-    #     [(20, 40), 100]
-    # ],
-    # 'michaelis-menten-curve2': [
-    #     michaelis_menten_curve(vmax=0.7, km=20, steepness=20),
-    #     [(0, 20), 100]
-    # ],
-    # 'michaelis-menten-curve3': [
-    #     michaelis_menten_curve(vmax=0.7, km=20, steepness=2),
-    #     [0, 0]
-    # ],
-    # 'michaelis-menten-curve4': [
-    #     michaelis_menten_curve(vmax=0.7, km=20, steepness=3,
-    #                            flat_plateau_start=40, reverse=True),
-    #     [0, (60,80)]
-    # ],
+        [0, 92]),
+    'gaps_at_both_sites': (
+        np.concatenate([np.zeros(5), np.ones(87) * 0.75, np.zeros(9)]),
+        [5, 92]),
+
+    'sigmoid_curve_1': [
+        sigmoid_curve(steepness=3, min_height=0.65,
+                      delta=0.2, longer_plateau_length=60),
+        [(42, 46), 101]],
+    'sigmoid_curve_2': [
+        sigmoid_curve(steepness=3, min_height=0.65, delta=0.1,
+                      longer_plateau_length=70, reverse=True),
+        [0, (65, 75)]
+    ],
+    'slight_slope': [
+        np.linspace(0.78, 0.8, 101),
+        [(0, 5), (95, 101)],
+    ],
+    'medium_slope': [
+        np.linspace(0.75, 0.8, 101),
+        [(0, 20), (80, 101)],
+    ],
+    'bad_slope': [
+        np.linspace(0.70, 0.8, 101),
+        [0, 0]
+    ],
+    'very_bad_slope': [
+        np.linspace(0.60, 0.8, 101),
+        [0, 0]
+    ],
+    'intermittent_drops': [
+        np.repeat([.7, 0, .7, 0, .7, 0, .7],
+                  [20, 5, 30, 10, 20, 10, 5]),
+        [0, 0]
+    ],
+    'michaelis-menten-curve1': [
+        michaelis_menten_curve(vmax=0.75, km=20, steepness=10),
+        [(10, 40), 101]
+    ],
+    'michaelis-menten-curve2': [
+        michaelis_menten_curve(vmax=0.7, km=20, steepness=20),
+        [(0, 20), 101]
+    ],
+    'michaelis-menten-curve3': [
+        michaelis_menten_curve(vmax=0.7, km=20, steepness=2),
+        [0, 0]
+    ],
+    'michaelis-menten-curve4': [
+        michaelis_menten_curve(vmax=0.7, km=20, steepness=3,
+                               flat_plateau_start=40, reverse=True),
+        [0, (60,90)]
+    ],
 }
+test_mbias_shapes_with_low_coverage_slope = ['michaelis-menten-curve1']
 #-
 
 def visualize_mbias_test_shapes():
@@ -681,6 +679,7 @@ for plateau_fitter_func, test_mbias_shape_item, sd in product(
     )
 
 
+@pytest.mark.xfail(skip=True)
 @pytest.mark.parametrize('plateau_caller_fn,beta_value_arr,'
                          'expected_cutting_sites_tuple,sd,config',
                          plateau_fitting_test_parametrizations)
@@ -937,18 +936,18 @@ def user_config_file():
             [paths]
                 mbias_counts = "{tmpdir}/mbias-counter"
             [data_properties]
-                max_read_length_bp = 10
+                max_read_length_bp = 101
             [trimming]
-                max_flen_considered_for_trimming = 30
+                max_flen_considered_for_trimming = 60
                 min_plateau_perc = 0.8
                 max_std_within_plateau = 0.1
-                min_flen_considered_for_trimming = 10
+                min_flen_considered_for_trimming = 60
             [stats]
-                max_flen = 20
-                max_flen_with_single_flen_resolution = 10
-                flen_bin_size = 5
-                max_phred = 20
-                phred_bin_size = 5
+                max_flen = 300
+                max_flen_with_single_flen_resolution = 110
+                flen_bin_size = 30
+                max_phred = 40
+                phred_bin_size = 20
                 seq_context_size = 5
                 
             [plots]
@@ -968,14 +967,10 @@ def test_mbias_counter(user_config_file):
                                BINNED_SEQ_CONTEXT_TO_IDX_MAPPING)
 
         mbias_counter = MbiasCounter(config)
-        mbias_counter.counter_array[
-            SEQ_CONTEXT_TO_IDX_MAPPING['GGCGG'],
-            b_inds.c_bc,
-            12,  # tlen
-            0,  # phred
-            :,  # pos
-            0   # meth status
-        ] = 10
+        mbias_counter.counter_array[:, :, :, :, :, 0] = 700
+        mbias_counter.counter_array[:, :, :, :, :, 1] = 300
+        mbias_counter.counter_array[:, :, :, :, 0:10, 0] = 0
+        mbias_counter.counter_array[:, :, :, :, 0:10, 1] = 1000
 
         with open(config['paths']['mbias_counts'] + '.p', 'wb') as fout:
             pickle.dump(mbias_counter, fout)
@@ -989,7 +984,9 @@ def test_mbias_counter(user_config_file):
 
 
 @pytest.fixture(scope='module',
-                params=['CG', 'CG-CHG-CHH'])
+                params=['CG']
+                # params=['CG', 'CG-CHG-CHH']
+                )
 def run_evaluate_mbias_then_return_config(
         request, user_config_file, test_mbias_counter):
     # test_mbias_counter fixture must be called to place the counter
@@ -1022,92 +1019,164 @@ class TestMbiasEvaluate:
         mbias_stats_df = pd.read_pickle(config['paths']['mbias_stats_p'])
         assert isinstance(mbias_stats_df, pd.DataFrame)
 
-# redundant with CLI-based acceptance test, but great for interactive debugging
-# in IDE
-@pytest.mark.acceptance_test
-class TestAnalyseMbiasCounts:
-    def test_runs_through(self, user_config_file):
-        tmpdir = tempfile.TemporaryDirectory()
-
-        config = assemble_config_vars(
-            command_line_args_dict={'sample_name': SAMPLE_NAME,
-                                    'sample_meta': 'population=hsc',
-                                    'output_dir': tmpdir.name,
-                                    'motifs_str': 'CG',
-                                    'no_cache': False},
-            default_config_file_path=get_resource_abspath(
-                'config.default.toml'),
-            user_config_file_path=str(user_config_file)
-        )
-
-        compute_mbias_stats(config)
+# # redundant with CLI-based acceptance test, but great for interactive debugging
+# # in IDE
+# @pytest.mark.acceptance_test
+# class TestAnalyseMbiasCounts:
+#     def test_runs_through(self, user_config_file):
+#         tmpdir = tempfile.TemporaryDirectory()
+#
+#         config = assemble_config_vars(
+#             command_line_args_dict={'sample_name': SAMPLE_NAME,
+#                                     'sample_meta': 'population=hsc',
+#                                     'output_dir': tmpdir.name,
+#                                     'motifs_str': 'CG',
+#                                     'no_cache': False},
+#             default_config_file_path=get_resource_abspath(
+#                 'config.default.toml'),
+#             user_config_file_path=str(user_config_file)
+#         )
+#
+#         compute_mbias_stats(config)
 
 # M-bias plots
 # ==============================================================================
 
 
 #-
-def create_test_mbias_stats_df(
-        strata_curve_tuples:
-        List[Tuple[Union[Tuple, Callable],
-                   Union[np.ndarray, int], Union[np.ndarray, int]]]) \
-        -> pd.DataFrame:
-    """ Create small mbias stats dataframe for testing
+class MbiasStatsDfStub:
 
-    Args:
-        strata_curve_tuples: specifies index slices (tuple
-        or callable) where beta values (np.ndarray or int)
-        should be entered with coverage (np.ndarray or int)
+    def __init__(self):
+        self.df = pd.DataFrame()
 
-    Returns:
-        mbias stats dataframe with mbias stats entered into the
-        appropriate slices. Undefined strata have n_meth = n_unmeth =
-        10 and thus a beta value of 0.5
-    """
+    @staticmethod
+    def from_subsequent_strata_with_noise_overlay(
+            idx_levels: List[List[Union[str, int]]],
+            idx_level_names: List[str],
+            beta_value_int_or_arr: Union[int, np.ndarray],
+            coverage_int_or_arr: Union[int, np.ndarray],
+            n_pos=100,
+            seed=123,
+            do_flen_adjustment=False):
 
-    def get_categorical(ordered_str_labels):
-        return pd.Categorical(ordered_str_labels,
-                              categories=ordered_str_labels,
-                              ordered=True)
+        self = MbiasStatsDfStub()
 
-    ordered_seq_contexts = ['CCCCC', 'GGCGG']
-    flen_bin_labels = [50, 100, 150, 200, 250]
-    phred_bin_labels = [20, 30, 40]
-    max_read_length = 100
+        if isinstance(beta_value_int_or_arr, np.ndarray):
+            n_pos = beta_value_int_or_arr.shape[0]
+            beta_value_arr = beta_value_int_or_arr
+        else:
+            beta_value_arr = np.tile(beta_value_int_or_arr, n_pos)
 
-    dim_levels = [get_categorical(['CG', 'CHH']),
-                  get_categorical(ordered_seq_contexts),
-                  get_categorical(['c_bc', 'c_bc_rv', 'w_bc', 'w_bc_rv']),
-                  flen_bin_labels,
-                  phred_bin_labels,
-                  range(1, max_read_length + 1),
-                  get_categorical(['n_meth', 'n_unmeth'])]
+        if not isinstance(coverage_int_or_arr, np.ndarray):
+            coverage_arr = np.tile(coverage_int_or_arr, n_pos)
+        else:
+            coverage_arr = coverage_int_or_arr
 
-    midx = pd.MultiIndex.from_product(dim_levels,
-                                      names=["motif", "seq_context", "bs_strand", "flen",
-                                             "phred", "pos", "meth_status"])
-    mbias_stats_df = pd.DataFrame(index=midx)
+        number_of_strata = np.prod([len(sublist) for sublist in idx_levels])
 
-    mbias_stats_df['counts'] = 10
-    mbias_stats_df = mbias_stats_df.unstack(level=-1)
-    mbias_stats_df.columns = ['n_meth', 'n_unmeth']
-    mbias_stats_df['beta_value'] = 0.5
-    mbias_stats_df
+        coverage_column = np.tile(coverage_arr, number_of_strata)
+        np.random.seed(seed)
+        n_meth_column = np.random.binomial(
+            n=coverage_column,
+            p=np.tile(beta_value_arr, number_of_strata)
+        )
 
-    for idx, beta, coverage in strata_curve_tuples:
-        n_meth = np.round((beta * coverage)).astype(int)
-        n_unmeth = coverage - n_meth
-        if not isinstance(n_meth, np.ndarray):
-            n_meth = np.tile(n_meth, max_read_length)
-            n_unmeth = np.tile(n_unmeth, max_read_length)
+        idx_levels_with_pos = idx_levels + [list(range(n_pos))]
+        idx_level_names_with_pos = idx_level_names + ['pos']
+        midx = pd.MultiIndex.from_product(idx_levels_with_pos,
+                                          names=idx_level_names_with_pos)
 
-        rep_times_float = mbias_stats_df.loc[idx, :].shape[0] / max_read_length
-        assert rep_times_float.is_integer()
-        mbias_stats_df.loc[idx, 'n_meth'] = np.tile(n_meth, int(rep_times_float))
-        mbias_stats_df.loc[idx, 'n_unmeth'] = np.tile(n_unmeth, int(rep_times_float))
-        mbias_stats_df = mbias_stats_df.assign(beta_value = compute_beta_values)
+        self.df = pd.DataFrame({'n_meth': n_meth_column,
+                                'n_total': coverage_column,
+                                'n_unmeth': coverage_column - n_meth_column},
+                               index=midx)
+        self.df['beta_value'] = self.df['n_meth'] / self.df['n_total']
 
-    return mbias_stats_df
+        def adjust_for_flen(group_df, n_pos):
+            flen = group_df.index.get_level_values('flen')[0]
+            if flen >= n_pos:
+                return group_df
+            else:
+                n_undef_pos = n_pos - flen
+                middle_pos = n_pos // 2
+                lower_bound = middle_pos - np.int(np.ceil(n_undef_pos / 2))
+                upper_bound = middle_pos + np.int(np.floor(n_undef_pos / 2))
+                high_bound = (n_pos - n_undef_pos)
+                group_df.iloc[lower_bound:high_bound, :] = group_df.iloc[upper_bound:, :].values
+                group_df.iloc[high_bound:, :] = np.nan
+                return group_df
+
+        if do_flen_adjustment:
+            self.df = (self.df
+                       .groupby(level=idx_level_names)
+                       .apply(adjust_for_flen, n_pos)
+             )
+
+        return self
+
+
+    @staticmethod
+    def create_test_mbias_stats_df(
+            strata_curve_tuples:
+            List[Tuple[Union[Tuple, Callable],
+                       Union[np.ndarray, int], Union[np.ndarray, int]]]) \
+            -> pd.DataFrame:
+        """ Create small mbias stats dataframe for testing
+
+        Args:
+            strata_curve_tuples: specifies index slices (tuple
+            or callable) where beta values (np.ndarray or int)
+            should be entered with coverage (np.ndarray or int)
+
+        Returns:
+            mbias stats dataframe with mbias stats entered into the
+            appropriate slices. Undefined strata have n_meth = n_unmeth =
+            10 and thus a beta value of 0.5
+        """
+
+        def get_categorical(ordered_str_labels):
+            return pd.Categorical(ordered_str_labels,
+                                  categories=ordered_str_labels,
+                                  ordered=True)
+
+        ordered_seq_contexts = ['CCCCC', 'GGCGG']
+        flen_bin_labels = [50, 100, 150, 200, 250]
+        phred_bin_labels = [20, 30, 40]
+        max_read_length = 100
+
+        dim_levels = [get_categorical(['CG', 'CHH']),
+                      get_categorical(ordered_seq_contexts),
+                      get_categorical(['c_bc', 'c_bc_rv', 'w_bc', 'w_bc_rv']),
+                      flen_bin_labels,
+                      phred_bin_labels,
+                      range(1, max_read_length + 1),
+                      get_categorical(['n_meth', 'n_unmeth'])]
+
+        midx = pd.MultiIndex.from_product(dim_levels,
+                                          names=["motif", "seq_context", "bs_strand", "flen",
+                                                 "phred", "pos", "meth_status"])
+        mbias_stats_df = pd.DataFrame(index=midx)
+
+        mbias_stats_df['counts'] = 10
+        mbias_stats_df = mbias_stats_df.unstack(level=-1)
+        mbias_stats_df.columns = ['n_meth', 'n_unmeth']
+        mbias_stats_df['beta_value'] = 0.5
+        mbias_stats_df
+
+        for idx, beta, coverage in strata_curve_tuples:
+            n_meth = np.round((beta * coverage)).astype(int)
+            n_unmeth = coverage - n_meth
+            if not isinstance(n_meth, np.ndarray):
+                n_meth = np.tile(n_meth, max_read_length)
+                n_unmeth = np.tile(n_unmeth, max_read_length)
+
+            rep_times_float = mbias_stats_df.loc[idx, :].shape[0] / max_read_length
+            assert rep_times_float.is_integer()
+            mbias_stats_df.loc[idx, 'n_meth'] = np.tile(n_meth, int(rep_times_float))
+            mbias_stats_df.loc[idx, 'n_unmeth'] = np.tile(n_unmeth, int(rep_times_float))
+            mbias_stats_df = mbias_stats_df.assign(beta_value = compute_beta_values)
+
+        return mbias_stats_df
 #-
 
 
@@ -1807,7 +1876,7 @@ def test_mbias_plot_config_file() -> str:
 def full_mbias_stats_fp():
     tmpdir = tempfile.mkdtemp()
     fp = os.path.join(tmpdir, 'full_mbias_stats_df.p')
-    df = create_test_mbias_stats_df(
+    df = MbiasStatsDfStub.create_test_mbias_stats_df(
         [
             (NamedIndexSlice(motif='CHH'), 0.05, 20),
             (NamedIndexSlice(motif='CG'), 0.8, 20),
@@ -1822,7 +1891,7 @@ def full_mbias_stats_fp():
 @pytest.fixture()
 def trimmed_mbias_stats_fp(tmpdir):
     fp = tmpdir / 'full_mbias_stats_df.p'
-    df = create_test_mbias_stats_df(
+    df = MbiasStatsDfStub.create_test_mbias_stats_df(
         [
             (NamedIndexSlice(motif='CHH'), 0.05, 20),
             (NamedIndexSlice(motif='CG'), 0.8, 20),
@@ -1921,5 +1990,366 @@ class TestMbiasPlots:
             subprocess.run(command_list, check=True)
 
 
+class TestCuttingSitesPlots:
+    def test_cutting_sites_line_plot(self, tmpdir):
 
+        cutting_sites_df = pd.DataFrame(
+            {'start': 9, 'end': 92},
+            index=pd.MultiIndex.from_product(
+                [pd.Categorical('c_bc c_bc_rv'.split(), ordered=True), list(range(50, 150))],
+                names='bs_strand flen'.split())
+        )
+        cutting_sites_df.loc[('c_bc', slice(70, 90)), 'start'] = 15
+        cutting_sites_df.columns.name = 'cutting_site'
+        cutting_sites = CuttingSitesReplacementClass(
+            cutting_sites_df=cutting_sites_df,
+            max_read_length=101,
+        )
+
+        path = str(tmpdir.join('test.html'))
+        cutting_sites.plot(path)
+        # subprocess.run(['firefox', path])
+
+        path = str(tmpdir.join('test.svg'))
+        cutting_sites.plot(path)
+        # subprocess.run(['firefox', path])
+
+class TestCuttingSites:
+    @pytest.mark.xfail(skip=True)
+    def test_invariant_detects_wrong_cutting_sites_df_format_during_init(self):
+        with pytest.raises(AssertionError):
+            cutting_sites = CuttingSitesReplacementClass(
+                pd.DataFrame({'start': [1, 2, 3]}),
+                max_read_length=100,
+            )
+
+        with pytest.raises(AssertionError):
+            cutting_sites = CuttingSitesReplacementClass(
+                cutting_sites_df=pd.DataFrame(
+                    index=pd.MultiIndex.from_product(
+                        ['c_bc w_bc'.split(),
+                         range(100, 150)], names='bs_strand flen'.split())
+                ).assign(
+                    start=9,
+                    end=92.0
+                ),
+                max_read_length=100
+            )
+    @pytest.mark.xfail(skip=True)
+    def test_fails_if_mbias_stats_df_does_not_match_max_read_length(self):
+        raise NotImplemented
+
+    def test_from_relative_to_frag_end_cutting_sites(self):
+
+        cut_site_spec = dict(
+            w_bc = [0, 1],
+            c_bc = [0, 1],
+            w_bc_rv = [1, 0],
+            c_bc_rv = [1, 0],
+        )
+        cutting_sites = CuttingSitesReplacementClass.from_rel_to_frag_end_cutting_sites(
+            cut_site_spec=cut_site_spec, max_read_length=2)
+
+        # max flen is the first flen where the read cannot be affected any
+        # more in any strand, based on cut_site_spec and max_read_length
+        expected_df = pd.DataFrame([
+            ['c_bc', 0, 0, 0],
+            ['c_bc', 1, 0, 0],
+            ['c_bc', 2, 0, 1],
+            ['c_bc', 3, 0, 3],
+            ['c_bc_rv', 0, 0, 0],
+            ['c_bc_rv', 1, 0, 0],
+            ['c_bc_rv', 2, 1, 3],
+            ['c_bc_rv', 3, 1, 3],
+            ['w_bc', 0, 0, 0],
+            ['w_bc', 1, 0, 0],
+            ['w_bc', 2, 0, 1],
+            ['w_bc', 3, 0, 3],
+            ['w_bc_rv', 0, 0, 0],
+            ['w_bc_rv', 1, 0, 0],
+            ['w_bc_rv', 2, 1, 3],
+            ['w_bc_rv', 3, 1, 3],
+        ], columns=['bs_strand', 'flen', 'start', 'end'])
+        expected_df['bs_strand'] = pd.Categorical(expected_df['bs_strand'], ordered=True)
+        expected_df = expected_df.set_index(['bs_strand', 'flen'])
+        expected_df.columns.name = 'cutting_site'
+
+        pd.testing.assert_frame_equal(cutting_sites.df, expected_df)
+
+
+    def test_as_array(self):
+
+        cutting_sites_df = pd.DataFrame(index=pd.MultiIndex.from_product(
+            [pd.Categorical('c_bc c_bc_rv w_bc w_bc_rv'.split()),
+             list(range(20, 31)) + [35, 40, 60] ],
+            names='bs_strand flen'.split()))
+        cutting_sites_df = cutting_sites_df.assign(start=9, end=92)
+        cutting_sites_df.loc[idxs[:, 25:59], 'start'] = 5
+        cutting_sites_df.loc[idxs[:, 25:59], 'end'] = 95
+        cutting_sites_df.loc[idxs[:, 60], 'start'] = 0
+        cutting_sites_df.loc[idxs[:, 60], 'end'] = 101
+
+        cutting_sites_df.columns.name = 'cutting_site'
+        cutting_sites = CuttingSitesReplacementClass(
+            cutting_sites_df=cutting_sites_df, max_read_length=100)
+
+        expected_arr = np.zeros((4, 61, 2), dtype='i8')
+        expected_arr[0:4, 20:25, 0] = 9
+        expected_arr[0:4, 20:25, 1] = 92
+        expected_arr[0:4, 20:25, 0] = 9
+        expected_arr[0:4, 20:25, 1] = 92
+        expected_arr[0:4, 25:41, 0] = 5
+        expected_arr[0:4, 25:41, 1] = 95
+        expected_arr[0:4, 25:41, 0] = 5
+        expected_arr[0:4, 25:41, 1] = 95
+        expected_arr[0:4, 41:61, 0] = 0
+        expected_arr[0:4, 41:61, 1] = 101
+        expected_arr[0:4, 41:61, 0] = 0
+        expected_arr[0:4, 41:61, 1] = 101
+
+        computed_arr = cutting_sites.as_array()
+
+        assert (computed_arr == expected_arr).all()
+
+
+
+class TestBinomPvalueBasedCuttingSiteDetermination:
+    @pytest.mark.parametrize('coverage_int_or_arr', [
+        500,
+        2000
+    ])
+    @pytest.mark.parametrize('seed', list(range(1)))
+    @pytest.mark.parametrize('shape_name', [
+        'perfect_shape',
+        'left_gap_repair_nucleotides',
+        'right_gap_repair_nucleotides',
+        'gaps_at_both_sites',
+        # 'michaelis-menten-curve1',
+        'michaelis-menten-curve4',
+        # 'slight_slope',
+        # 'medium_slope',
+        # 'bad_slope',
+        # 'very_bad_slope',
+    ])
+    @pytest.mark.parametrize('plateau_height_factor', [1])
+    @pytest.mark.parametrize('allow_slope', [True])
+    def test_identify_plateaus_in_various_full_read_length_shapes(
+            self, coverage_int_or_arr, seed, shape_name,
+            plateau_height_factor, allow_slope, make_interactive):
+
+        flens = list(range(120, 220))
+        self._cutting_sites_detection_test(shape_name, coverage_int_or_arr,
+                                           flens, plateau_height_factor, seed,
+                                           allow_slope, make_interactive,
+                                           adjust_cutting_site_calls_from_small_flens=False)
+
+
+    @pytest.mark.parametrize('coverage_int_or_arr', [
+        500,
+        2000
+    ])
+    @pytest.mark.parametrize('seed', list(range(1)))
+    @pytest.mark.parametrize('shape_name', [
+        'perfect_shape',
+        'left_gap_repair_nucleotides',
+        'right_gap_repair_nucleotides',
+        'gaps_at_both_sites',
+    ])
+    @pytest.mark.parametrize('plateau_height_factor', [1])
+    @pytest.mark.parametrize('allow_slope', [True])
+    def test_finds_gap_repair_nucleotides_in_flen_smaller_than_read_length(
+            self, coverage_int_or_arr, seed, shape_name,
+            plateau_height_factor, make_interactive, allow_slope):
+
+        flens = list(range(50, 190))
+        self._cutting_sites_detection_test(shape_name, coverage_int_or_arr,
+                                           flens, plateau_height_factor, seed,
+                                           allow_slope, make_interactive,
+                                           adjust_cutting_site_calls_from_small_flens=True)
+
+    def _cutting_sites_detection_test(self, shape_name, coverage_int_or_arr,
+                                      flens, plateau_height_factor, seed,
+                                      allow_slope, make_interactive,
+                                      adjust_cutting_site_calls_from_small_flens):
+        beta_value_arr, (correct_start, correct_end) = (
+            test_mbias_shapes[shape_name])
+        cutting_sites_df, mbias_stats_stub = self._create_mbias_stub_based_cutting_sites(
+            allow_slope, beta_value_arr, coverage_int_or_arr, flens,
+            plateau_height_factor, seed, adjust_cutting_site_calls_from_small_flens)
+
+        pd.testing.assert_index_equal(cutting_sites_df.index,
+                                      mbias_stats_stub.df.unstack('pos').index)
+
+        # low_coverage_strata_i_idx = list(range(10)) + list(range(-10, 0))
+        # self._remove_low_coverage_strata(cutting_sites,
+        #                                  low_coverage_strata_i_idx)
+
+        if make_interactive:
+            plot_stem = f'{shape_name}_cov-{coverage_int_or_arr}_seed-{seed}_fact-{plateau_height_factor}_high-flen'
+            self._plot_cutting_sites(mbias_stats_df=mbias_stats_stub,
+                                     cutting_sites_df=cutting_sites_df,
+                                     stem=plot_stem)
+
+        if adjust_cutting_site_calls_from_small_flens:
+            adjustment_summand = beta_value_arr.shape[0] - np.array(flens)
+            adjustment_summand[adjustment_summand < 0] = 0
+            adjustment_summand = pd.Series(adjustment_summand,
+                                           index=flens)
+            cutting_sites_df['end'] = cutting_sites_df['end'].add(adjustment_summand,
+                                                                  axis=0,
+                                                                  level='flen')
+            cutting_sites_df.loc[cutting_sites_df['end'] > beta_value_arr.shape[0], 'end'] = beta_value_arr.shape[0]
+
+        is_low_coverage_situation = plateau_height_factor < 0.8 or coverage_int_or_arr <= 500
+        self._assert_cutting_site_correctness(cutting_sites_df, correct_start,
+                                              correct_end,
+                                              is_low_coverage_situation,
+                                              shape_name)
+
+    def _create_mbias_stub_based_cutting_sites(self, allow_slope,
+                                               beta_value_arr,
+                                               coverage_int_or_arr, flens,
+                                               plateau_height_factor, seed,
+                                               adjust_for_small_flens):
+        mbias_stats_stub = self._get_mbias_stats_stub(beta_value_arr,
+                                                      coverage_int_or_arr,
+                                                      flens,
+                                                      plateau_height_factor,
+                                                      seed,
+                                                      adjust_small_flens=adjust_for_small_flens)
+        cutting_sites = BinomPvalueBasedCuttingSiteDetermination(
+            mbias_stats_df=mbias_stats_stub.df,
+            max_read_length=100,
+            allow_slope=allow_slope, plateau_flen=170).compute_cutting_site_df()
+
+        return cutting_sites, mbias_stats_stub
+
+    def _remove_low_coverage_strata(self, cutting_sites_df,
+                                    low_coverage_strata_i_idx):
+        sufficient_coverage_bool_idx = np.ones(cutting_sites_df.shape[0],
+                                               dtype=bool)
+        sufficient_coverage_bool_idx[low_coverage_strata_i_idx] = False
+        cutting_sites_df = cutting_sites_df.loc[sufficient_coverage_bool_idx, :]
+
+    def _assert_cutting_site_correctness(self, cutting_sites_df, correct_start,
+                                         correct_end, is_low_coverage_situation,
+                                         shape_name):
+        assert cutting_sites_df_has_correct_format(cutting_sites_df)
+        if (is_low_coverage_situation
+                and shape_name in test_mbias_shapes_with_low_coverage_slope
+                and (cutting_sites_df == 0).all().all()):
+            return True
+
+        if (correct_start, correct_end) == (0, 0):
+            assert (all(cutting_sites_df['start'] == 0) and all(
+                cutting_sites_df['end']) == 0), f'{cutting_sites_df}\n0,0'
+
+        message = f'{cutting_sites_df["start"]}\n{correct_start}'
+        if isinstance(correct_start, int):
+            if not is_low_coverage_situation:
+                assert all(
+                    cutting_sites_df['start'] == correct_start), str(
+                    cutting_sites_df['start'].loc[
+                    cutting_sites_df['start'] != correct_start, :])
+            else:
+                assert all(cutting_sites_df[
+                               'start'] >= correct_start), message
+        else:
+            if not is_low_coverage_situation:
+                is_correct = cutting_sites_df['start'].between(correct_start[0], correct_start[1])
+                assert all(is_correct), cutting_sites_df.loc[~is_correct, :]
+            else:
+                assert all(cutting_sites_df['start'] >= correct_start[
+                    0]), message
+        message = f'{cutting_sites_df["end"]}\n{correct_end}'
+        if isinstance(correct_end, int):
+            if not is_low_coverage_situation:
+                pd.testing.assert_series_equal(cutting_sites_df['end'],
+                                               pd.Series(correct_end,
+                                                         index=cutting_sites_df['end'].index),
+                                               check_dtype=False, check_names=False)
+            else:
+                assert all(
+                    cutting_sites_df['end'] <= correct_end), message
+        else:
+            if not is_low_coverage_situation:
+                is_correct = cutting_sites_df['end'].between(correct_end[0], correct_end[1])
+                assert all(is_correct), cutting_sites_df.loc[~is_correct, :]
+            else:
+                assert all(
+                    cutting_sites_df['end'] <= correct_end[1]), message
+
+    def _get_mbias_stats_stub(self, beta_value_arr, coverage_int_or_arr, flens,
+                              plateau_height_factor, seed, adjust_small_flens):
+        idx_levels = [pd.Categorical(['c_bc', 'w_bc']), flens]
+        idx_level_names = ['bs_strand', 'flen']
+        mbias_stats_df = (
+        MbiasStatsDfStub.from_subsequent_strata_with_noise_overlay(
+            idx_levels=idx_levels, idx_level_names=idx_level_names,
+            beta_value_int_or_arr=beta_value_arr * plateau_height_factor,
+            coverage_int_or_arr=coverage_int_or_arr, seed=seed,
+            do_flen_adjustment=adjust_small_flens))
+        return mbias_stats_df
+
+
+
+    # @staticmethod
+    # def _plot_cutting_sites(mbias_stats_df, cutting_sites_df, stem):
+    #     index_names = list(mbias_stats_df.df.index.names)
+    #     index_names.remove('pos')
+    #     target_fp = f'/home/stephen/temp/test_plots/{stem}.html'
+    #     Path(target_fp).parent.mkdir(parents=True, exist_ok=True)
+    #     plot_df = mbias_stats_df.df.reset_index()
+    #     plot_df['group_label'] = plot_df[index_names].astype(str).apply(lambda ser: ser.str.cat(sep='_'), axis=1)
+    #
+    #     mbias_lines_layer = (alt.Chart(plot_df)
+    #                          .mark_line(opacity=0.05, color='black')
+    #                          .encode(x='pos', y='beta_value', detail='group_label:N')
+    #                          )
+    #
+    #     cutting_sites_layer = (alt.Chart(cutting_sites_df.stack()
+    #                                      .to_frame('cutting_site')
+    #                                      .reset_index())
+    #                            .mark_rule(opacity=0.05)
+    #                            .encode(x='cutting_site')
+    #                            )
+    #
+    #     full_beta_value_chart = (mbias_lines_layer + cutting_sites_layer).interactive()
+    #     # full_chart = cutting_sites_layer
+    #
+    #     p_value_plot_df = (cutting_sites_df
+    #                        .predecessor_p_values
+    #                        .stack()
+    #                        .to_frame('p_value')
+    #                        .reset_index())
+    #     p_value_plot_df['group_label'] = (p_value_plot_df[index_names]
+    #                                       .astype(str)
+    #                                       .apply(lambda ser: ser.str.cat(sep='_'), axis=1))
+    #     # p_value_plot_df['p_value'] = np.log10(p_value_plot_df['p_value'] + 10**-16)
+    #     p_value_plot_df['p_value'] = (p_value_plot_df['p_value'] + 10**-16)
+    #
+    #     p_value_chart = (alt.Chart(p_value_plot_df)
+    #         .mark_line(opacity=0.05)
+    #         .encode(
+    #         # y='p_value',
+    #         alt.Y('p_value',
+    #               scale=alt.Scale(type='log', base=10),
+    #               axis=alt.Axis(orient='right')
+    #               ),
+    #         x='pos',
+    #         detail='group_label'
+    #     )
+    #     )
+    #
+    #     full_p_value_chart = (p_value_chart + cutting_sites_layer).interactive()
+    #
+    #     full_chart = alt.vconcat(full_beta_value_chart, full_p_value_chart)
+    #
+    #
+    #     (full_chart
+    #      .configure(background='white')
+    #      # .interactive()
+    #      # .save(target_fp, webdriver='firefox')
+    #      .save(target_fp)
+    #      )
 

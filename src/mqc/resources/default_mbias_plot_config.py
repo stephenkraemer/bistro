@@ -70,7 +70,7 @@ default_config = {
         },
 
         "post_agg_filters": {
-            'flen': [60, 75, 90, 100, 120, 150, 190, 290, 490],
+            'flen': [60, 75, 90, 100, 120, 150, 190, 230, 270],
             # 'phred': [9, 14, 19, 24, 29, 34, 39, 40],
         },
 
@@ -170,82 +170,82 @@ default_config = {
         ],
     },
 
-    # BS-strand or mate methylation bias
-    # ------------------------------------------------------------------
-    # See paper about mate bias due to software version
-    "strand_mate_meth_bias": {
-        "datasets": ["full_phred-threshold",
-                     "trimmed_phred-threshold"],
-        # "post_agg_filters": {
-            # 'phred': [9, 14, 19, 24, 29, 34],
-        # },
-        "aes_mappings": [
-
-            {
-                'x': 'bs_strand',
-                'y': 'beta_value',
-                # 'color': [None, 'phred'],    repeat plot...
-                'color': 'phred',
-                'row': 'dataset',
-            },
-
-            {
-                'x': 'bs_strand',
-                'y': 'beta_value',
-                'color': 'phred',
-                'row': 'dataset',
-                'column': 'seq_context',
-            },
-
-            {
-                'x': 'bs_strand',
-                'y': 'value',
-                'color': 'phred',
-                'row': 'dataset',
-                'column': 'statistic',
-            },
-
-
-
-
-        ],
-    },
+    # # BS-strand or mate methylation bias
+    # # ------------------------------------------------------------------
+    # # See paper about mate bias due to software version
+    # "strand_mate_meth_bias": {
+    #     "datasets": ["full_phred-threshold",
+    #                  "trimmed_phred-threshold"],
+    #     # "post_agg_filters": {
+    #         # 'phred': [9, 14, 19, 24, 29, 34],
+    #     # },
+    #     "aes_mappings": [
+    #
+    #         {
+    #             'x': 'bs_strand',
+    #             'y': 'beta_value',
+    #             # 'color': [None, 'phred'],    repeat plot...
+    #             'color': 'phred',
+    #             'row': 'dataset',
+    #         },
+    #
+    #         {
+    #             'x': 'bs_strand',
+    #             'y': 'beta_value',
+    #             'color': 'phred',
+    #             'row': 'dataset',
+    #             'column': 'seq_context',
+    #         },
+    #
+    #         {
+    #             'x': 'bs_strand',
+    #             'y': 'value',
+    #             'color': 'phred',
+    #             'row': 'dataset',
+    #             'column': 'statistic',
+    #         },
+    #
+    #
+    #
+    #
+    #     ],
+    # },
 
     # Sequence context bias due to phred filtering
     # ------------------------------------------------------------------
     # - for comparison of general sequence context bias, one could also
     #   compare multiple samples
-
-    # TODO: add phred-trheshold dfs in demo snakefile
-    "seq_context_plots": {
-        # 'plot_params': {
-        #     'plot': ['bar', ['line', 'point']],
-        #     'x_axis': {'breaks': 'auto'}
-        # },
-        "datasets": ["full_phred-threshold",
-                     "trimmed_phred-threshold"],
-        # "post_agg_filters": {
-        #     'phred': [9, 14, 19, 24, 29, 34],
-        # },
-        "aes_mappings": [
-
-            {
-                "x": "seq_context",
-                "y": "beta_value",
-                "row": None,
-                "column": "bs_strand",
-                "color": "phred"
-            },
-
-            {
-                "x": "seq_context",
-                "y": "value",
-                "row": 'bs_strand',
-                "column": 'statistic',
-                "color": "phred"
-            },
-
-        ],
-    }
+    #
+    # # TODO: add phred-trheshold dfs in demo snakefile
+    # "seq_context_plots": {
+    #     # 'plot_params': {
+    #     #     'plot': ['bar', ['line', 'point']],
+    #     #     'x_axis': {'breaks': 'auto'}
+    #     # },
+    #     "datasets": ["full_phred-threshold",
+    #                  "trimmed_phred-threshold"],
+    #     # "post_agg_filters": {
+    #     #     'phred': [9, 14, 19, 24, 29, 34],
+    #     # },
+    #     "aes_mappings": [
+    #
+    #         {
+    #             "x": "seq_context",
+    #             "y": "beta_value",
+    #             "row": None,
+    #             "column": "bs_strand",
+    #             "color": "phred"
+    #         },
+    #
+    #         {
+    #             "x": "seq_context",
+    #             "y": "value",
+    #             "row": 'bs_strand',
+    #             "column": 'statistic',
+    #             "color": "phred"
+    #         },
+    #
+    #     ],
+    # }
 
 }

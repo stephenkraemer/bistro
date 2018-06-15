@@ -12,3 +12,4 @@ src/mqc/trashbin/
 doc/mqc_workboard.org
 **/.#*
 trash/
+**/geckodriver.log

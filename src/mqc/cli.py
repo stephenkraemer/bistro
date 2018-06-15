@@ -1,13 +1,13 @@
 import copy
-import os.path as op
-import re
-from collections import OrderedDict
+import sys
 
 import click
+from collections import OrderedDict
 from mqc.config import assemble_config_vars
 from mqc.index import start_parallel_index_generation
 from mqc.mcall_run import collect_stats, run_mcalling
 from mqc.utils import get_resource_abspath
+
 
 @click.group()
 def mqc():
@@ -18,6 +18,7 @@ input_click_path = click.Path(exists=True, readable=True,
 
 # mqc stats
 # =========
+# noinspection PyUnusedLocal
 @mqc.command()
 @click.option('--bam', required=True,
               type=input_click_path)
@@ -64,6 +65,9 @@ def stats(ctx, bam, index_files,
 #                             mqc evaluate_mbias
 #==============================================================================
 from mqc.mbias import compute_mbias_stats
+
+
+# noinspection PyUnusedLocal
 @mqc.command()
 @click.option('--config_file', type=input_click_path, help='[optional]')
 @click.option('--motifs', help='e.g. CG or CG,CHG,CHH')
@@ -74,10 +78,10 @@ from mqc.mbias import compute_mbias_stats
 @click.option('--sample_meta',
               help="Pass additional metadata as"
                    " 'key=value,key2=value2' [optional]")
-@click.option('--no-cache', 'no_cache', is_flag=True)
+@click.option('--use_cached_mbias_stats', is_flag=True)
 @click.pass_context
 def evaluate_mbias(ctx, config_file, motifs, output_dir,
-                   sample_name, sample_meta, no_cache):
+                   sample_name, sample_meta, use_cached_mbias_stats):
 
     default_config_file = get_resource_abspath('config.default.toml')
     user_config_file = config_file if config_file else ''
@@ -120,6 +124,7 @@ def mbias_plots(output_dir, sample_name, sample_meta, mbias_plot_config,
 #==============================================================================
 #                             mqc call
 #==============================================================================
+# noinspection PyUnusedLocal
 @mqc.command()
 @click.option('--bam', required=True, type=input_click_path)
 @click.argument('index_files', nargs=-1,
@@ -134,18 +139,26 @@ def mbias_plots(output_dir, sample_name, sample_meta, mbias_plot_config,
               help="Pass additional metadata as"
                    " 'key=value,key2=value2' [optional]")
 @click.option('--cores', default=1)
-@click.option('--use_mbias_fit', is_flag=True)
+@click.option('--max_read_length', required=True, type=int)
+@click.option('--trimming', help=(
+        'Desired trimming in the form command::param. Possible commands:'
+        'frag_end, read_end, cutting_sites'
+        'frag_end and read_end are parametrized through a json object'
+        'cutting_sites expects the path to a dataframe, either created '
+        'with evaluate_stats or user-specified. See manual for details.')
+              )
 @click.option('--strat_beta_dist', is_flag=True)
-@click.option('--output_formats', default='bed',
-              help='any csv combination of [bed bismark stratified_bed].'
-                   ' The options bed and stratified_bed are mutually exclusive.'
-                   ' Further output formats will soon be added, in particular VCF'
-                   ' for methylation calling with SNP calls')
+@click.option('--output_formats', default='bed', help=(
+        'any csv combination of [bed bismark stratified_bed].'
+        ' The options bed and stratified_bed are mutually exclusive.'
+        ' Further output formats will soon be added, in particular VCF'
+        ' for methylation calling with SNP calls')
+              )
 @click.pass_context
 def call(ctx, bam, index_files,
          output_dir, config_file,
-         sample_name, sample_meta, cores, use_mbias_fit, strat_beta_dist,
-         output_formats):
+         sample_name, sample_meta, cores, trimming, strat_beta_dist,
+         max_read_length, output_formats):
     """Methylation calling tool
 
     Command line tool for generating QC-filtered methylation calls
@@ -157,6 +170,16 @@ def call(ctx, bam, index_files,
     default_config_file = get_resource_abspath('config.default.toml')
 
     user_config_file = config_file if config_file else ''
+
+    try:
+        trimm_command, trimm_param = trimming.split('::')
+    except ValueError as e:
+        print('Could not find parameters for trimmign command. '
+              'Did you separate with a "::"?', file=sys.stderr)
+        raise e
+
+    if trimm_command not in 'frag_end read_end cutting_sites'.split():
+        raise ValueError('The trimming command is not known.')
 
     cli_params = copy.deepcopy(ctx.params)
     #TODO: avoid hard coding!
@@ -227,6 +250,9 @@ def make_index(genome_fasta, output_dir, cores,
 #                             mqc evaluate_calls
 #==============================================================================
 from mqc.coverage import analyze_coverage
+
+
+# noinspection PyUnusedLocal
 @mqc.command()
 @click.option('--config_file', type=input_click_path, help='[optional]')
 @click.option('--motifs', help='e.g. CG or CG,CHG,CHH')
