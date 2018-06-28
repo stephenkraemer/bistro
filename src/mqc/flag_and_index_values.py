@@ -33,18 +33,3 @@ qc_fail_flags = namedtuple('QcFailFlags', 'sam_flag_fail'
     pos_in_read_exceeds_tlen = 32,
     overlap_fail = 64
 )
-
-beta_value_stratum_indices = namedtuple('BetaValueStratumIndices', 'mate1 mate2 all')(
-    mate1=4,
-    mate2=5,
-    all=6
-)
-
-meth_calling_indices = namedtuple('MethCallingIndices', 'n_meth n_total')(
-    n_meth=0,
-    n_total=1
-)
-
-region_of_interest_indices = namedtuple('RegionOfInterestIndices', 'whole_genome')(
-    whole_genome=0
-)

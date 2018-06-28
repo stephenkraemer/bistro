@@ -32,11 +32,6 @@ motifs_str = config['motifs']
 single_motifs = motifs_str.split('-')
 motif_csv = ','.join(motifs_str.split('-'))
 
-regions_of_interest = ['whole_genome']
-if 'roi_index_files' in config.keys():
-    for roi_index_file in config['roi_index_files'].split(','):
-        regions_of_interest.append(op.splitext(op.basename(roi_index_file))[0])
-
 rule all:
     input:
         # mqc make_index
@@ -71,22 +66,12 @@ rule all:
                             pid=config['pids'],
                             motifs_str=motifs_str),
 
-        strat_beta_hist = expand("{output_rpp_dir}/{pid}/meth/qc_stats/{pid}_stratified-beta-hist_{motifs_str}_{roi_type}_{stratum}.png",
-                            output_rpp_dir=output_rpp_dir,
-                            pid=config['pids'],
-                            motifs_str=motifs_str,
-                            roi_type=regions_of_interest,
-                            stratum=['total', 'mate-wise', 'strand-wise']),
-
         # mqc call
-        meth_calls = expand(["{output_rpp_dir}/{pid}/meth/meth_calls/mcalls_{pid}_{single_motif}_{chrom}.bed.gz",
-                             "{output_rpp_dir}/{pid}/meth/qc_stats/{pid}_stratified-beta-counts_{motifs_str}.{ext}",],
+        meth_calls = expand("{output_rpp_dir}/{pid}/meth/meth_calls/mcalls_{pid}_{single_motif}_{chrom}.bed.gz",
                             output_rpp_dir=output_rpp_dir,
                             pid=config['pids'],
                             single_motif=single_motifs,
-                            chrom=autosomes + other_chroms,
-                            motifs_str=motifs_str,
-                            ext=['p', 'tsv']),
+                            chrom=autosomes + other_chroms),
 
 
 rule make_index:
@@ -185,11 +170,9 @@ mcall_command = (
     ' --output_dir {params.output_dir}'
     ' --sample_name {wildcards.pid}'
     ' --sample_meta {params.sample_meta}'
+    ' --use_mbias_fit'
     ' --cores {params.cores}'
-    ' --strat_beta_dist'
     ' {input.index_files}'
-    ' {params.roi_index_files}'
-    ' {params.use_mbias_fit}'
 )
 
 rule call:
@@ -208,8 +191,6 @@ rule call:
         walltime = '42:00:00',
         name = f'mcall_{motifs_str}_{{pid}}',
         sample_meta = lambda wildcards: f"population={wildcards.pid.split('_')[0]},rep={wildcards.pid.split('_')[-1]}",
-        roi_index_files = f"--roi_index_files {config['roi_beds']}" if 'roi_beds' in config else '',
-        use_mbias_fit = " --use_mbias_fit" if 'use_mbias_fit' in config else '',
     output:
         mcall_files = expand("{output_rpp_dir}/{{pid}}/meth/meth_calls/mcalls_{{pid}}_{single_motif}_{chrom}.bed.gz",
                             output_rpp_dir=output_rpp_dir,
@@ -219,12 +200,7 @@ rule call:
                             output_rpp_dir=output_rpp_dir,
                             motifs_str=motifs_str,
                             ext=['p', 'tsv']),
-        strat_beta_counts = expand("{output_rpp_dir}/{{pid}}/meth/qc_stats/{{pid}}_stratified-beta-counts_{motifs_str}.{ext}",
-                            output_rpp_dir=output_rpp_dir,
-                            motifs_str=motifs_str,
-                            ext=['p', 'tsv']),
     shell: mcall_command
-
 
 
 rule evaluate_calls:
@@ -232,11 +208,6 @@ rule evaluate_calls:
         coverage_counts = f"{output_rpp_dir}/{{pid}}/meth/qc_stats/{{pid}}_coverage-counts_{motifs_str}.p",
     output:
         coverage_hist  = f"{output_rpp_dir}/{{pid}}/meth/qc_stats/{{pid}}_coverage-hist_{motifs_str}.png",
-        strat_beta_hist = expand("{output_rpp_dir}/{{pid}}/meth/qc_stats/{{pid}}_stratified-beta-hist_{motifs_str}_{roi_type}_{stratum}.png",
-                            output_rpp_dir=output_rpp_dir,
-                            motifs_str=motifs_str,
-                            roi_type=regions_of_interest,
-                            stratum=['total', 'mate-wise', 'strand-wise']),
     params:
         config_file = user_config_file,
         output_dir = f"{output_rpp_dir}/{{pid}}/meth/",
@@ -252,6 +223,5 @@ rule evaluate_calls:
         --config_file {params.config_file} \
         --motifs {params.motif_csv} \
         --sample_name {wildcards.pid} \
-        --output_dir {params.output_dir} \
-        --strat_beta_dist
+        --output_dir {params.output_dir}
         """

@@ -47,13 +47,10 @@ class CoverageCounter(Counter):
 
 
 def coverage_hist(coverage_df, config):
-    plot_df = coverage_df.reset_index()
-    last_bin = plot_df.loc[plot_df['counts'] > 0].max().loc['coverage']
-    g = (sns.FacetGrid(plot_df, col='motif')
+    g = (sns.FacetGrid(coverage_df.reset_index(), col='motif')
          .map(plt.plot, 'coverage', 'counts')
          .set_titles("{col_name}")
          .set_axis_labels('Coverage', 'Frequency')
-         .set(xlim=(last_bin/(-15), last_bin+2))
          )
     g.fig.tight_layout()
     g.fig.savefig(config['paths']['coverage_hist'])

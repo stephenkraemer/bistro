@@ -16,8 +16,6 @@ def mqc():
 input_click_path = click.Path(exists=True, readable=True,
                               dir_okay=False, resolve_path=True)
 
-
-
 # mqc stats
 # =========
 @mqc.command()
@@ -30,7 +28,6 @@ input_click_path = click.Path(exists=True, readable=True,
               type=click.Path(exists=False, file_okay=False,
                               writable=True, resolve_path=True))
 @click.option('--config_file', type=input_click_path, help='[optional]')
-@click.option('--config_vars', help='JSON-format config vars, will override respective default and user config file vars [optional]', required=False)
 @click.option('--sample_name', required=True)
 @click.option('--sample_meta',
               help="Pass additional metadata as"
@@ -42,13 +39,12 @@ input_click_path = click.Path(exists=True, readable=True,
 @click.pass_context
 def stats(ctx, bam, index_files,
           output_dir, config_file,
-          sample_name, sample_meta, cores, motifs, config_vars):
+          sample_name, sample_meta, cores, motifs):
     """Gather Mbias stats"""
 
     default_config_file = get_resource_abspath('config.default.toml')
 
     user_config_file = config_file if config_file else ''
-    cmd_config_vars = config_vars if config_vars else ''
 
     cli_params = copy.deepcopy(ctx.params)
     cli_params['motifs'] = cli_params['motifs'].upper().split(',')
@@ -57,8 +53,7 @@ def stats(ctx, bam, index_files,
 
     config = assemble_config_vars(cli_params,
                                   default_config_file_path=default_config_file,
-                                  user_config_file_path=user_config_file,
-                                  cmd_line_config_vars=cmd_config_vars)
+                                  user_config_file_path=user_config_file)
 
     collect_stats(config=config)
 
@@ -71,7 +66,6 @@ def stats(ctx, bam, index_files,
 from mqc.mbias import analyze_mbias_counts
 @mqc.command()
 @click.option('--config_file', type=input_click_path, help='[optional]')
-@click.option('--config_vars', help='JSON-format config vars, will override respective default and user config file vars [optional]', required=False)
 @click.option('--motifs', help='e.g. CG or CG,CHG,CHH')
 @click.option('--output_dir', required=True,
               type=click.Path(exists=False, file_okay=False,
@@ -81,20 +75,16 @@ from mqc.mbias import analyze_mbias_counts
               help="Pass additional metadata as"
                    " 'key=value,key2=value2' [optional]")
 @click.pass_context
-def evaluate_mbias(ctx, config_file, motifs, output_dir, sample_name, sample_meta, config_vars):
+def evaluate_mbias(ctx, config_file, motifs, output_dir, sample_name, sample_meta):
 
     default_config_file = get_resource_abspath('config.default.toml')
     user_config_file = config_file if config_file else ''
-    cmd_config_vars = config_vars if config_vars else ''
-
-
     cli_params = copy.deepcopy(ctx.params)
     cli_params['motifs'] =  motifs.split(',')
     cli_params['motifs_str'] = '-'.join(cli_params['motifs'])
     config = assemble_config_vars(cli_params,
                                   default_config_file_path=default_config_file,
-                                  user_config_file_path=user_config_file,
-                                  cmd_line_config_vars=cmd_config_vars)
+                                  user_config_file_path=user_config_file)
     analyze_mbias_counts(config)
 
 
@@ -111,7 +101,6 @@ def evaluate_mbias(ctx, config_file, motifs, output_dir, sample_name, sample_met
               type=click.Path(exists=False, file_okay=False,
                               writable=True, resolve_path=True))
 @click.option('--config_file', type=input_click_path, help='[optional]')
-@click.option('--config_vars', help='JSON-format config vars, will override respective default and user config file vars [optional]', required=False)
 @click.option('--sample_name', required=True)
 @click.option('--sample_meta',
               help="Pass additional metadata as"
@@ -119,21 +108,16 @@ def evaluate_mbias(ctx, config_file, motifs, output_dir, sample_name, sample_met
 @click.option('--cores', default=1)
 @click.option('--use_mbias_fit', is_flag=True)
 @click.option('--strat_beta_dist', is_flag=True)
-@click.option('--roi_index_files',
-              required=False,
-              type=str,
-              help='Pass region of interest bed files as csv [optional]')
 
 @click.pass_context
 def call(ctx, bam, index_files,
           output_dir, config_file,
-          sample_name, sample_meta, cores, use_mbias_fit, strat_beta_dist, roi_index_files, config_vars):
+          sample_name, sample_meta, cores, use_mbias_fit, strat_beta_dist):
     """Methylation calling"""
 
     default_config_file = get_resource_abspath('config.default.toml')
 
     user_config_file = config_file if config_file else ''
-    cmd_config_vars = config_vars if config_vars else ''
 
     cli_params = copy.deepcopy(ctx.params)
     #TODO: avoid hard coding!
@@ -144,8 +128,7 @@ def call(ctx, bam, index_files,
 
     config = assemble_config_vars(cli_params,
                                   default_config_file_path=default_config_file,
-                                  user_config_file_path=user_config_file,
-                                  cmd_line_config_vars=cmd_config_vars)
+                                  user_config_file_path=user_config_file)
 
     run_mcalling(config=config)
 
@@ -198,10 +181,8 @@ def make_index(genome_fasta, output_dir, cores,
 #                             mqc evaluate_calls
 #==============================================================================
 from mqc.coverage import analyze_coverage
-from mqc.beta_value import analyze_stratified_beta_values
 @mqc.command()
 @click.option('--config_file', type=input_click_path, help='[optional]')
-@click.option('--config_vars', help='JSON-format config vars, will override respective default and user config file vars [optional]', required=False)
 @click.option('--motifs', help='e.g. CG or CG,CHG,CHH')
 @click.option('--output_dir', required=True,
               type=click.Path(exists=False, file_okay=False,
@@ -210,20 +191,16 @@ from mqc.beta_value import analyze_stratified_beta_values
 @click.option('--sample_meta',
               help="Pass additional metadata as"
                    " 'key=value,key2=value2' [optional]")
-@click.option('--strat_beta_dist', is_flag=True)
 @click.pass_context
-def evaluate_calls(ctx, config_file, motifs, output_dir, sample_name, sample_meta, strat_beta_dist, config_vars):
+def evaluate_calls(ctx, config_file, motifs, output_dir, sample_name, sample_meta):
 
     default_config_file = get_resource_abspath('config.default.toml')
     user_config_file = config_file if config_file else ''
-    cmd_config_vars = config_vars if config_vars else ''
 
     cli_params = copy.deepcopy(ctx.params)
     cli_params['motifs'] = motifs.split(',')
     cli_params['motifs_str'] = '-'.join(cli_params['motifs'])
     config = assemble_config_vars(cli_params,
                                   default_config_file_path=default_config_file,
-                                  user_config_file_path=user_config_file,
-                                  cmd_line_config_vars=cmd_config_vars)
+                                  user_config_file_path=user_config_file)
     analyze_coverage(config)
-    if(cli_params['strat_beta_dist']): analyze_stratified_beta_values(config)

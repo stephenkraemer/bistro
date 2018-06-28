@@ -4,10 +4,8 @@ from collections import defaultdict, OrderedDict
 from unittest.mock import Mock, MagicMock, call
 
 from mqc.index import IndexFile
-from mqc.mcall_run import PileupRun, QcAndMethCallingRun
+from mqc.mcall_run import PileupRun
 from mqc.visitors import Counter, Visitor
-from mqc.mcaller import MethCaller, StratifiedMethCaller
-from mqc.beta_value import StratifiedBetaCounter
 
 
 def get_counter_stub(arr, attr_str):
@@ -105,39 +103,6 @@ class TestSumCounters:
         pileup_run_stub.sum_up_counters(counter_dicts_per_idx_file)
         assert (list(pileup_run_stub.summed_up_counters.keys())
                 == ['counter1', 'counter2'])
-
-
-class TestVisitorSelection:
-    def test_strat_meth_caller_selection(self, mocker, config:dict):
-        self.config = config.copy()
-
-        #patch all visitors that are not affected by --strat_bta_dist flag
-        visitors = [
-            'mqc.mcall_run.MapqFilter',
-            'mqc.mcall_run.Trimmer',
-            'mqc.mcall_run.OverlapHandler',
-            'mqc.mcall_run.PhredFilter',
-            'mqc.mcall_run.CoverageCounter',
-            'mqc.mcall_run.BedWriter'
-        ]
-
-        for v in visitors:
-            mocker.patch(v)
-
-        self.config['paths']['stratified_beta_counts'] = ''
-        self.config['run']['roi_index_files'] = ''
-        self.config['run']['strat_beta_dist'] = False
-        self.config['run']['motifs'] = ['CG']
-        mcall_visitors = QcAndMethCallingRun(self.config)._get_visitors(chrom='')
-
-        self.config['run']['strat_beta_dist'] = True
-        strat_mcall_visitors = QcAndMethCallingRun(self.config)._get_visitors(chrom='')
-
-        assert type(mcall_visitors['meth_caller']) == MethCaller
-
-        assert type(strat_mcall_visitors['meth_caller']) == StratifiedMethCaller
-        assert type(strat_mcall_visitors['beta_counter']) == StratifiedBetaCounter
-
 
 def motif_pileup_mock(start):
     m = MagicMock()

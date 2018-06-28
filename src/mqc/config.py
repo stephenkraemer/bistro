@@ -4,14 +4,12 @@ import copy
 import os
 import pytoml
 import re
-import json
 from collections import OrderedDict
 
 
 def assemble_config_vars(command_line_args_dict: dict,
                          default_config_file_path: str,
-                         user_config_file_path: str = '',
-                         cmd_line_config_vars: str = ''):
+                         user_config_file_path: str = '', ):
     """Assemble configuration variables in one dict and expand paths
 
     Parameters
@@ -23,8 +21,6 @@ def assemble_config_vars(command_line_args_dict: dict,
         config file
     user_config_file_path : str
         Optional path to user config file
-    cmd_line_config_vars : str
-        Optional JSON-format config variables, will override both default and user config file
 
     Returns
     -------
@@ -101,11 +97,6 @@ def assemble_config_vars(command_line_args_dict: dict,
         update_nested_dict(base_dict=config,
                            custom_dict=user_config_file_dict)
 
-    if cmd_line_config_vars:
-        cmd_line_config_dict = json.loads(cmd_line_config_vars)
-        update_nested_dict(base_dict=config,
-                           custom_dict=cmd_line_config_dict)
-
     # Copy output_dir from run parameters to the paths dict
     # Required for expansion of paths with expand_path
     output_dir = config['run']['output_dir']
@@ -156,8 +147,6 @@ def _expand_path(config, path_name):
 
 
 def get_sample_info_dict(sample_name, sample_meta_str=None):
-    # Attention developers! Do not change this to a regular dict,
-    # as the order of the dict is required to add the metadata to the counter dataframes!
     sample_metadata = OrderedDict(name=sample_name)
     if sample_meta_str:
         add_infos = OrderedDict((x.split('=')[0], x.split('=')[1])
