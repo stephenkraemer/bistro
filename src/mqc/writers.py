@@ -1,14 +1,19 @@
 import gzip
 import os
 import os.path as op
+import numpy as np
 from abc import ABCMeta
+from itertools import chain
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Dict, Any, IO
 
 from mqc.visitors import Visitor
 from mqc.pileup.pileup import MotifPileup
-from mqc.flag_and_index_values import methylation_status_flags as mflags
-
+from mqc.flag_and_index_values import (
+    methylation_status_flags as mflags,
+    meth_status_indices as mstat_ids,
+    strat_call_indices as scall_ids,
+)
 
 class BedWriter(Visitor):
 
@@ -40,14 +45,14 @@ class BedWriter(Visitor):
             motif,
             '.',
             motif_pileup.idx_pos.strand,
-            f"{motif_pileup.beta_value:.6f}",
+            f"{motif_pileup.beta_value:.8f}",
             str(motif_pileup.n_meth),
             str(motif_pileup.n_total),
         ])
         self.meth_calls_fobj_dict[motif].write(line_no_endl + '\n')
 
 
-class McallWriter(Visitor, metaclass=ABCMeta):
+class McallWriterABC(Visitor, metaclass=ABCMeta):
     def __init__(self, calls_by_chrom_motif_fp: str,
                  motifs: List[str], header_no_newline: Optional[str],
                  chrom: str):
@@ -62,7 +67,17 @@ class McallWriter(Visitor, metaclass=ABCMeta):
         """
         self.calls_by_chrom_motif_fp = str(calls_by_chrom_motif_fp)
         self.motifs = motifs
-        self.meth_calls_fobj_dict = {}
+        self.meth_calls_fobj_dict: Dict[str, IO[Any]] = {}
+        if header_no_newline == '':
+            header_line_is_ok = True
+        elif ('\t' in header_no_newline
+              and header_no_newline.startswith('#')
+              and not header_no_newline.endswith('\n')):
+            header_line_is_ok = True
+        else:
+            header_line_is_ok = False
+        assert header_line_is_ok, \
+            f'Header line {header_no_newline} does not have correct format'
         self.header_no_newline = header_no_newline
         self.chrom = chrom
 
@@ -82,7 +97,7 @@ class McallWriter(Visitor, metaclass=ABCMeta):
                       )
             # Note that there may be one output folder per motif,
             # so parent creation must come after pattern expansion
-            Path(out_fp).parent.mkdir(exist_ok=True, mode=0o770)
+            Path(out_fp).parent.mkdir(parents=True, exist_ok=True, mode=0o770)
             self.meth_calls_fobj_dict[motif] = gzip.open(out_fp, 'wt')
 
     def _write_header_line(self):
@@ -90,7 +105,7 @@ class McallWriter(Visitor, metaclass=ABCMeta):
             fobj.write(self.header_no_newline + '\n')
 
 
-class BismarkWriter(McallWriter):
+class BismarkWriter(McallWriterABC):
     def __init__(self, calls_by_chrom_motif_fp: str, motifs: List[str],
                  chrom: str):
         """Generate output as specified by Bismark methylation extractor
@@ -145,3 +160,55 @@ class BismarkWriter(McallWriter):
             curr_fout.write('\t'.join(
                 (read.alignment.query_name, strand_symbol,
                  self.chrom, pos_str, meth_symbol)) + '\n')
+
+#-
+class StratifiedBedWriter(McallWriterABC):
+
+    header_no_newline = '\t'.join(
+        ['#chrom', 'start', 'end', 'motif', 'score', 'strand',
+         'beta_value', 'n_meth', 'n_total',
+         'c_bc_beta_value', 'c_bc_n_meth', 'c_bc_n_total',
+         'c_bc_rv_beta_value', 'c_bc_rv_n_meth', 'c_bc_rv_n_total',
+         'w_bc_beta_value', 'w_bc_n_meth', 'w_bc_n_total',
+         'w_bc_rv_beta_value', 'w_bc_rv_n_meth', 'w_bc_rv_n_total',
+         'mate1_beta_value', 'mate1_n_meth', 'mate1_n_total',
+         'mate2_beta_value', 'mate2_n_meth', 'mate2_n_total',
+         ])
+
+    def __init__(self, calls_by_chrom_motif_fp: str, motifs: List[str], chrom: str):
+        """Stratified methylation calls
+
+        The first 9 columns are identical to the columns of the standard
+        BED output format (BED6 + beta_value n_meth n_total).
+
+        Floats are are modified as %.8f
+
+        Args:
+            calls_by_chrom_motif_fp: must contain
+                [motif] and [chrom] fields
+            motifs: list of motifs covered in the run
+            chrom: chrom ID
+        """
+        super().__init__(calls_by_chrom_motif_fp=calls_by_chrom_motif_fp,
+                         motifs=motifs,
+                         header_no_newline=self.header_no_newline,
+                         chrom=chrom)
+
+    def process(self, motif_pileup: MotifPileup):
+
+        strat_calls_slice = slice(0, scall_ids.all)
+
+        # noinspection PyUnresolvedReferences
+        line = '\t'.join(chain(
+            [motif_pileup.idx_pos.chrom, str(motif_pileup.idx_pos.start),
+              str(motif_pileup.idx_pos.end), motif_pileup.idx_pos.motif,
+              '.', motif_pileup.idx_pos.strand,
+              f"{motif_pileup.beta_value:.8f}", str(motif_pileup.n_meth), str(motif_pileup.n_total),
+              ],
+            *zip(np.char.mod('%.8f', motif_pileup.strat_beta_value_arr[strat_calls_slice]),
+                 motif_pileup.meth_counts_arr[strat_calls_slice, mstat_ids.n_meth].astype(str),
+                 motif_pileup.meth_counts_arr[strat_calls_slice, mstat_ids.n_total].astype(str)),
+            ('\n', )
+        ))
+
+        self.meth_calls_fobj_dict[motif_pileup.idx_pos.motif].write(line)
