@@ -47,29 +47,28 @@ bsseq_strand_na_index = -1
 
 # The indices for the BS-strands must be kept in sync between strat_call_indices and
 # bsseq_strand_indices, as I have code relying on this
-strat_call_indices = namedtuple('StratCallIndices', 'c_bc c_bc_rv w_bc w_bc_rv mate1 mate2 all')(
-    c_bc=0,
-    c_bc_rv=1,
-    w_bc=2,
-    w_bc_rv=3,
-    mate1=4,
-    mate2=5,
-    all=6,
-)
+class StratCallIndices:
+    c_bc: int = 0
+    c_bc_rv: int = 1
+    w_bc: int = 2
+    w_bc_rv: int = 3
+    mate1: int = 4
+    mate2: int = 5
+    all: int = 6
+strat_call_indices = StratCallIndices()
 
-meth_status_indices = namedtuple('MethStatIndices', 'n_meth n_total')(
-    n_meth=0,
-    n_total=1
-)
+class MethStatIndices:
+    n_meth: int = 0
+    n_total: int = 1
+meth_status_indices = MethStatIndices()
 
-methylation_status_flags = namedtuple('MethylationStatusFlags',
-                                      ['is_na', 'is_methylated', 'is_unmethylated', 'is_snp', 'is_ref'])(
-    is_na=16,
-    is_methylated=8,
-    is_unmethylated=4,
-    is_snp=2,
-    is_ref=1
-)
+class MethylationStatusFlags:
+    is_na: int = 16
+    is_methylated: int = 8
+    is_unmethylated: int = 4
+    is_snp: int = 2
+    is_ref: int = 1
+methylation_status_flags = MethylationStatusFlags()
 
 qc_fail_flags = namedtuple('QcFailFlags', 'sam_flag_fail'
                                           ' phred_score_fail'

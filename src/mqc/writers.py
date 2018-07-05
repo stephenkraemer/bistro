@@ -1,28 +1,46 @@
+"""Write methylation stats to compressed BED files
+
+Compressed as gz, currently non-optional.
+
+Supports different formats
+- Bed
+- StratifiedBed (global methylation stats and stratified by BS-Seq strand
+  and mate)
+- Bismark methylation extractor output
+
+Planned
+- VCF (in combination with SNP calling module)
+- biscuit like epiread format
+"""
+
 import gzip
 import os
 import os.path as op
-import numpy as np
 from abc import ABCMeta
 from itertools import chain
 from pathlib import Path
 from typing import List, Dict, Any, IO
 
-from mqc.visitors import Visitor
-from mqc.pileup.pileup import MotifPileup
+import numpy as np
+
 from mqc.flag_and_index_values import (
     methylation_status_flags as mflags,
     meth_status_indices as mstat_ids,
     strat_call_indices as scall_ids,
 )
+from mqc.pileup.pileup import MotifPileup
+from mqc.visitors import Visitor
+
 
 class BedWriter(Visitor):
+    """Standard BED6 + [beta_value n_meth n_total] format"""
+    # TODO: subclass McallWriterABC
 
-    def __init__(self, config, chrom: str):
-
-        # TODO: avoid hard coding
+    def __init__(self, config, chrom: str) -> None:
+        # TODO-important: avoid hard coding
         meth_calls_path_template = (
-            config['paths']['meth_calls_basepath']
-            + f"_{config['sample']['name']}_{{motif}}_{chrom}.bed.gz")
+                config['paths']['meth_calls_basepath']
+                + f"_{config['sample']['name']}_{{motif}}_{chrom}.bed.gz")
 
         os.makedirs(op.dirname(meth_calls_path_template), exist_ok=True, mode=0o770)
 
@@ -36,7 +54,7 @@ class BedWriter(Visitor):
         for fobj in self.meth_calls_fobj_dict.values():
             fobj.write(header_no_endl + '\n')
 
-    def process(self, motif_pileup: MotifPileup):
+    def process(self, motif_pileup: MotifPileup) -> None:
         motif = motif_pileup.idx_pos.motif
         line_no_endl = '\t'.join([
             motif_pileup.idx_pos.chrom,
@@ -53,18 +71,19 @@ class BedWriter(Visitor):
 
 
 class McallWriterABC(Visitor, metaclass=ABCMeta):
-    def __init__(self, calls_by_chrom_motif_fp: str,
-                 motifs: List[str], header_no_newline: Optional[str],
-                 chrom: str):
-        """Write MotifPileup info to mcall file
+    """ABC for classes writing meth. calling statistics to text files
 
-        Args:
-            calls_by_chrom_motif_fp: must contain
-                [motif] and [chrom] fields
-            motifs: list of motifs covered in the run
-            header_no_newline: optional header line for all output files
-            chrom: chrom ID
-        """
+    Args:
+        calls_by_chrom_motif_fp: must contain [motif] and [chrom] fields
+        motifs: list of motifs covered in the run
+        header_no_newline: optional header line for all output files.
+            Starts with "#"
+        chrom: chrom ID
+    """
+
+    def __init__(self, calls_by_chrom_motif_fp: str,
+                 motifs: List[str], header_no_newline: str,
+                 chrom: str) -> None:
         self.calls_by_chrom_motif_fp = str(calls_by_chrom_motif_fp)
         self.motifs = motifs
         self.meth_calls_fobj_dict: Dict[str, IO[Any]] = {}
@@ -81,7 +100,7 @@ class McallWriterABC(Visitor, metaclass=ABCMeta):
         self.header_no_newline = header_no_newline
         self.chrom = chrom
 
-    def setup(self):
+    def setup(self) -> 'McallWriterABC':
         """Open file objects for each motif covered by the run, add header"""
 
         self._open_mcall_files()
@@ -89,7 +108,7 @@ class McallWriterABC(Visitor, metaclass=ABCMeta):
             self._write_header_line()
         return self
 
-    def _open_mcall_files(self):
+    def _open_mcall_files(self) -> None:
         for motif in self.motifs:
             out_fp = (self.calls_by_chrom_motif_fp
                       .replace('[motif]', motif)
@@ -100,37 +119,38 @@ class McallWriterABC(Visitor, metaclass=ABCMeta):
             Path(out_fp).parent.mkdir(parents=True, exist_ok=True, mode=0o770)
             self.meth_calls_fobj_dict[motif] = gzip.open(out_fp, 'wt')
 
-    def _write_header_line(self):
+    def _write_header_line(self) -> None:
         for fobj in self.meth_calls_fobj_dict.values():
             fobj.write(self.header_no_newline + '\n')
 
 
 class BismarkWriter(McallWriterABC):
-    def __init__(self, calls_by_chrom_motif_fp: str, motifs: List[str],
-                 chrom: str):
-        """Generate output as specified by Bismark methylation extractor
+    """Generate output as specified by Bismark methylation extractor
 
-        Args:
-            calls_by_chrom_motif_fp: must contain
-                [motif] and [chrom] fields
-            motifs: list of motifs covered in the run
-            chrom: chrom ID
-        """
+    Args:
+        calls_by_chrom_motif_fp: must contain
+            [motif] and [chrom] fields
+        motifs: list of motifs covered in the run
+        chrom: chrom ID
+    """
+
+    def __init__(self, calls_by_chrom_motif_fp: str, motifs: List[str],
+                 chrom: str) -> None:
         super().__init__(calls_by_chrom_motif_fp=calls_by_chrom_motif_fp,
                          motifs=motifs,
                          header_no_newline='',
                          chrom=chrom)
         self.symbol_table = {
-            'CG': {
-                mflags.is_methylated: ('+', 'Z'),
+            'CG':  {
+                mflags.is_methylated:   ('+', 'Z'),
                 mflags.is_unmethylated: ('-', 'z')
             },
             'CHG': {
-                mflags.is_methylated: ('+', 'X'),
+                mflags.is_methylated:   ('+', 'X'),
                 mflags.is_unmethylated: ('-', 'x')
             },
             'CHH': {
-                mflags.is_methylated: ('+', 'H'),
+                mflags.is_methylated:   ('+', 'H'),
                 mflags.is_unmethylated: ('-', 'h')
             },
         }
@@ -161,8 +181,23 @@ class BismarkWriter(McallWriterABC):
                 (read.alignment.query_name, strand_symbol,
                  self.chrom, pos_str, meth_symbol)) + '\n')
 
-#-
+
 class StratifiedBedWriter(McallWriterABC):
+    """Stratified methylation calls (BED6 + methylation stats)
+
+    The first 9 columns are identical to the columns of the standard
+    BED output format (BED6 + beta_value n_meth n_total).
+    The following columns indicate the meth stats per
+    BS-Seq strand, and then per mate. Floats are written as %.8f
+
+    Subclasses McallWriterABC and implements the process method. File
+    handling behavior is inherited.
+
+    Args:
+        calls_by_chrom_motif_fp: must contain [motif] and [chrom] fields
+        motifs: list of motifs covered in the run
+        chrom: chrom ID
+    """
 
     header_no_newline = '\t'.join(
         ['#chrom', 'start', 'end', 'motif', 'score', 'strand',
@@ -175,40 +210,31 @@ class StratifiedBedWriter(McallWriterABC):
          'mate2_beta_value', 'mate2_n_meth', 'mate2_n_total',
          ])
 
-    def __init__(self, calls_by_chrom_motif_fp: str, motifs: List[str], chrom: str):
-        """Stratified methylation calls
-
-        The first 9 columns are identical to the columns of the standard
-        BED output format (BED6 + beta_value n_meth n_total).
-
-        Floats are are modified as %.8f
-
-        Args:
-            calls_by_chrom_motif_fp: must contain
-                [motif] and [chrom] fields
-            motifs: list of motifs covered in the run
-            chrom: chrom ID
-        """
+    def __init__(self, calls_by_chrom_motif_fp: str, motifs: List[str], chrom: str) -> None:
         super().__init__(calls_by_chrom_motif_fp=calls_by_chrom_motif_fp,
                          motifs=motifs,
                          header_no_newline=self.header_no_newline,
                          chrom=chrom)
 
-    def process(self, motif_pileup: MotifPileup):
+    def process(self, motif_pileup: MotifPileup) -> None:
+        """Create stratified meth. calls BED line
+
+        Use MotifPileup attributes filled by StratifiedMethCaller.
+        """
 
         strat_calls_slice = slice(0, scall_ids.all)
 
-        # noinspection PyUnresolvedReferences
         line = '\t'.join(chain(
             [motif_pileup.idx_pos.chrom, str(motif_pileup.idx_pos.start),
-              str(motif_pileup.idx_pos.end), motif_pileup.idx_pos.motif,
-              '.', motif_pileup.idx_pos.strand,
-              f"{motif_pileup.beta_value:.8f}", str(motif_pileup.n_meth), str(motif_pileup.n_total),
-              ],
-            *zip(np.char.mod('%.8f', motif_pileup.strat_beta_value_arr[strat_calls_slice]),
+             str(motif_pileup.idx_pos.end), motif_pileup.idx_pos.motif,
+             '.', motif_pileup.idx_pos.strand,
+             f"{motif_pileup.beta_value:.8f}", str(motif_pileup.n_meth), str(motif_pileup.n_total),
+             ],
+            *zip(np.char.mod('%.8f', motif_pileup.strat_beta_arr[strat_calls_slice]),
                  motif_pileup.meth_counts_arr[strat_calls_slice, mstat_ids.n_meth].astype(str),
                  motif_pileup.meth_counts_arr[strat_calls_slice, mstat_ids.n_total].astype(str)),
-            ('\n', )
+            ('\n',)
         ))
+        # astype(str) is sufficient because meth_counts_array dtype is int
 
         self.meth_calls_fobj_dict[motif_pileup.idx_pos.motif].write(line)

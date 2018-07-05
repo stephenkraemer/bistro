@@ -12,8 +12,8 @@ The visitors can be divided into two groups:
              gather, save and write out information
 
 The Tagger.process() methods will be called in order of appearance in the
-Iterator .taggers attribute. Often it will be important to pay attention to the 
-correct order! E.g. you must tag read positions which have to be trimmed before
+Iterator .taggers attribute. Often it will be important to pay attention to the
+ correct order! E.g. you must tag read positions which have to be trimmed before
 computing overlaps between mate1 and mate2.
 
 A typical selection and order of taggers will be:
@@ -25,7 +25,8 @@ A typical selection and order of taggers will be:
      5. position outside of TLEN
   2. Mate exclusion filtering (if option is set)
   3. Fragment length filtering (discard small fragments?)
-     1. currently automatically implemented through adjusted M-bias trimming, which discards small fragments
+     1. currently automatically implemented through adjusted M-bias trimming,
+        which discards small fragments
   4. Conversion error calling
   5. Trimming
      1. Constant base trimming (e.g. gap repairs)
@@ -47,32 +48,39 @@ pileup functionality.
 Implementation of a CachedPileupIterator which would provide information
 about both mates at the same time and about the global beta
 values at all CH and CG positions in the fragment is planned but not done yet.
-This would for example be helpful for more sophisticated conversion error calling 
+This would for example be helpful for more sophisticated conversion error calling
 and qc filtering in general, as well as better fragment length determination
 or some kinds of epipolymorphism analysis
 """
-
+import numpy as np
 
 import pysam
 from itertools import chain, repeat
-from collections import namedtuple
-from typing import Iterator, List
+from typing import Iterator, List, NamedTuple
 
 from mqc.index import IndexPosition
 from mqc.pileup.bsseq_pileup_read import pileups, BSSeqPileupRead
 
 
 class MotifPileup:
-    def __init__(self, reads: List[BSSeqPileupRead], idx_pos: IndexPosition):
+
+    meth_counts_arr: np.ndarray
+    strat_beta_arr: np.ndarray
+    beta_value: float
+    n_meth: int
+    n_total: int
+
+    def __init__(self, reads: List[BSSeqPileupRead], idx_pos: IndexPosition) -> None:
         self.idx_pos = idx_pos
         self.reads = reads
-        self.beta_value = None
-        self.n_meth = None
-        self.n_total = None
+
 
 def stepwise_pileup_generator(index_positions: Iterator[IndexPosition],
                               alignment_file: pysam.AlignmentFile,
                               ) -> Iterator[MotifPileup]:
+    """MotifPileup Generator"""
+    # pylint: disable=stop-iteration-return
+    # (pylint false positive)
 
     idx_pos_iterable = iter(index_positions)
     curr_idx = next(idx_pos_iterable)
@@ -82,9 +90,13 @@ def stepwise_pileup_generator(index_positions: Iterator[IndexPosition],
                                            end=None,
                                            truncate=True)
 
-    empty_pileup_column = (namedtuple('EmptyPileupColumn', 'reference_pos')
-                           (reference_pos = -1))
+    # Functional form required
+    # https://github.com/python/mypy/issues/4349
+    # noinspection PyPep8Naming
+    EmptyPileupColumn = NamedTuple('EmptyPileupColumn', [('reference_pos', int)])
+    empty_pileup_column = EmptyPileupColumn(-1)
     empty_pileup_column_iterable = repeat(empty_pileup_column)
+
     pileup_columns_iterator = chain(pileup_columns,
                                     empty_pileup_column_iterable)
     curr_pileup_column = next(pileup_columns_iterator)
@@ -113,4 +125,3 @@ def stepwise_pileup_generator(index_positions: Iterator[IndexPosition],
                 curr_pileup_pos = curr_pileup_column.reference_pos
         except StopIteration:
             return  # generator will now raise StopIteration
-
