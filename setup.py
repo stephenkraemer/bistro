@@ -152,6 +152,7 @@ setup(name='mqc',
 
       packages=find_packages(where='src'),
       package_dir={'': 'src'},
+      zip_safe=False,
 
       entry_points = {
           'console_scripts': ['mqc=mqc.cli:mqc'],
@@ -167,7 +168,7 @@ setup(name='mqc',
           'ipywidgets',
           'joblib',
           'matplotlib',
-          'more_itertools'
+          'more_itertools',
           'numpy',
           'pandas',
           'plotnine',
@@ -185,15 +186,19 @@ setup(name='mqc',
               'pytest',
               'pytest-mock',
               'pytest-xdist',
-              # Required to set e.g. TMP, to avoid writing to /tmp,
-              # which may not be allowed
-              'pytest-env',
               # 'cython (>=0.25)',
-          ]
+              'mypy==0.610',
+              'numpy-stubs',
+          ],
       },
+
+      dependency_links=[
+          'git+https://github.com/numpy/numpy-stubs.git#egg=numpy-stubs-0.01',
+      ],
 
       cmdclass = {'build_ext': build_ext},
       ext_modules=prepare_extensions(extensions),
 
-      package_data={'mqc.resources': ['*']},
+      package_data={'mqc.resources': ['*'],
+                    'mqc': ['py.typed']},
       )

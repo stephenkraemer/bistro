@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+
+readarray -t files_to_lint < mypy_include.txt
+pylint --rcfile /home/stephen/projects/mqc/pylintrc "${files_to_lint[@]}"
+
