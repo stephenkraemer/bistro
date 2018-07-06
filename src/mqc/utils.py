@@ -14,11 +14,12 @@ from pkg_resources import resource_filename
 
 from typing import (
     List, Iterable,
-    Set, Union, Sequence)
+    Set, Union, Sequence, Any,
+)
 
 
 def convert_array_to_df(arr: np.ndarray,
-                        dim_levels: List[Iterable], dim_names: List[str],
+                        dim_levels: Sequence[Sequence[Any]], dim_names: List[str],
                         value_column_name: str):
     """ Convert ndarray to DataFrame
 
@@ -26,7 +27,7 @@ def convert_array_to_df(arr: np.ndarray,
     ----------
     arr: np.ndarray
     dim_levels:
-        One iterable per index level, detailing the unique index levels
+        One sequence per index level, detailing the unique index levels
         *The index levels must be given in sorted order*
     dim_names
     value_column_name

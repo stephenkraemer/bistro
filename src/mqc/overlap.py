@@ -1,4 +1,6 @@
 import random
+from typing import DefaultDict, List
+
 random.seed(1234)
 
 from collections import defaultdict
@@ -12,11 +14,9 @@ mflags = methylation_status_flags
 
 
 class OverlapHandler(Visitor):
-    def __init__(self):
-        pass
 
-    def process(self, motif_pileup: MotifPileup):
-        read_hash = defaultdict(list)
+    def process(self, motif_pileup: MotifPileup) -> None:
+        read_hash: DefaultDict[str, List[BSSeqPileupRead]] = defaultdict(list)
         for curr_read in motif_pileup.reads:
             # TODO: add check whether read has a usable meth status
             if (curr_read.trimm_flag
@@ -25,12 +25,12 @@ class OverlapHandler(Visitor):
                 continue
             read_hash[curr_read.alignment.query_name].append(curr_read)
 
-        for query_name, reads in read_hash.items():
+        for unused_query_name, reads in read_hash.items():
             if len(reads) == 2:
                 _process_overlap(reads[0], reads[1])
 
 
-def _process_overlap(read1: BSSeqPileupRead, read2: BSSeqPileupRead):
+def _process_overlap(read1: BSSeqPileupRead, read2: BSSeqPileupRead) -> None:
 
     if read1.meth_status_flag == read2.meth_status_flag:
         # typically, mapq filtering will be applied before overlap handling

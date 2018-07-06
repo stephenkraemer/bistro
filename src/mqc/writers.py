@@ -16,12 +16,11 @@ Planned
 import gzip
 import os
 import os.path as op
+import numpy as np
+
 from abc import ABCMeta
 from itertools import chain
 from pathlib import Path
-from typing import List, Dict, Any, IO
-
-import numpy as np
 
 from mqc.flag_and_index_values import (
     methylation_status_flags as mflags,
@@ -32,11 +31,15 @@ from mqc.pileup.pileup import MotifPileup
 from mqc.visitors import Visitor
 
 
+from typing import List, Dict, Any, IO
+ConfigDict = Dict[str, Any]
+
+
 class BedWriter(Visitor):
     """Standard BED6 + [beta_value n_meth n_total] format"""
     # TODO: subclass McallWriterABC
 
-    def __init__(self, config, chrom: str) -> None:
+    def __init__(self, config: ConfigDict, chrom: str) -> None:
         # TODO-important: avoid hard coding
         meth_calls_path_template = (
                 config['paths']['meth_calls_basepath']

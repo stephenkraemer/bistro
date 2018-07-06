@@ -9,7 +9,7 @@ from copy import deepcopy
 from itertools import product, count
 from math import floor, ceil
 from pathlib import Path
-from typing import Dict, List, Union, Optional, Set
+from typing import Dict, List, Union, Optional, Set, Any, Tuple
 # from dpcontracts import invariant
 
 import matplotlib
@@ -74,6 +74,8 @@ MBIAS_STATS_DIMENSION_PLOT_LABEL_MAPPING = dict(
     phred_threshold='Phred >',
 )
 
+ConfigDict = Dict[str, Any]
+
 
 class MbiasCounter(Counter):
     """Counter for multidimensional M-bias stats
@@ -105,7 +107,7 @@ class MbiasCounter(Counter):
     - meth. status labels: n_meth, n_unmeth [categorical]
      """
 
-    def __init__(self, config: Dict):
+    def __init__(self, config: ConfigDict) -> None:
 
         self.save_stem = config["paths"]["mbias_counts"]
         self.max_read_length = config["data_properties"]["max_read_length_bp"]
@@ -168,7 +170,7 @@ class MbiasCounter(Counter):
                          counter_array=counter_array,
                          save_stem=self.save_stem)
 
-    def process(self, motif_pileup: MotifPileup):
+    def process(self, motif_pileup: MotifPileup) -> None:
         """Extract M-bias stats from MotifPileup
 
         Reads are discarded if
@@ -765,245 +767,245 @@ def mask_mbias_stats_df_replacement(mbias_stats_df, cutting_sites_df):
 #                ))
 #     return t
 
-def get_plotnine_poster_theme():
-    t = (theme_classic() +
-         theme(text = element_text(family = "DejaVu Sans", size = 8),
-               title = element_text(size = 40),
-               axis_title = element_text(size = 24),
-               axis_text = element_text(size = 20),
-               # plot_margin = 0.5,
-               strip_background = element_rect(color="white"),
-               strip_text = element_text(size=24),
-               axis_line = element_line(color="black"),
-               legend_title = element_text(size=20),
-               legend_text = element_text(size=20)
-               ))
-    return t
-
-PLOTNINE_THEMES = dict(
-    poster=(theme_classic() +
-            theme(text = element_text(family = "DejaVu Sans", size = 8),
-                  title = element_text(size = 40),
-                  axis_title = element_text(size = 24),
-                  axis_text = element_text(size = 20),
-                  # plot_margin = 0.5,
-                  strip_background = element_rect(color="white"),
-                  strip_text = element_text(size=24),
-                  axis_line = element_line(color="black"),
-                  legend_title = element_text(size=20),
-                  legend_text = element_text(size=20)
-                  )),
-)
-
-
-def plot_mappings_for_dfs(mbias_stats_dfs_dict, df_names,
-                          config, aes_mappings,
-                          plot_vars={}, motifs=["CG"]):
-    """
-
-    Parameters
-    ----------
-    mbias_stats_dfs_dict: Dict
-        contains 'mbias_stats_df' and 'masked_mbias_stats_df'
-    df_names: List[str]
-        mbias_stats_df_dict keys pointing to DFs to be used for plotting
-    config: Dict
-        Uses config['paths']['mbias_plots_trunk']
-    aes_mappings: List[Dict]
-        List of aesthetic mappings for seaborn FacetGrid,
-        - required are "row", "col", "hue".
-        - To leave out an aesthetic, assign None to it
-        - You can also set the x and y aesthetics,
-          which default to "pos" and "beta_value".
-    alpha: int
-        passed to ggplot
-    motifs: Union[List[str], None]
-        Restrict the mbias stats df to motifs, if not None
-
-    Returns
-    -------
-    Plots as png, svg, pdf
-
-    Notes
-    -----
-
-    - The y-axis limits are indicated in the filename, e.g. ylim-0-1
-    - alpha for colors is hardcoded to 0.5
-
-    ToDos
-    -----
-    - discard strata where coverage is too low
-    - allowing creating one plot per motif using a "split" aesthetic or something similar
-      (Then I could in principle also split by bs_strand or other aesthetics
-    - allow restriction to a given motif
-    """
-
-    # Set defaults for x and y aesthetics
-    default_mapping = {"x": "pos",
-                       "y": "beta_value"}
-
-    for (curr_name, curr_df), curr_aes_mapping in product(
-            mbias_stats_dfs_dict.items(), aes_mappings):
-
-        if curr_name not in df_names:
-            continue
-
-        # Motifs is List[str], so keeps index dimensions
-        if motifs:
-            curr_df = curr_df.loc[motifs, :]
-
-        complete_aes = default_mapping.copy()
-        complete_aes.update(curr_aes_mapping)
-
-        mbias_plots_for_df_aes_combination(curr_df, curr_name, complete_aes,
-                                           config, plot_vars)
+# def get_plotnine_poster_theme():
+#     t = (theme_classic() +
+#          theme(text = element_text(family = "DejaVu Sans", size = 8),
+#                title = element_text(size = 40),
+#                axis_title = element_text(size = 24),
+#                axis_text = element_text(size = 20),
+#                # plot_margin = 0.5,
+#                strip_background = element_rect(color="white"),
+#                strip_text = element_text(size=24),
+#                axis_line = element_line(color="black"),
+#                legend_title = element_text(size=20),
+#                legend_text = element_text(size=20)
+#                ))
+#     return t
+#
+# PLOTNINE_THEMES = dict(
+#     poster=(theme_classic() +
+#             theme(text = element_text(family = "DejaVu Sans", size = 8),
+#                   title = element_text(size = 40),
+#                   axis_title = element_text(size = 24),
+#                   axis_text = element_text(size = 20),
+#                   # plot_margin = 0.5,
+#                   strip_background = element_rect(color="white"),
+#                   strip_text = element_text(size=24),
+#                   axis_line = element_line(color="black"),
+#                   legend_title = element_text(size=20),
+#                   legend_text = element_text(size=20)
+#                   )),
+# )
 
 
-def mbias_plots_for_df_aes_combination(mbias_stats_df, df_name,
-                                       complete_aes, config, plot_vars,
-                                       use_r_ggplot=True):
-
-    print(f"Working on {df_name} with aes {list(complete_aes.items())}")
-
-    flen_sel = config['plots']['mbias_flens_to_display']
-    trunk_path = config['paths']['mbias_plots_trunk']
-
-    plot_df_var_names = {"motif": "Motif", "seq_context": "Sequence context",
-                         "mate": "Mate", "bs_strand": "BS-strand",
-                         "flen": "Frag.\nlength", "phred": "Phred \u2265",
-                         "pos": "Position", "beta_value": "Beta value",
-                         "n_meth": "#methylated", "n_unmeth": "#unmethylated"}
-
-    plot_df = calculate_plot_df(mbias_stats_df, complete_aes, flen_sel,
-                                plot_df_var_names=plot_df_var_names)
-
-    plot_vars = add_plot_aes_mappings(plot_vars, complete_aes, plot_df_var_names)
-
-    plot_vars = add_derived_plot_vars(plot_vars, plot_df)
-
-    for ylim_tuple in plot_vars["ylim_tuples"]:
-
-        strat_name = '_'.join([f"{aes}-{var}"
-                               for aes, var in complete_aes.items()])
-        file_path_pattern = (f"{trunk_path}_{df_name}_{strat_name}"
-                             f"_ylim-{ylim_tuple[0]}-{ylim_tuple[1]}"
-                             ".{file_format}")  # note: file format not expanded here!
-
-        plot_vars["ylim_tuple"] = ylim_tuple
-
-        if use_r_ggplot:
-            # plot_with_ggplot(plot_df, file_path_pattern, **plot_vars)
-            raise NotImplemented
-        else:
-            plot_with_plotnine(plot_df, file_path_pattern, **plot_vars)
-
-
-def add_plot_aes_mappings(plot_vars, complete_aes, plot_df_var_names):
-
-    plot_vars["row_aes"] = complete_aes["row"]
-    plot_vars["col_aes"] = complete_aes["col"]
-
-    plot_aes_full = {k: v
-                     for k, v in complete_aes.items()
-                     if v is not None}
-
-    plot_aes_no_grid_vars = {k: v for k, v in plot_aes_full.items()
-                             if k not in ["row", "col"]}
-
-    if "color" in plot_aes_no_grid_vars:
-        plot_aes_no_grid_vars["group"] = plot_aes_no_grid_vars["color"]
-
-    plot_vars["plot_aes"] = plot_aes_no_grid_vars
-
-    plot_vars["xlab"] = plot_df_var_names[plot_aes_full["x"]]
-    plot_vars["ylab"] = plot_df_var_names[plot_aes_full["y"]]
-    try:
-        plot_vars["legend_title"] = plot_df_var_names[plot_aes_full["color"]]
-        # if plot_aes_full["color"] == "flen":
-        #     plot_vars["legend_title"] = "Frag.\nlength"
-    except KeyError:
-        plot_vars["legend_title"] = "No color defined"
-
-    return plot_vars
-
-
-def add_derived_plot_vars(plot_vars, plot_df):
-
-    pv = plot_vars
-    row_aes = pv["row_aes"]
-    col_aes = pv["col_aes"]
-    # Generate plots in different formats and with different y-axis limits
-    pv["need_row_facet"] = (bool(row_aes)
-                            and (plot_df[row_aes].unique().shape[0] > 1))
-    pv["need_col_facet"] = (bool(col_aes)
-                            and (plot_df[col_aes].unique().shape[0] > 1))
-
-
-    pv["plot_height"] = pv["panel_height"]
-    pv["plot_width"] = pv["panel_width"]
-    if row_aes:
-        pv["plot_height"] = pv["panel_height"] * len(plot_df[row_aes].unique())
-    if col_aes:
-        pv["plot_width"] = pv["panel_width"] * len(plot_df[col_aes].unique())
-
-
-    x_aes = pv["plot_aes"]["x"]
-    pv["x_is_categorical"] = (plot_df[x_aes].dtype.name == "category")
-    pv["min_x"] = plot_df[x_aes].min()
-    pv["max_x"] = plot_df[x_aes].max()
-
-    return pv
-
-
-def plot_with_plotnine(plot_df, file_path_pattern,
-                       plot_aes, col_aes, row_aes,
-                       need_row_facet, need_col_facet,
-                       x_is_categorical,
-                       plot_height, plot_width,
-                       ylim_tuple=[(0,1)],
-                       y_breaks=list(np.arange(0, 1.01, 0.1)),
-                       min_x=None, max_x=None,
-                       x_breaks=None,
-                       alpha=0.7,
-                       rotate_x_labels=False,
-                       theme=None,
-                       ):
+# def plot_mappings_for_dfs(mbias_stats_dfs_dict, df_names,
+#                           config, aes_mappings,
+#                           plot_vars={}, motifs=["CG"]):
+#     """
+#
+#     Parameters
+#     ----------
+#     mbias_stats_dfs_dict: Dict
+#         contains 'mbias_stats_df' and 'masked_mbias_stats_df'
+#     df_names: List[str]
+#         mbias_stats_df_dict keys pointing to DFs to be used for plotting
+#     config: Dict
+#         Uses config['paths']['mbias_plots_trunk']
+#     aes_mappings: List[Dict]
+#         List of aesthetic mappings for seaborn FacetGrid,
+#         - required are "row", "col", "hue".
+#         - To leave out an aesthetic, assign None to it
+#         - You can also set the x and y aesthetics,
+#           which default to "pos" and "beta_value".
+#     alpha: int
+#         passed to ggplot
+#     motifs: Union[List[str], None]
+#         Restrict the mbias stats df to motifs, if not None
+#
+#     Returns
+#     -------
+#     Plots as png, svg, pdf
+#
+#     Notes
+#     -----
+#
+#     - The y-axis limits are indicated in the filename, e.g. ylim-0-1
+#     - alpha for colors is hardcoded to 0.5
+#
+#     ToDos
+#     -----
+#     - discard strata where coverage is too low
+#     - allowing creating one plot per motif using a "split" aesthetic or something similar
+#       (Then I could in principle also split by bs_strand or other aesthetics
+#     - allow restriction to a given motif
+#     """
+#
+#     # Set defaults for x and y aesthetics
+#     default_mapping = {"x": "pos",
+#                        "y": "beta_value"}
+#
+#     for (curr_name, curr_df), curr_aes_mapping in product(
+#             mbias_stats_dfs_dict.items(), aes_mappings):
+#
+#         if curr_name not in df_names:
+#             continue
+#
+#         # Motifs is List[str], so keeps index dimensions
+#         if motifs:
+#             curr_df = curr_df.loc[motifs, :]
+#
+#         complete_aes = default_mapping.copy()
+#         complete_aes.update(curr_aes_mapping)
+#
+#         mbias_plots_for_df_aes_combination(curr_df, curr_name, complete_aes,
+#                                            config, plot_vars)
+#
+#
+# def mbias_plots_for_df_aes_combination(mbias_stats_df, df_name,
+#                                        complete_aes, config, plot_vars,
+#                                        use_r_ggplot=True):
+#
+#     print(f"Working on {df_name} with aes {list(complete_aes.items())}")
+#
+#     flen_sel = config['plots']['mbias_flens_to_display']
+#     trunk_path = config['paths']['mbias_plots_trunk']
+#
+#     plot_df_var_names = {"motif": "Motif", "seq_context": "Sequence context",
+#                          "mate": "Mate", "bs_strand": "BS-strand",
+#                          "flen": "Frag.\nlength", "phred": "Phred \u2265",
+#                          "pos": "Position", "beta_value": "Beta value",
+#                          "n_meth": "#methylated", "n_unmeth": "#unmethylated"}
+#
+#     plot_df = calculate_plot_df(mbias_stats_df, complete_aes, flen_sel,
+#                                 plot_df_var_names=plot_df_var_names)
+#
+#     plot_vars = add_plot_aes_mappings(plot_vars, complete_aes, plot_df_var_names)
+#
+#     plot_vars = add_derived_plot_vars(plot_vars, plot_df)
+#
+#     for ylim_tuple in plot_vars["ylim_tuples"]:
+#
+#         strat_name = '_'.join([f"{aes}-{var}"
+#                                for aes, var in complete_aes.items()])
+#         file_path_pattern = (f"{trunk_path}_{df_name}_{strat_name}"
+#                              f"_ylim-{ylim_tuple[0]}-{ylim_tuple[1]}"
+#                              ".{file_format}")  # note: file format not expanded here!
+#
+#         plot_vars["ylim_tuple"] = ylim_tuple
+#
+#         if use_r_ggplot:
+#             # plot_with_ggplot(plot_df, file_path_pattern, **plot_vars)
+#             raise NotImplemented
+#         else:
+#             plot_with_plotnine(plot_df, file_path_pattern, **plot_vars)
 
 
-    if theme == "poster":
-        ggtheme = get_plotnine_poster_theme()
-    else:
-        ggtheme = theme_classic()
+# def add_plot_aes_mappings(plot_vars, complete_aes, plot_df_var_names):
+#
+#     plot_vars["row_aes"] = complete_aes["row"]
+#     plot_vars["col_aes"] = complete_aes["col"]
+#
+#     plot_aes_full = {k: v
+#                      for k, v in complete_aes.items()
+#                      if v is not None}
+#
+#     plot_aes_no_grid_vars = {k: v for k, v in plot_aes_full.items()
+#                              if k not in ["row", "col"]}
+#
+#     if "color" in plot_aes_no_grid_vars:
+#         plot_aes_no_grid_vars["group"] = plot_aes_no_grid_vars["color"]
+#
+#     plot_vars["plot_aes"] = plot_aes_no_grid_vars
+#
+#     plot_vars["xlab"] = plot_df_var_names[plot_aes_full["x"]]
+#     plot_vars["ylab"] = plot_df_var_names[plot_aes_full["y"]]
+#     try:
+#         plot_vars["legend_title"] = plot_df_var_names[plot_aes_full["color"]]
+#         # if plot_aes_full["color"] == "flen":
+#         #     plot_vars["legend_title"] = "Frag.\nlength"
+#     except KeyError:
+#         plot_vars["legend_title"] = "No color defined"
+#
+#     return plot_vars
 
-    gp = (gg.ggplot(gg.aes(**plot_aes), plot_df)
-          + gg.geom_line(alpha=alpha)
-          + gg.scale_y_continuous(limits=ylim_tuple,
-                                  breaks=y_breaks)
-          + ggtheme
-          )
-    if x_is_categorical:
-        gp += gg.scale_x_discrete()
-    else:
-        gp += gg.scale_x_continuous(limits=(min_x, max_x),
-                                    breaks=x_breaks)
 
-    if need_row_facet and need_col_facet:
-        gp += gg.facet_grid((row_aes, col_aes))
-    elif need_row_facet:
-        gp += gg.facet_wrap(row_aes, ncol=1)
-    elif need_col_facet:
-        gp += gg.facet_wrap(col_aes, nrow=1)
+# def add_derived_plot_vars(plot_vars, plot_df):
+#
+#     pv = plot_vars
+#     row_aes = pv["row_aes"]
+#     col_aes = pv["col_aes"]
+#     # Generate plots in different formats and with different y-axis limits
+#     pv["need_row_facet"] = (bool(row_aes)
+#                             and (plot_df[row_aes].unique().shape[0] > 1))
+#     pv["need_col_facet"] = (bool(col_aes)
+#                             and (plot_df[col_aes].unique().shape[0] > 1))
+#
+#
+#     pv["plot_height"] = pv["panel_height"]
+#     pv["plot_width"] = pv["panel_width"]
+#     if row_aes:
+#         pv["plot_height"] = pv["panel_height"] * len(plot_df[row_aes].unique())
+#     if col_aes:
+#         pv["plot_width"] = pv["panel_width"] * len(plot_df[col_aes].unique())
+#
+#
+#     x_aes = pv["plot_aes"]["x"]
+#     pv["x_is_categorical"] = (plot_df[x_aes].dtype.name == "category")
+#     pv["min_x"] = plot_df[x_aes].min()
+#     pv["max_x"] = plot_df[x_aes].max()
+#
+#     return pv
 
-    if x_is_categorical:
-        gp += gg.geom_point(alpha=alpha)
 
-    if rotate_x_labels:
-        gp += gg.theme(axis_text_x=gg.element_text(angle=90,
-                                                   hjust=0.5))
-
-    for file_format in ["png", "svg", "pdf"]:
-        gp.save(file_path_pattern.format(file_format=file_format),
-                height=plot_height, width=plot_width, units="cm")
+# def plot_with_plotnine(plot_df, file_path_pattern,
+#                        plot_aes, col_aes, row_aes,
+#                        need_row_facet, need_col_facet,
+#                        x_is_categorical,
+#                        plot_height, plot_width,
+#                        ylim_tuple=[(0,1)],
+#                        y_breaks=list(np.arange(0, 1.01, 0.1)),
+#                        min_x=None, max_x=None,
+#                        x_breaks=None,
+#                        alpha=0.7,
+#                        rotate_x_labels=False,
+#                        theme=None,
+#                        ):
+#
+#
+#     if theme == "poster":
+#         ggtheme = get_plotnine_poster_theme()
+#     else:
+#         ggtheme = theme_classic()
+#
+#     gp = (gg.ggplot(gg.aes(**plot_aes), plot_df)
+#           + gg.geom_line(alpha=alpha)
+#           + gg.scale_y_continuous(limits=ylim_tuple,
+#                                   breaks=y_breaks)
+#           + ggtheme
+#           )
+#     if x_is_categorical:
+#         gp += gg.scale_x_discrete()
+#     else:
+#         gp += gg.scale_x_continuous(limits=(min_x, max_x),
+#                                     breaks=x_breaks)
+#
+#     if need_row_facet and need_col_facet:
+#         gp += gg.facet_grid((row_aes, col_aes))
+#     elif need_row_facet:
+#         gp += gg.facet_wrap(row_aes, ncol=1)
+#     elif need_col_facet:
+#         gp += gg.facet_wrap(col_aes, nrow=1)
+#
+#     if x_is_categorical:
+#         gp += gg.geom_point(alpha=alpha)
+#
+#     if rotate_x_labels:
+#         gp += gg.theme(axis_text_x=gg.element_text(angle=90,
+#                                                    hjust=0.5))
+#
+#     for file_format in ["png", "svg", "pdf"]:
+#         gp.save(file_path_pattern.format(file_format=file_format),
+#                 height=plot_height, width=plot_width, units="cm")
 
 
 # def plot_with_ggplot(plot_df, file_path_pattern,
@@ -1288,130 +1290,130 @@ def create_freq_with_agg_pos_plots(mbias_stats_df, config):
     g.savefig(out_fp)
 
 
-def seq_context_beta_value_plots(mbias_stats_df, config):
-    trunk_path = config['paths']['freq_with_agg_pos_plot']
-
-    plot_df = (mbias_stats_df
-               .loc['CG', :]
-               .groupby(['seq_context', 'bs_strand'])
-               .sum()
-               .assign(beta_value=compute_beta_values)
-               .reset_index()
-               )
-
-    plot_df['seq_context'].cat.remove_unused_categories(inplace=True)
-
-
-    g = (gg.ggplot(data=plot_df, mapping=gg.aes(
-        x = "seq_context",
-        y = "beta_value",
-        color="bs_strand",
-        group="bs_strand"))
-         + gg.geom_point()
-         + gg.geom_line()
-         + gg.theme(axis_text_x = gg.element_text(angle=90, size=8))
-         )
-    out_fp = trunk_path + "seq-context-beta_value-plot.png"
-    g.save(out_fp, height=12, width= 28, units='cm')
-
-    # g = sns.factorplot('seq_context', 'beta_value', hue='bs_strand',
-    #                    data=plot_df)
-    # g.savefig(out_fp)
-
-def seq_context_beta_value_plots_by_phred(mbias_stats_df, config):
-    trunk_path = config['paths']['freq_with_agg_pos_plot']
-
-    df1 = (mbias_stats_df
-           .loc[idxs['CG', :, ['c_bc', 'c_bc_rv']], :]
-           .groupby(['seq_context', 'bs_strand', 'phred'])
-           .sum()
-           .assign(beta_value=compute_beta_values)
-           )
-
-    df2 = (df1
-           .drop(['n_meth', 'n_unmeth'], axis=1)
-           .sort_index()
-           .groupby(['seq_context', 'phred'])
-           .agg(lambda ser: ser.iloc[0] - ser.iloc[1])
-           .reset_index()
-           )
-
-    df2['seq_context'].cat.remove_unused_categories(inplace=True)
-
-    g = (gg.ggplot(data=df2, mapping=gg.aes(
-        x = "seq_context",
-        y = "beta_value",
-        color="phred",
-        group="phred"))
-         + gg.geom_point()
-         + gg.geom_line()
-         + gg.theme(axis_text_x = gg.element_text(angle=90, size=8))
-         )
-    out_fp = trunk_path + "seq-context-beta_value-plot-with-phred-groups.png"
-    g.save(out_fp, height=12, width= 28, units='cm')
-
-    def get_filtering_result(ser):
-        cum_ser = ser.cumsum()
-        return cum_ser[-1] - cum_ser
-    df1 = (mbias_stats_df
-           .loc[idxs['CG', :, ['c_bc', 'c_bc_rv']], ['n_meth', 'n_unmeth']]
-           .groupby(['seq_context', 'bs_strand', 'phred'])
-           .sum()
-           .groupby(['seq_context', 'bs_strand'])
-           .transform(get_filtering_result)
-           .assign(beta_value=compute_beta_values)
-           )
-
-    df2 = (df1
-           .drop(['n_meth', 'n_unmeth'], axis=1)
-           .sort_index()
-           .groupby(['seq_context', 'phred'])
-           .agg(lambda ser: ser.iloc[0] - ser.iloc[1])
-           .reset_index()
-           )
-
-    df2['seq_context'].cat.remove_unused_categories(inplace=True)
-
-    g = (gg.ggplot(data=df2, mapping=gg.aes(
-        x = "seq_context",
-        y = "beta_value",
-        color="phred",
-        group="phred"))
-         + gg.geom_point()
-         + gg.geom_line()
-         + gg.theme(axis_text_x = gg.element_text(angle=90, size=8))
-         )
-
-    out_fp = trunk_path + "seq-context-beta_value-plot-with-phred-filtering.png"
-    g.save(out_fp, height=12, width= 28, units='cm')
-
-    def get_filtering_result(ser):
-        cum_ser = ser.cumsum()
-        return cum_ser[-1] - cum_ser
-    df1 = (mbias_stats_df
-           .loc[idxs['CG', :, ['c_bc', 'c_bc_rv']], ['n_meth', 'n_unmeth']]
-           .groupby(['seq_context', 'phred'])
-           .sum()
-           .groupby(['seq_context'])
-           .transform(get_filtering_result)
-           .assign(beta_value=compute_beta_values)
-           .reset_index()
-           )
-
-    df1['seq_context'].cat.remove_unused_categories(inplace=True)
-
-    g = (gg.ggplot(data=df1, mapping=gg.aes(
-        x = "seq_context",
-        y = "beta_value",
-        color="phred",
-        group="phred"))
-         + gg.geom_point()
-         + gg.geom_line()
-         + gg.theme(axis_text_x = gg.element_text(angle=90, size=8))
-         )
-
-    out_fp = trunk_path + "seq-context-beta_value-plot-for-diff-ptresh.png"
-    g.save(out_fp, height=12, width= 28, units='cm')
+# def seq_context_beta_value_plots(mbias_stats_df, config):
+#     trunk_path = config['paths']['freq_with_agg_pos_plot']
+#
+#     plot_df = (mbias_stats_df
+#                .loc['CG', :]
+#                .groupby(['seq_context', 'bs_strand'])
+#                .sum()
+#                .assign(beta_value=compute_beta_values)
+#                .reset_index()
+#                )
+#
+#     plot_df['seq_context'].cat.remove_unused_categories(inplace=True)
+#
+#
+#     g = (gg.ggplot(data=plot_df, mapping=gg.aes(
+#         x = "seq_context",
+#         y = "beta_value",
+#         color="bs_strand",
+#         group="bs_strand"))
+#          + gg.geom_point()
+#          + gg.geom_line()
+#          + gg.theme(axis_text_x = gg.element_text(angle=90, size=8))
+#          )
+#     out_fp = trunk_path + "seq-context-beta_value-plot.png"
+#     g.save(out_fp, height=12, width= 28, units='cm')
+#
+#     # g = sns.factorplot('seq_context', 'beta_value', hue='bs_strand',
+#     #                    data=plot_df)
+#     # g.savefig(out_fp)
+#
+# def seq_context_beta_value_plots_by_phred(mbias_stats_df, config):
+#     trunk_path = config['paths']['freq_with_agg_pos_plot']
+#
+#     df1 = (mbias_stats_df
+#            .loc[idxs['CG', :, ['c_bc', 'c_bc_rv']], :]
+#            .groupby(['seq_context', 'bs_strand', 'phred'])
+#            .sum()
+#            .assign(beta_value=compute_beta_values)
+#            )
+#
+#     df2 = (df1
+#            .drop(['n_meth', 'n_unmeth'], axis=1)
+#            .sort_index()
+#            .groupby(['seq_context', 'phred'])
+#            .agg(lambda ser: ser.iloc[0] - ser.iloc[1])
+#            .reset_index()
+#            )
+#
+#     df2['seq_context'].cat.remove_unused_categories(inplace=True)
+#
+#     g = (gg.ggplot(data=df2, mapping=gg.aes(
+#         x = "seq_context",
+#         y = "beta_value",
+#         color="phred",
+#         group="phred"))
+#          + gg.geom_point()
+#          + gg.geom_line()
+#          + gg.theme(axis_text_x = gg.element_text(angle=90, size=8))
+#          )
+#     out_fp = trunk_path + "seq-context-beta_value-plot-with-phred-groups.png"
+#     g.save(out_fp, height=12, width= 28, units='cm')
+#
+#     def get_filtering_result(ser):
+#         cum_ser = ser.cumsum()
+#         return cum_ser[-1] - cum_ser
+#     df1 = (mbias_stats_df
+#            .loc[idxs['CG', :, ['c_bc', 'c_bc_rv']], ['n_meth', 'n_unmeth']]
+#            .groupby(['seq_context', 'bs_strand', 'phred'])
+#            .sum()
+#            .groupby(['seq_context', 'bs_strand'])
+#            .transform(get_filtering_result)
+#            .assign(beta_value=compute_beta_values)
+#            )
+#
+#     df2 = (df1
+#            .drop(['n_meth', 'n_unmeth'], axis=1)
+#            .sort_index()
+#            .groupby(['seq_context', 'phred'])
+#            .agg(lambda ser: ser.iloc[0] - ser.iloc[1])
+#            .reset_index()
+#            )
+#
+#     df2['seq_context'].cat.remove_unused_categories(inplace=True)
+#
+#     g = (gg.ggplot(data=df2, mapping=gg.aes(
+#         x = "seq_context",
+#         y = "beta_value",
+#         color="phred",
+#         group="phred"))
+#          + gg.geom_point()
+#          + gg.geom_line()
+#          + gg.theme(axis_text_x = gg.element_text(angle=90, size=8))
+#          )
+#
+#     out_fp = trunk_path + "seq-context-beta_value-plot-with-phred-filtering.png"
+#     g.save(out_fp, height=12, width= 28, units='cm')
+#
+#     def get_filtering_result(ser):
+#         cum_ser = ser.cumsum()
+#         return cum_ser[-1] - cum_ser
+#     df1 = (mbias_stats_df
+#            .loc[idxs['CG', :, ['c_bc', 'c_bc_rv']], ['n_meth', 'n_unmeth']]
+#            .groupby(['seq_context', 'phred'])
+#            .sum()
+#            .groupby(['seq_context'])
+#            .transform(get_filtering_result)
+#            .assign(beta_value=compute_beta_values)
+#            .reset_index()
+#            )
+#
+#     df1['seq_context'].cat.remove_unused_categories(inplace=True)
+#
+#     g = (gg.ggplot(data=df1, mapping=gg.aes(
+#         x = "seq_context",
+#         y = "beta_value",
+#         color="phred",
+#         group="phred"))
+#          + gg.geom_point()
+#          + gg.geom_line()
+#          + gg.theme(axis_text_x = gg.element_text(angle=90, size=8))
+#          )
+#
+#     out_fp = trunk_path + "seq-context-beta_value-plot-for-diff-ptresh.png"
+#     g.save(out_fp, height=12, width= 28, units='cm')
 
 
 def freq_over_seq_context(mbias_stats_df, config):
@@ -1531,31 +1533,31 @@ def freq_over_seq_context(mbias_stats_df, config):
 #     # freq_over_pos_plot_per_motif(mbias_stats_dfs_dict, config)
 
 
-def create_phred_filtering_mbias_plots(mbias_stats_df, config):
-    phred_filter_dfs = compute_phred_filtering_dfs(
-        mbias_stats_df)
-
-    print('Plot M-bias plots for different phred filtering thresholds')
-    plot_data = phred_filter_dfs['counts_by_phred_filtering'].reset_index()
-    g = (sns.FacetGrid(plot_data, row='motif', col='bs_strand', hue='phred')
-         .map(plt.plot, 'pos', 'beta_value')
-         .add_legend())
-    g.savefig(config['paths'][
-                  'mbias_plots_trunk'] + '_phred_filtering_effect_by_pos.png')
-
-    print('Plot per strand and global meth. levels')
-    plot_data = phred_filter_dfs[
-        'counts_by_phred_filtering_agg_pos'].reset_index()
-    g = sns.factorplot(x='bs_strand', y='beta_value', hue='phred',
-                       data=plot_data)
-    g.savefig(config['paths']['mbias_plots_trunk']
-              + '_phred_filtering_effect_by_strand.png')
-
-    plot_data = phred_filter_dfs[
-        'counts_by_phred_filtering_global'].reset_index()
-    g = sns.factorplot(x='phred', y='beta_value', data=plot_data)
-    g.savefig(
-        config['paths']['mbias_plots_trunk'] + '_phred_filtering_global.png')
+# def create_phred_filtering_mbias_plots(mbias_stats_df, config):
+#     phred_filter_dfs = compute_phred_filtering_dfs(
+#         mbias_stats_df)
+#
+#     print('Plot M-bias plots for different phred filtering thresholds')
+#     plot_data = phred_filter_dfs['counts_by_phred_filtering'].reset_index()
+#     g = (sns.FacetGrid(plot_data, row='motif', col='bs_strand', hue='phred')
+#          .map(plt.plot, 'pos', 'beta_value')
+#          .add_legend())
+#     g.savefig(config['paths'][
+#                   'mbias_plots_trunk'] + '_phred_filtering_effect_by_pos.png')
+#
+#     print('Plot per strand and global meth. levels')
+#     plot_data = phred_filter_dfs[
+#         'counts_by_phred_filtering_agg_pos'].reset_index()
+#     g = sns.factorplot(x='bs_strand', y='beta_value', hue='phred',
+#                        data=plot_data)
+#     g.savefig(config['paths']['mbias_plots_trunk']
+#               + '_phred_filtering_effect_by_strand.png')
+#
+#     plot_data = phred_filter_dfs[
+#         'counts_by_phred_filtering_global'].reset_index()
+#     g = sns.factorplot(x='phred', y='beta_value', data=plot_data)
+#     g.savefig(
+#         config['paths']['mbias_plots_trunk'] + '_phred_filtering_global.png')
 
 
 def compute_phred_filtering_dfs(mbias_stats_df):
@@ -1905,12 +1907,12 @@ def mbias_stat_plots(
                 get_resource_abspath('default_mbias_plot_config.py')
                 + '::default_config')
     mbias_plot_config_module_path, config_dict_name = (
-        compact_mbias_plot_config_dict_fp.split('::')
+        compact_mbias_plot_config_dict_fp.split('::')  # type: ignore
     )
     spec = importlib.util.spec_from_file_location(
         'cf', mbias_plot_config_module_path)
     cf = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(cf)
+    spec.loader.exec_module(cf)  # type: ignore
     compact_mbias_plot_config_dict = getattr(cf, config_dict_name)
 
     mbias_plot_configs = get_plot_configs(compact_mbias_plot_config_dict,
@@ -1950,10 +1952,10 @@ class MbiasPlotAxisDefinition:
     def __init__(self, share: bool = True,
                  breaks: Union[int, List[float]] = 5,
                  limits: Optional[dict] = None,
-                 rotate_labels: bool = True):
+                 rotate_labels: bool = True) -> None:
         self.breaks = breaks
         if limits is None:
-            self.limits = {}
+            self.limits: Dict = {}
         self.limits = {'default': 'auto'}
         self.share = share
         self.rotate_labels = rotate_labels
@@ -1971,7 +1973,7 @@ class MbiasPlotParams:
                  panel_height_cm: int = 6, panel_width_cm: int = 6,
                  theme: str = 'paper',
                  plot: Optional[List[str]] = None,
-                 ):
+                 ) -> None:
         self.theme = theme
         self.panel_width_cm = panel_width_cm
         self.panel_height_cm = panel_height_cm
@@ -2004,7 +2006,7 @@ class MbiasPlotMapping:
                  # Implemented later
                  # column: Optional[Union[str, List, Tuple]] = None,
                  # row: Optional[Union[str, List, Tuple]] = None,
-                 wrap: Optional[int] = None):
+                 wrap: Optional[int] = None) -> None:
         """
 
         Facetting (row and col) may be done on combinations of variables. The
@@ -2138,7 +2140,7 @@ class MbiasPlotConfig:
                  aes_mapping: MbiasPlotMapping,
                  plot_params: MbiasPlotParams,
                  pre_agg_filters: Union[dict, None] = None,
-                 post_agg_filters: Union[dict, None] = None):
+                 post_agg_filters: Union[dict, None] = None) -> None:
 
         # Sanity checks
         if pre_agg_filters:
@@ -2359,8 +2361,8 @@ def create_aggregated_tables(
     # save memory, or to start one process per dataset
     plots_by_dataset = tz.groupby(lambda x: x.dataset_fp,
                                   unique_single_dataset_plot_configs)
+    agg_configs: List[MbiasStatAggregationParams]
     for dataset_fp, agg_configs in plots_by_dataset.items():
-        agg_configs: List[MbiasStatAggregationParams]
         curr_mbias_stats_df = pd.read_pickle(dataset_fp)
         for curr_agg_config in agg_configs:
             aggregated_mbias_stats.precompute_aggregated_stats(
@@ -2469,7 +2471,7 @@ def calculate_plot_df(mbias_stats_df, complete_aes, flens_to_display,
 class MbiasAnalysisConfig:
     """Configuration of the analysis workflow creating M-bias plots"""
     def __init__(self, grouped_mbias_plot_configs: dict,
-                 dataset_name_to_fp: dict):
+                 dataset_name_to_fp: dict) -> None:
         """MbiasAnalysiConfig default constructor
 
         In most cases, one of the convenience
@@ -2553,7 +2555,7 @@ class MbiasAnalysisConfig:
             a title derived from the MbiasPlotConfig information.
         """
 
-        report_dict = {}
+        report_dict: Dict = {}
 
         def get_figure_config(mbias_plot_config: MbiasPlotConfig):
             title = 'Datasets: ' + ', '.join(mbias_plot_config.datasets) + '\n\n'
@@ -2757,12 +2759,13 @@ def cutting_sites_df_has_correct_format(cutting_sites_df: pd.DataFrame):
 #            lambda inst: cutting_sites_df_has_correct_format(inst.df))
 class CuttingSitesReplacementClass:
 
-    def __init__(self, cutting_sites_df, max_read_length):
+    def __init__(self, cutting_sites_df: pd.DataFrame, max_read_length: int) -> None:
         self.df = cutting_sites_df
         self.max_read_length = max_read_length
 
     @staticmethod
-    def from_mbias_stats(mbias_stats_df, max_read_length, **kwargs):
+    def from_mbias_stats(mbias_stats_df: pd.DataFrame, max_read_length: int, **kwargs) \
+            -> 'CuttingSitesReplacementClass':
         cutting_sites_df = BinomPvalueBasedCuttingSiteDetermination(
             mbias_stats_df=mbias_stats_df,
             max_read_length=max_read_length,
@@ -2772,7 +2775,9 @@ class CuttingSitesReplacementClass:
             max_read_length=max_read_length)
 
     @staticmethod
-    def from_rel_to_frag_end_cutting_sites(cut_site_spec: dict, max_read_length):
+    def from_rel_to_frag_end_cutting_sites(
+            cut_site_spec: Dict[str, Tuple[int, int]], max_read_length: int) \
+            -> 'CuttingSitesReplacementClass':
 
         max_flen = max_read_length + max([elem[1] for elem in cut_site_spec.values()])
 
@@ -2801,7 +2806,7 @@ class CuttingSitesReplacementClass:
             max_read_length=max_read_length
         )
 
-    def as_array(self):
+    def as_array(self) -> np.ndarray:
         full_midx = pd.MultiIndex.from_product([
             pd.Categorical(bstrand_idxs._fields, ordered=True),
             range(self.df.index.get_level_values('flen').min(),
@@ -2821,7 +2826,7 @@ class CuttingSitesReplacementClass:
 
         return arr
 
-    def plot(self, path):
+    def plot(self, path: str) -> None:
         # TODO: account for motif or assume this will always be CG?
         if 'motif' in self.df.index.names:
             row_facetting_dict = {'row': 'motif'}
@@ -2925,7 +2930,7 @@ class BinomPvalueBasedCuttingSiteDetermination:
 
         cutting_sites_list = []
         try:
-            flen_idx = list(fn_mbias_stats_df.index.names).index('flen')
+            flen_idx: Optional[int] = list(fn_mbias_stats_df.index.names).index('flen')
         except ValueError:
             flen_idx = None
         for i in range(p_values_wide_integrated.shape[0]):

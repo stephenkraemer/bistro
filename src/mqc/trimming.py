@@ -10,7 +10,7 @@ class Trimmer(Visitor):
 
     Implementation notes:
     The cutting site array details zero-based positions (plateau_start, plateau_end)
-    for every stratum (bsseq_strand, fragment length) with flen \in  [min_flen, max_flen]
+    for every stratum (bsseq_strand, fragment length) with flen in  [min_flen, max_flen]
     The (plateau_start, plateau_end) positions are the lowest/highest allowed position
     in the read.
 
@@ -23,12 +23,12 @@ class Trimmer(Visitor):
     are passed
     """
 
-    def __init__(self, cutting_sites: CuttingSitesReplacementClass):
+    def __init__(self, cutting_sites: CuttingSitesReplacementClass) -> None:
         self.cutting_sites_array = cutting_sites.as_array()
         flen_idx = list(cutting_sites.df.index.names).index('flen')
         self.max_flen = self.cutting_sites_array.shape[flen_idx] - 1
 
-    def process(self, motif_pileup: MotifPileup):
+    def process(self, motif_pileup: MotifPileup) -> None:
         for read in motif_pileup.reads:
 
             if (read.meth_status_flag == mflags.is_na
@@ -42,7 +42,7 @@ class Trimmer(Visitor):
             start_of_plateau = self.cutting_sites_array[bstrand_idx, tlen, 0]
             end_of_plateau = self.cutting_sites_array[bstrand_idx, tlen, 1]
 
-            if not (start_of_plateau <= read.pos_in_read < end_of_plateau):
+            if not start_of_plateau <= read.pos_in_read < end_of_plateau:
                 # one could use different trimming modes and set different flag values for the trimming flag
                 # currently, only the first bit is used
                 read.trimm_flag = 1

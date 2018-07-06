@@ -1,19 +1,17 @@
 import gzip
-import itertools
-import re
-from collections import OrderedDict
-from os.path import dirname, isabs, join
-import numpy as np
 import os
 import os.path as op
-import subprocess
+import re
+from collections import OrderedDict
 from typing import List, Iterable, Dict, Any
+
 from joblib import Parallel, delayed
+
 from mqc.utils import open_gzip_or_plain_file
 
 
 class IndexFile:
-    def __init__(self, bed_abspath):
+    def __init__(self, bed_abspath: str) -> None:
         # TODO: some sort of context manager for closing this?
         self.index_fobj = gzip.open(bed_abspath, 'rt')
         header = next(self.index_fobj).strip()
@@ -39,7 +37,8 @@ class IndexPosition:
     will have additional fields. The names of these fields are taken
     from the header line.
     """
-    def __init__(self, index_line: str, opt_fields):
+    seq_context: str
+    def __init__(self, index_line: str, opt_fields: List[str]) -> None:
         fields = index_line.rstrip().split('\t')
         self.chrom = fields[0]
         self.start = int(fields[1])
@@ -54,37 +53,20 @@ class IndexPosition:
         for idx, field_name in enumerate(opt_fields, start=6):
             setattr(self, field_name, fields[idx])
 
-    def __str__(self):
-        return '{}:{}-{}, motif: {} (on strand {})'.format(
-            self.chrom, self.start, self.end,
-            self.original_motif, self.strand)
 
-
+# noinspection PyIncorrectDocstring
 def start_parallel_index_generation(genome_fasta: str, index_output_dir: str,
                                     motifs: List[str], annotations: OrderedDict,
-                                    cores: int):
+                                    cores: int) -> None:
     """Determine file paths and start parallel index generation
 
-    Parameters
-    ----------
-    chr_prefix:
-        string prepended to chromosome index
-    fasta_path_template:
-        template path specifying where to find the fasta files. Must have
-        one field, named '{chr}'. This field will be expanded to match the different chromosome
-        indices of the individual fasta files. Must be absolute path.
-    output_path_template:
-        template path specifying where to save the generated index files. Must
-        have one field, named '{chr}'. This field will be replaced with the chromosome
-        index of the corresponding fasta file
-    motifs:
-        the motifs to be considered for the index generation (CG, CHH, CHG/CWG)
-    annotations:
-        strings specifying the desired annotation columns
-    cores:
-        index generation can be run in parallel with *cores* processes
-    fasta_to_index_fn:
-        dependency injection used for unit test
+    Args:
+        motifs:
+            the motifs to be considered for the index generation (CG, CHH, CHG/CWG)
+        annotations:
+            strings specifying the desired annotation columns
+        cores:
+            index generation can be run in parallel with *cores* processes
     """
 
     chroms = find_chroms(genome_fasta)
@@ -221,14 +203,18 @@ def reverse_complement_seq(seq):
                                        'GCTA'))[-1::-1]
 
 
-def add_triplet_seq(fasta_seq, i, strand, triplet_seq, value):
+# TODO-minor: why did I specify these unused arguments here?
+# noinspection PyUnusedLocal
+def add_triplet_seq(fasta_seq, i, strand, triplet_seq, value):  # pylint: disable=unused-argument
     if len(triplet_seq) == 1:
         triplet_seq += "$$"
     elif len(triplet_seq) == 2:
         triplet_seq += "$"
     return triplet_seq
 
-def add_seq_context(fasta_seq, i, strand, triplet_seq, value):
+# TODO-minor: why did I specify these unused arguments here?
+# noinspection PyUnusedLocal
+def add_seq_context(fasta_seq, i, strand, triplet_seq, value):  # pylint: disable=unused-argument
 
     n_bp_context = value
 

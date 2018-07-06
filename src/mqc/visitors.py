@@ -19,11 +19,11 @@ from mqc.utils import convert_array_to_df
 class Visitor(metaclass=ABCMeta):
     """Just used for type annotations"""
     @abstractmethod
-    def process(self, motif_pileup: MotifPileup):
+    def process(self, motif_pileup: MotifPileup) -> None:
         pass
 
 
-class Counter(metaclass=ABCMeta):
+class Counter(Visitor, metaclass=ABCMeta):
     """Store, update and retrieve count-based statistics
 
     Subclasses may for example store
@@ -48,7 +48,7 @@ class Counter(metaclass=ABCMeta):
                  dim_names: List[str],
                  dim_levels: List[List[Union[str, int]]],
                  counter_array: np.ndarray,
-                 save_stem: str):
+                 save_stem: str) -> None:
         """ Initialization of attributes common to all Counters
 
         Every subclass should use its init function to:
@@ -70,7 +70,7 @@ class Counter(metaclass=ABCMeta):
 
 
     @abstractmethod
-    def process(self, motif_pileup: MotifPileup):
+    def process(self, motif_pileup: MotifPileup) -> None:
         """Update counter inplace based on information in MotifPilepup
 
         Notes
@@ -88,7 +88,7 @@ class Counter(metaclass=ABCMeta):
         """
         pass
 
-    def get_dataframe(self):
+    def get_dataframe(self) -> pd.DataFrame:
         """Get counts in dataframe format
 
         The dataframe is cached after the first computation, so repeated
@@ -106,13 +106,13 @@ class Counter(metaclass=ABCMeta):
             self._counter_dataframe = self._compute_dataframe()
         return self._counter_dataframe
 
-    def _compute_dataframe(self):
+    def _compute_dataframe(self) -> pd.DataFrame:
         return convert_array_to_df(arr=self.counter_array,
                                    dim_levels=self.dim_levels,
                                    dim_names=self.dim_names,
                                    value_column_name='counts')
 
-    def save_dataframe(self):
+    def save_dataframe(self) -> None:
         """
         Saves the counter's dataframe as tsv and pickle to the stem specified in __init__.
 
@@ -122,7 +122,7 @@ class Counter(metaclass=ABCMeta):
         self.get_dataframe().to_pickle(self.save_stem+'.p')
         self.get_dataframe().reset_index().to_csv(self.save_stem+'.tsv', sep='\t', header=True, index=False)
 
-    def save(self):
+    def save(self) -> None:
         """Save Counter as pickle"""
         out_path = Path(self.save_stem).with_suffix('.p')
         out_path.parent.mkdir(parents=True, exist_ok=True, mode=0o770)

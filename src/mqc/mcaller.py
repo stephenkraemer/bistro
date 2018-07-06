@@ -28,10 +28,8 @@ class MethCaller(Visitor):
     The MethCaller must be called before any access to these
     attributes.
     """
-    def __init__(self):
-        pass
 
-    def process(self, motif_pileup: MotifPileup):
+    def process(self, motif_pileup: MotifPileup) -> None:
 
         n_meth = 0
         n_total = 0
@@ -74,10 +72,7 @@ class StratifiedMethCaller(Visitor):
         Will not contain inf values, but may contain np.nan
     """
 
-    def __init__(self):
-        pass
-
-    def process(self, motif_pileup: MotifPileup):
+    def process(self, motif_pileup: MotifPileup) -> None:
 
         meth_counts_arr = np.zeros((7, 2), dtype='i4')
 

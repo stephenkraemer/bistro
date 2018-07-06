@@ -1,19 +1,21 @@
+"""Test the call tool"""
+
 import gzip
 import json
 import os.path as op
-import pickle
-import pytest
 import re
 import shutil
 import subprocess
 import tempfile
-import toml
 from itertools import product
 from pathlib import Path
 from textwrap import dedent
+from typing import Dict, List, Any
+
+import pytest
 
 from mqc.config import assemble_config_vars
-from mqc.mbias import FixedRelativeCuttingSites, CuttingSitesReplacementClass
+from mqc.mbias import CuttingSitesReplacementClass
 from mqc.utils import get_resource_abspath
 
 TESTS_DIR = op.dirname(__file__)
@@ -27,7 +29,8 @@ MIN_PHRED = 35
 
 
 @pytest.fixture(scope='module')
-def index_file_paths_dict():
+def index_file_paths_dict() -> Dict[str, List[str]]:
+    """Provide index files by motif"""
     return {
         'CG': [op.join(TEST_FILES_DIR, 'test_mcall_CG_1.bed.gz'),
                op.join(TEST_FILES_DIR, 'test_mcall_CG_2.bed.gz')],
@@ -36,7 +39,7 @@ def index_file_paths_dict():
     }
 
 
-def space_to_tab(s):
+def space_to_tab(s: str) -> str:
     return re.sub(' +', '\t', s)
 
 
@@ -44,8 +47,8 @@ def space_to_tab(s):
 def cutting_sites_obj_fp_fix():
     """Provide FixedRelativeCuttingSites as fixture"""
     cutting_sites = CuttingSitesReplacementClass.from_rel_to_frag_end_cutting_sites(
-        cut_site_spec=dict(w_bc    = [0, 20], c_bc    = [0, 20],
-                           w_bc_rv = [15, 0], c_bc_rv = [15, 0]),
+        cut_site_spec=dict(w_bc=[0, 20], c_bc=[0, 20],
+                           w_bc_rv=[15, 0], c_bc_rv=[15, 0]),
         max_read_length=101)
     tmpdir = tempfile.mkdtemp()
     cutting_sites_df_fp = op.join(tmpdir, 'cutting_sites_df.p')
@@ -123,10 +126,12 @@ def config_file_path(request):
 
 # noinspection PyShadowingNames
 @pytest.mark.acceptance_test
-@pytest.mark.parametrize('output_formats', 'bismark bismark,bed bed'.split())
+@pytest.mark.parametrize('output_formats_csv', 'bismark bismark,bed bed'.split())
 @pytest.mark.parametrize('motifs_str', ['CG', 'CG-CHG-CHH'])
-def test_call_tool(tmpdir, config_file_path, index_file_paths_dict,
-                   motifs_str, output_formats, make_interactive, cutting_sites_obj_fp_fix):
+def test_call_tool(tmpdir: Any, config_file_path: str,
+                   index_file_paths_dict: Dict[str, List[str]],
+                   motifs_str: str, output_formats_csv: str,
+                   make_interactive: bool, cutting_sites_obj_fp_fix: str) -> None:
     """Test call tool across various combinations of options
 
     Args:
@@ -142,10 +147,10 @@ def test_call_tool(tmpdir, config_file_path, index_file_paths_dict,
     tmpdir = str(tmpdir)
 
     pos_to_remove_from_frag_end = dict(
-        w_bc    = [0, 20],
-        c_bc    = [0, 20],
-        w_bc_rv = [15, 0],
-        c_bc_rv = [15, 0],
+        w_bc=[0, 20],
+        c_bc=[0, 20],
+        w_bc_rv=[15, 0],
+        c_bc_rv=[15, 0],
     )
 
     command_args = ['mqc', 'call',
@@ -153,7 +158,7 @@ def test_call_tool(tmpdir, config_file_path, index_file_paths_dict,
                     '--config_file', config_file_path,
                     '--sample_name', SAMPLE_NAME,
                     '--sample_meta', SAMPLE_META,
-                    '--output_formats', output_formats,
+                    '--output_formats', output_formats_csv,
                     '--output_dir', tmpdir,
                     '--trimming', f"frag_end::{json.dumps(pos_to_remove_from_frag_end)}",
                     '--max_read_length', '101',
@@ -208,7 +213,7 @@ def test_call_tool(tmpdir, config_file_path, index_file_paths_dict,
             product(all_motifs, all_output_formats, all_chroms))
 
         motifs = motifs_str.split('-')
-        output_formats = output_formats.split(',')
+        output_formats = output_formats_csv.split(',')
         chroms = ['1', '2']
         spec_tuples_for_expected_output = set(product(
             motifs, output_formats, chroms))

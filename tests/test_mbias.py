@@ -1,74 +1,64 @@
-#-
+"""Test M-bias module"""
 import json
 import os
 import pickle
 import shutil
 import tempfile
-from collections import namedtuple, defaultdict
-from operator import itemgetter
+from collections import namedtuple, defaultdict, Sequence
+from io import StringIO
 from pathlib import Path
 from textwrap import dedent
 from unittest.mock import MagicMock, patch, call
-import toolz as tz
+from typing import List, Tuple, Union, Callable, DefaultDict, Dict, Any, cast
 import pandas as pd
 import toml
-from io import StringIO
+import toolz as tz
 
-import altair as alt
 
 idxs = pd.IndexSlice
 import numpy as np
 import pytest
 import subprocess
 
-from collections import Sequence
 from itertools import product
 
 from mqc.config import assemble_config_vars
+from mqc.pileup.pileup import MotifPileup
 from mqc.mbias import (
     MbiasCounter, get_sequence_context_to_array_index_table,
-    FixedRelativeCuttingSites, fit_normalvariate_plateau,
+    fit_normalvariate_plateau,
     fit_percentiles, AdjustedCuttingSites,
     mask_mbias_stats_df, map_seq_ctx_to_motif,
-    convert_cutting_sites_df_to_array, compute_mbias_stats,
-    compute_beta_values,
-    get_plot_configs,  # mbias_stat_plots,
-    aggregate_table,
-    MbiasPlotConfig,  # map_dataset_specs_to_filepaths,
+    convert_cutting_sites_df_to_array, compute_beta_values,
+    get_plot_configs, MbiasPlotConfig,
     aggregate_table, create_aggregated_tables,
     MbiasPlotParams, MbiasPlotMapping, MbiasAnalysisConfig,
-    PLOTNINE_THEMES,
-    MBIAS_STATS_DIMENSION_PLOT_LABEL_MAPPING,
-    create_single_mbias_stat_plot, AggregatedMbiasStats,
+    AggregatedMbiasStats,
     MbiasStatAggregationParams, CuttingSitesReplacementClass,
     BinomPvalueBasedCuttingSiteDetermination,
     cutting_sites_df_has_correct_format,
 )
 from mqc.utils import get_resource_abspath, NamedIndexSlice, subset_dict, TmpChdir
-from mqc.utils import NamedIndexSlice as nidxs
 import mqc.filepaths
-from mqc.flag_and_index_values import bsseq_strand_indices as bstrand_idxs
-
-import matplotlib
-
-matplotlib.use('Agg')  # import before pyplot import!
-from matplotlib.axes import Axes
-import matplotlib.pyplot as plt
-# import seaborn as sns
 import mqc.flag_and_index_values as mfl
-import plotnine as gg
 
-from typing import List, Tuple, Union, Callable
+# import matplotlib
+# matplotlib.use('Agg')  # import before pyplot import!
+# from matplotlib.axes import Axes
+# import matplotlib.pyplot as plt
+# import seaborn as sns
 
-#-
 
-# TODO: I currently test that any non-zero qc_fail_flag leads to discard from M-bias stats counting. When I update the behavior so that phred score fails are kept in the stats, the tests here also need to be updated accordingly
+
+# TODO: I currently test that any non-zero qc_fail_flag leads to discard from M-bias
+# stats counting. When I update the behavior so that phred score fails are kept
+# in the stats, the tests here also need to be updated accordingly
 b_inds = mfl.bsseq_strand_indices
 b_na_ind = mfl.bsseq_strand_na_index
 m_flags = mfl.methylation_status_flags
 qc_flags = mfl.qc_fail_flags
 
-CONFIG = defaultdict(dict)
+CONFIG: DefaultDict[str, Dict[str, Any]] = defaultdict(dict)
 CONFIG['paths']['mbias_counts'] = None
 CONFIG['data_properties']['max_read_length_bp'] = 101
 CONFIG['stats']['max_flen'] = 500
@@ -99,6 +89,7 @@ BINNED_SEQ_CONTEXT_TO_IDX_MAPPING = {
 
 
 class BSSeqPileupReadStub:
+    """Stub for BSSeqPileupRead with AlignmentStub"""
     def __init__(self, strand_idx, flen, pos, mflag,
                  fail, phred, expected_flen_bin, expected_phred_bin):
         self.qc_fail_flag = fail
@@ -111,6 +102,7 @@ class BSSeqPileupReadStub:
         self.expected_flen_bin = expected_flen_bin
 
     def get_idx_tuple(self):
+        """Get tuple for the M-bias counts array element of this read"""
         if self.meth_status_flag == m_flags.is_methylated:
             meth_status_index = 0
         elif self.meth_status_flag == m_flags.is_unmethylated:
@@ -161,7 +153,7 @@ class TestSeqContextToBinMapping:
         representations of the sequence contexts"""
 
         n_possible_cgw_motifs = 3 ** (N - 1)
-        seq_ctx_to_idx, binned_motif_to_idx = get_sequence_context_to_array_index_table(
+        seq_ctx_to_idx, _ = get_sequence_context_to_array_index_table(
             N)
         if N == 3:
             motif_start = "CCC"
@@ -174,7 +166,7 @@ class TestSeqContextToBinMapping:
 
     @pytest.mark.parametrize("N", [3, 5])
     def test_seq_context_does_not_map_illegal_motifs(self, N):
-        seq_ctx_to_idx, binned_motif_to_idx = (
+        seq_ctx_to_idx, _ = (
             get_sequence_context_to_array_index_table(N))
         if N == 3:
             bad_motif = "NCT"
@@ -187,7 +179,7 @@ class TestSeqContextToBinMapping:
         """Because motifs are binned, several full sequence contexts may
         correspond to the same binned motif, and thus map to the same
         array index"""
-        seq_ctx_to_idx, binned_motif_to_idx = (
+        seq_ctx_to_idx, _ = (
             get_sequence_context_to_array_index_table(5))
         assert seq_ctx_to_idx["AACAA"] == seq_ctx_to_idx["TTCAA"]
         assert seq_ctx_to_idx["AACAA"] == seq_ctx_to_idx["ATCAT"]
@@ -279,12 +271,13 @@ def test_mbias_counter_get_dataframe(mocker):
     mbias_counter.counter_array[1, 3, 0, 0, 0, 0] = 1
 
     computed_df = mbias_counter.get_dataframe()
+    # noinspection PyTypeChecker
     pd.testing.assert_frame_equal(exp_df.astype('u8'), computed_df)
 
 
 class TestMbiasCounterMotifPileupProcessing:
     def test_phred_flen_seqcontext_in_allowed_range_are_binned(
-            self, mocker):
+            self, mocker) -> None:
         reads = [bstub(strand_idx=b_inds.w_bc,
                        flen=100,
                        expected_flen_bin=100,
@@ -319,8 +312,8 @@ class TestMbiasCounterMotifPileupProcessing:
                                         reads=reads)
         motif_pileup2 = MotifPileupStub(seq_context=seq_context2,
                                         reads=reads)
-        mbias_counter.process(motif_pileup1)
-        mbias_counter.process(motif_pileup2)
+        mbias_counter.process(cast(MotifPileup, motif_pileup1))
+        mbias_counter.process(cast(MotifPileup, motif_pileup2))
 
         read_strata_for_advanced_indexing = [
             read.get_idx_tuple() for read in reads]
@@ -336,7 +329,7 @@ class TestMbiasCounterMotifPileupProcessing:
         mbias_counter.counter_array[full2] = 0
         assert (mbias_counter.counter_array == 0).all()
 
-    def test_unusable_reads_are_discarded(self, mocker):
+    def test_unusable_reads_are_discarded(self, mocker) -> None:
         """ Reads are discarded if
 
             - they have a qc_fail_flag
@@ -363,7 +356,7 @@ class TestMbiasCounterMotifPileupProcessing:
 
         mbias_counter = MbiasCounter(CONFIG)
 
-        mbias_counter.process(motif_pileup)
+        mbias_counter.process(cast(MotifPileup, motif_pileup))
 
         base_event_class = ((SEQ_CONTEXT_TO_IDX_MAPPING['CCCCC'],)
                             + bstub_with().get_idx_tuple())
@@ -372,7 +365,7 @@ class TestMbiasCounterMotifPileupProcessing:
         assert (mbias_counter.counter_array == 0).all()
 
     def test_flen_and_phred_are_pooled_in_highest_bin_if_above_max(
-            self, mocker):
+            self, mocker) -> None:
         map_fn = mocker.patch('mqc.mbias.'
                               'get_sequence_context_to_array_index_table')
         map_fn.return_value = (
@@ -386,7 +379,7 @@ class TestMbiasCounterMotifPileupProcessing:
                                        reads=reads)
 
         mbias_counter = MbiasCounter(CONFIG)
-        mbias_counter.process(motif_pileup)
+        mbias_counter.process(cast(MotifPileup, motif_pileup))
 
         base_event_class = ((SEQ_CONTEXT_TO_IDX_MAPPING['GGCGG'],)
                             + bstub_with().get_idx_tuple())
@@ -437,7 +430,7 @@ class TestMbiasCounterMotifPileupProcessing:
 
         mbias_counter = MbiasCounter(CONFIG)
         for mp in motif_pileups:
-            mbias_counter.process(mp)
+            mbias_counter.process(cast(MotifPileup, mp))
 
         assert mbias_counter.counter_array[
                    (SEQ_CONTEXT_TO_IDX_MAPPING['GGCGG'],)
@@ -445,7 +438,7 @@ class TestMbiasCounterMotifPileupProcessing:
         assert (mbias_counter.counter_array > 0).sum() == 1
 
     def test_motif_pileups_are_added_incrementally(
-            self, mocker):
+            self, mocker) -> None:
         map_fn = mocker.patch('mqc.mbias.'
                               'get_sequence_context_to_array_index_table')
         # we are only interested in these three motifs
@@ -461,8 +454,6 @@ class TestMbiasCounterMotifPileupProcessing:
                             phred=8,
                             expected_phred_bin=1)]
 
-        motif_pileup = MotifPileupStub('AACAA', reads)
-
         event_classes_adv_idx = list(zip(*[
             (SEQ_CONTEXT_TO_IDX_MAPPING['AACAA'],) + curr_read.get_idx_tuple()
             for curr_read in reads]))
@@ -470,43 +461,12 @@ class TestMbiasCounterMotifPileupProcessing:
         mbias_counter = MbiasCounter(CONFIG)
         mbias_counter.counter_array[event_classes_adv_idx] += 1
 
-        mbias_counter.process(MotifPileupStub('AACAA', reads))
-        mbias_counter.process(MotifPileupStub('AACAA', reads))
+        mbias_counter.process(cast(MotifPileup, MotifPileupStub('AACAA', reads)))
+        mbias_counter.process(cast(MotifPileup, MotifPileupStub('AACAA', reads)))
 
         assert (mbias_counter.counter_array[event_classes_adv_idx] == 3).all()
         mbias_counter.counter_array[event_classes_adv_idx] = 0
         assert (mbias_counter.counter_array == 0).all()
-
-
-def test_fixed_cutting_sites_are_computed_correctly():
-    config = defaultdict(defaultdict)
-    config['trimming']['relative_to_fragment_ends_dict'] = dict(
-        w_bc=[10, 10],
-        c_bc=[0, 10],
-        w_bc_rv=[10, 0],
-        c_bc_rv=[10, 10],
-    )
-    config['data_properties']['max_read_length_bp'] = 101
-    config['trimming']['max_flen_considered_for_trimming'] = 500
-    fixed_cutting_sites = FixedRelativeCuttingSites(config)
-    cutting_arr = fixed_cutting_sites.get_array()
-    cutting_df = fixed_cutting_sites.get_df()
-
-    expected_result = (pd.DataFrame([['w_bc', 70, 'left_cut_end', 10],
-                                     ['c_bc_rv', 90, 'right_cut_end', 79],
-                                     ['w_bc', 110, 'right_cut_end', 99],
-                                     ['w_bc', 111, 'right_cut_end', 100],
-                                     ['w_bc', 115, 'right_cut_end', 100],
-                                     ['c_bc_rv', 300, 'left_cut_end', 10]],
-                                    columns=['bs_strand', 'flen', 'cut_end',
-                                             'cut_pos'])
-                       .set_index(['bs_strand', 'flen', 'cut_end'])
-                       .astype(np.uint32)
-                       )
-
-    computed_result = cutting_df.loc[expected_result.index, :]
-
-    pd.testing.assert_frame_equal(expected_result, computed_result)
 
 
 def test_cutting_site_df_to_cutting_site_array_conversion():
@@ -547,7 +507,7 @@ def add_noise_to_mbias_shape(arr, sd=0.002):
 def sigmoid_curve(steepness, min_height, delta, longer_plateau_length, reverse=False):
     sigmoid_area = np.round((101 - longer_plateau_length) * 2)
     res = np.concatenate([
-        1 / (1 + np.exp(-steepness*np.linspace(-5,5,sigmoid_area))) * delta + min_height,
+        1 / (1 + np.exp(-steepness*np.linspace(-5, 5, sigmoid_area))) * delta + min_height,
         np.ones(101 - sigmoid_area) * min_height + delta])
     if reverse:
         res = res[::-1]
@@ -555,7 +515,7 @@ def sigmoid_curve(steepness, min_height, delta, longer_plateau_length, reverse=F
 
 
 def michaelis_menten_curve(vmax, km, steepness, flat_plateau_start=None, reverse=False):
-    res =  vmax * np.arange(101) * steepness / (km + np.arange(101) * steepness)
+    res = vmax * np.arange(101) * steepness / (km + np.arange(101) * steepness)
     if flat_plateau_start:
         res[flat_plateau_start:] = res[flat_plateau_start]
     if reverse:
@@ -628,20 +588,19 @@ test_mbias_shapes = {
 test_mbias_shapes_with_low_coverage_slope = ['michaelis-menten-curve1']
 #-
 
-def visualize_mbias_test_shapes():
-    """Plot M-bias test function using interactive backend"""
-
-    # visualize all shapes
-    fig, axes = plt.subplots(int(np.ceil(len(test_mbias_shapes) / 2)), 2,
-                             constrained_layout=True)
-    axes: List[Axes]
-    sd = 0.05
-    for i, (shape_name, (arr, exp_cutting_sites)) in enumerate(test_mbias_shapes.items(), 1):
-        axes_coord = (int(np.ceil(i / 2)) - 1, 1 - i % 2)
-        axes[axes_coord].plot(add_noise_to_mbias_shape(arr, sd))
-        axes[axes_coord].set_ylim([0,1])
-        axes[axes_coord].set_title(shape_name)
-    fig.show()
+# def visualize_mbias_test_shapes() -> None:
+#     """Plot M-bias test function using interactive backend"""
+#
+#     axes: List[Axes]
+#     fig, axes = plt.subplots(int(np.ceil(len(test_mbias_shapes) / 2)), 2,
+#                              constrained_layout=True)
+#     sd = 0.05
+#     for i, (shape_name, (arr, exp_cutting_sites)) in enumerate(test_mbias_shapes.items(), 1):
+#         axes_coord = (int(np.ceil(i / 2)) - 1, 1 - i % 2)
+#         axes[axes_coord].plot(add_noise_to_mbias_shape(arr, sd))
+#         axes[axes_coord].set_ylim([0,1])
+#         axes[axes_coord].set_title(shape_name)
+#     fig.show()
 
 
 
@@ -651,13 +610,13 @@ noise_levels = [0.005, 0.01]
 # tests which are expected to fail
 plateau_fitter_functions = [fit_percentiles]
 
-plateau_fitter_func_configs = {
+plateau_fitter_func_configs: Dict[Callable, Dict] = {
     fit_percentiles: {},
 }
 
 # Every plateau fitter function can have a list of shape names for which it is
 # expected to fail
-xfails_by_plateau_fitter_func_mapping = {
+xfails_by_plateau_fitter_func_mapping: Dict[Callable, List[str]] = {
     fit_percentiles: [],
 }
 
@@ -667,7 +626,7 @@ for plateau_fitter_func, test_mbias_shape_item, sd in product(
     noise_levels
 ):
 
-    curr_marks = []
+    curr_marks: List[Any] = []  # List of pytest marks
     if (test_mbias_shape_item[0]
             in xfails_by_plateau_fitter_func_mapping[plateau_fitter_func]):
         curr_marks = [pytest.mark.xfail]
@@ -983,14 +942,15 @@ def test_mbias_counter(user_config_file):
 #                16, 0, :, 'n_meth'], :])
 
 
+# test_mbias_counter fixture must be called to place the counter
+# at the appropriate file path
+# noinspection PyUnusedLocal
 @pytest.fixture(scope='module',
                 params=['CG']
                 # params=['CG', 'CG-CHG-CHH']
                 )
 def run_evaluate_mbias_then_return_config(
-        request, user_config_file, test_mbias_counter):
-    # test_mbias_counter fixture must be called to place the counter
-    # at the appropriate file path
+        request, user_config_file, test_mbias_counter):  # pylint: disable=unused-argument
     output_dir = tempfile.mkdtemp()
 
     subprocess.check_call(['mqc', 'evaluate_mbias',
@@ -1094,17 +1054,19 @@ class MbiasStatsDfStub:
 
         def adjust_for_flen(group_df, n_pos):
             flen = group_df.index.get_level_values('flen')[0]
+
             if flen >= n_pos:
                 return group_df
-            else:
-                n_undef_pos = n_pos - flen
-                middle_pos = n_pos // 2
-                lower_bound = middle_pos - np.int(np.ceil(n_undef_pos / 2))
-                upper_bound = middle_pos + np.int(np.floor(n_undef_pos / 2))
-                high_bound = (n_pos - n_undef_pos)
-                group_df.iloc[lower_bound:high_bound, :] = group_df.iloc[upper_bound:, :].values
-                group_df.iloc[high_bound:, :] = np.nan
-                return group_df
+
+            n_undef_pos = n_pos - flen
+            middle_pos = n_pos // 2
+            lower_bound = middle_pos - np.int(np.ceil(n_undef_pos / 2))
+            upper_bound = middle_pos + np.int(np.floor(n_undef_pos / 2))
+            high_bound = (n_pos - n_undef_pos)
+            group_df.iloc[lower_bound:high_bound, :] = group_df.iloc[upper_bound:, :].values
+            group_df.iloc[high_bound:, :] = np.nan
+
+            return group_df
 
         if do_flen_adjustment:
             self.df = (self.df
@@ -1161,10 +1123,9 @@ class MbiasStatsDfStub:
         mbias_stats_df = mbias_stats_df.unstack(level=-1)
         mbias_stats_df.columns = ['n_meth', 'n_unmeth']
         mbias_stats_df['beta_value'] = 0.5
-        mbias_stats_df
 
         for idx, beta, coverage in strata_curve_tuples:
-            n_meth = np.round((beta * coverage)).astype(int)
+            n_meth = np.round((beta * coverage)).astype(int)  # type: ignore
             n_unmeth = coverage - n_meth
             if not isinstance(n_meth, np.ndarray):
                 n_meth = np.tile(n_meth, max_read_length)
@@ -1181,7 +1142,7 @@ class MbiasStatsDfStub:
 
 
 @pytest.fixture()
-def mbias_plot_config():
+def mbias_plot_config_fix():
     return {
         "defaults": {
             'plot_params': {
@@ -1240,19 +1201,19 @@ def mbias_plot_config():
     }
 
 @pytest.fixture()
-def expected_hierarchical_mbias_plot_config_dict(mbias_plot_config):
+def expected_hierarchical_mbias_plot_config_dict(mbias_plot_config_fix):
 
     dataset_name_to_fp = {'trimmed': '/path/to/trimmed',
                           'full': '/path/to/full'}
 
     group1_config = dict(
-        pre_agg_filters = mbias_plot_config['group1']['pre_agg_filters'],
-        post_agg_filters = tz.merge(mbias_plot_config['defaults']['post_agg_filters'],
-                                    mbias_plot_config['group1']['post_agg_filters']),
+        pre_agg_filters=mbias_plot_config_fix['group1']['pre_agg_filters'],
+        post_agg_filters=tz.merge(mbias_plot_config_fix['defaults']['post_agg_filters'],
+                                    mbias_plot_config_fix['group1']['post_agg_filters']),
         plot_params=MbiasPlotParams(
-            **mbias_plot_config['defaults']['plot_params']),
+            **mbias_plot_config_fix['defaults']['plot_params']),
         aes_mapping=MbiasPlotMapping(
-            **mbias_plot_config['group1']['aes_mappings'][0]),
+            **mbias_plot_config_fix['group1']['aes_mappings'][0]),
     )
 
     expected_config_dict = {
@@ -1271,14 +1232,14 @@ def expected_hierarchical_mbias_plot_config_dict(mbias_plot_config):
                 datasets=subset_dict('trimmed', dataset_name_to_fp),
                 plot_params=MbiasPlotParams(
                     **tz.assoc_in(
-                        mbias_plot_config['defaults']['plot_params'],
+                        mbias_plot_config_fix['defaults']['plot_params'],
                         ['y_axis', 'limits', 'beta_value'],
                         [(0.2, 0.9)])
                 ),
                 aes_mapping=MbiasPlotMapping(
-                    **mbias_plot_config['group2']['aes_mappings'][0]),
-                post_agg_filters = mbias_plot_config['defaults']['post_agg_filters'],
-                pre_agg_filters = mbias_plot_config['group2']['pre_agg_filters'],
+                    **mbias_plot_config_fix['group2']['aes_mappings'][0]),
+                post_agg_filters = mbias_plot_config_fix['defaults']['post_agg_filters'],
+                pre_agg_filters = mbias_plot_config_fix['group2']['pre_agg_filters'],
             ),
         ]
     }
@@ -1288,7 +1249,7 @@ def expected_hierarchical_mbias_plot_config_dict(mbias_plot_config):
 
 class TestMbiasAnalysisConfig:
     def test_construct_from_compact_dict_representation(
-            self, mbias_plot_config,
+            self, mbias_plot_config_fix,
             expected_hierarchical_mbias_plot_config_dict):
 
         dataset_name_to_fp = {'trimmed': '/path/to/trimmed',
@@ -1296,7 +1257,7 @@ class TestMbiasAnalysisConfig:
 
         computed_hierarchical_config = (
             MbiasAnalysisConfig
-                .from_compact_config_dict(mbias_plot_config,
+                .from_compact_config_dict(mbias_plot_config_fix,
                                           dataset_name_to_fp)
                 .grouped_mbias_plot_configs)
 
@@ -1305,8 +1266,8 @@ class TestMbiasAnalysisConfig:
 
     def test_get_report_config(
             self,
-            mbias_plot_config,
-            expected_hierarchical_mbias_plot_config_dict):
+            mbias_plot_config_fix: Dict[str, Any],
+            expected_hierarchical_mbias_plot_config_dict) -> None:
 
         def get_figure_config(mbias_plot_config: MbiasPlotConfig):
             title = 'Datasets: ' + ', '.join(mbias_plot_config.datasets) + '\n\n'
@@ -1334,7 +1295,7 @@ class TestMbiasAnalysisConfig:
 
         computed_report_config = (
             MbiasAnalysisConfig
-                .from_compact_config_dict(mbias_plot_config,
+                .from_compact_config_dict(mbias_plot_config_fix,
                                           dataset_name_to_fp)
                 .get_report_config())
 
@@ -1343,22 +1304,22 @@ class TestMbiasAnalysisConfig:
 # TODO: force absolute dataset filepaths
 class TestGetMbiasPlotConfigs:
     def test_produces_list_of_mbiasplotconfigs_from_defaults_and_group_definitions(
-            self, mbias_plot_config):
+            self, mbias_plot_config_fix):
 
         dataset_name_to_fp = {'trimmed': '/path/to/trimmed',
                               'full': '/path/to/full'}
 
-        computed_table_of_required_plots = get_plot_configs(mbias_plot_config,
+        computed_table_of_required_plots = get_plot_configs(mbias_plot_config_fix,
                                                             dataset_name_to_fp)
 
         group1_config = dict(
-            pre_agg_filters = mbias_plot_config['group1']['pre_agg_filters'],
-            post_agg_filters = tz.merge(mbias_plot_config['defaults']['post_agg_filters'],
-                                        mbias_plot_config['group1']['post_agg_filters']),
+            pre_agg_filters = mbias_plot_config_fix['group1']['pre_agg_filters'],
+            post_agg_filters = tz.merge(mbias_plot_config_fix['defaults']['post_agg_filters'],
+                                        mbias_plot_config_fix['group1']['post_agg_filters']),
             plot_params=MbiasPlotParams(
-                **mbias_plot_config['defaults']['plot_params']),
+                **mbias_plot_config_fix['defaults']['plot_params']),
             aes_mapping=MbiasPlotMapping(
-                **mbias_plot_config['group1']['aes_mappings'][0]),
+                **mbias_plot_config_fix['group1']['aes_mappings'][0]),
         )
 
         expected_table_of_required_plots = [
@@ -1374,14 +1335,14 @@ class TestGetMbiasPlotConfigs:
                 datasets=subset_dict('trimmed', dataset_name_to_fp),
                 plot_params=MbiasPlotParams(
                     **tz.assoc_in(
-                        mbias_plot_config['defaults']['plot_params'],
+                        mbias_plot_config_fix['defaults']['plot_params'],
                         ['y_axis', 'limits', 'beta_value'],
                         [(0.2, 0.9)])
                     ),
                 aes_mapping=MbiasPlotMapping(
-                    **mbias_plot_config['group2']['aes_mappings'][0]),
-                post_agg_filters = mbias_plot_config['defaults']['post_agg_filters'],
-                pre_agg_filters = mbias_plot_config['group2']['pre_agg_filters'],
+                    **mbias_plot_config_fix['group2']['aes_mappings'][0]),
+                post_agg_filters = mbias_plot_config_fix['defaults']['post_agg_filters'],
+                pre_agg_filters = mbias_plot_config_fix['group2']['pre_agg_filters'],
             ),
             ]
 
@@ -1397,13 +1358,13 @@ class TestGetMbiasPlotConfigs:
                               ('group1', 'aes_mappings', 0, 'x'),
                               ('group2', 'aes_mappings')])
     def test_raises_when_plot_group_config_is_incomplete(self, missing_key,
-                                                         mbias_plot_config):
+                                                         mbias_plot_config_fix):
         dict_to_modify = tz.get_in(missing_key[:-1],
-                                   mbias_plot_config, no_default=True)
+                                   mbias_plot_config_fix, no_default=True)
         dict_to_modify.pop(missing_key[-1])
 
         with pytest.raises(ValueError):
-            get_plot_configs(mbias_plot_config,
+            get_plot_configs(mbias_plot_config_fix,
                              dataset_name_to_fp={})
 
 
@@ -1428,7 +1389,8 @@ class TestGetMbiasPlotConfigs:
 #     ]
 
 
-def test_create_aggregated_tables(mocker, tmpdir, mbias_plot_config):
+def test_create_aggregated_tables(mocker, tmpdir,
+                                  mbias_plot_config_fix: Dict[str, Dict]) -> None:
 
     dataset1 = pd.DataFrame({'a': [1, 2, 3]})
     dataset1_fp = str(tmpdir / 'dataset1.p')
@@ -1446,23 +1408,23 @@ def test_create_aggregated_tables(mocker, tmpdir, mbias_plot_config):
     # so don't use a Mock here
     plot_configs = [
         MbiasPlotConfig(datasets=subset_dict('dataset1', dataset_name_to_fp),
-                        aes_mapping=MbiasPlotMapping(**aes_dict, column='col1'),
-                        plot_params=mbias_plot_config['defaults']['plot_params'],
+                        aes_mapping=MbiasPlotMapping(**aes_dict, column='col1'),  # type: ignore
+                        plot_params=mbias_plot_config_fix['defaults']['plot_params'],
                         pre_agg_filters={'motifs': ['CG']}
                         ),
         MbiasPlotConfig(datasets=subset_dict('dataset1', dataset_name_to_fp),
-                        aes_mapping=MbiasPlotMapping(**aes_dict, column='col2'),
-                        plot_params=mbias_plot_config['defaults']['plot_params'],
+                        aes_mapping=MbiasPlotMapping(**aes_dict, column='col2'),   # type: ignore
+                        plot_params=mbias_plot_config_fix['defaults']['plot_params'],
                         pre_agg_filters={'motifs': ['CHG']}
                         ),
         MbiasPlotConfig(datasets=subset_dict('dataset2', dataset_name_to_fp),
-                        aes_mapping=MbiasPlotMapping(**aes_dict, column='col3'),
-                        plot_params=mbias_plot_config['defaults']['plot_params'],
+                        aes_mapping=MbiasPlotMapping(**aes_dict, column='col3'),   # type: ignore
+                        plot_params=mbias_plot_config_fix['defaults']['plot_params'],
                         pre_agg_filters={'motifs': ['CG']}
                         ),
         MbiasPlotConfig(datasets=subset_dict('dataset2', dataset_name_to_fp),
-                        aes_mapping=MbiasPlotMapping(**aes_dict, column='col4'),
-                        plot_params=mbias_plot_config['defaults']['plot_params'],
+                        aes_mapping=MbiasPlotMapping(**aes_dict, column='col4'),   # type: ignore
+                        plot_params=mbias_plot_config_fix['defaults']['plot_params'],
                         pre_agg_filters={'motifs': ['CHG']}
                         ),
     ]
@@ -1498,21 +1460,27 @@ def test_create_aggregated_tables(mocker, tmpdir, mbias_plot_config):
             pre_agg_filters={'motifs': ['CHG']}),
             mbias_stats_df=dataset2),
     ]
-    call_args_list = aggregated_mbias_stats.precompute_aggregated_stats.call_args_list
+
+    # precompute..stats is patched
+    # noinspection PyUnresolvedReferences
+    call_args_list = aggregated_mbias_stats.precompute_aggregated_stats.call_args_list  # type: ignore
+
     assert len(call_args_list) == 4
 
-    for args, kwargs in call_args_list:
+    for unused_args, kwargs in call_args_list:
         for curr_expected_call in expected_calls:
             if (curr_expected_call['mbias_stats_df'].equals(kwargs['mbias_stats_df'])
                 and curr_expected_call['params'] == kwargs['params']):
                 break
         else:
+            # False positive
+            # noinspection PyUnboundLocalVariable
             raise ValueError('Did not find call: ',
                              curr_expected_call, call_args_list)
 
 
 @pytest.fixture()
-def aggregate_table_mbias_stats_df():
+def aggregate_table_mbias_stats_df_fix():
     return pd.read_csv(StringIO(dedent("""\
             motif    bs_strand    flen    pos    n_meth  n_unmeth
             CG             c_bc         100     1      1       1
@@ -1532,17 +1500,18 @@ def aggregate_table_mbias_stats_df():
             CH             w_bc         200     1      7       7
             CH             w_bc         200     2      8       8
             """)),
-                       sep='\s+', header=0,
+                       sep=r'\s+', header=0,
                        index_col=['motif', 'bs_strand', 'flen', 'pos'])
 
 
 class TestAggregateTable:
 
+    # noinspection PyShadowingNames
     def test_applies_filters_and_sum_aggregation(
-            self, aggregate_table_mbias_stats_df):
+            self, aggregate_table_mbias_stats_df_fix):
 
         agg_data = aggregate_table(
-            mbias_stats_df=aggregate_table_mbias_stats_df,
+            mbias_stats_df=aggregate_table_mbias_stats_df_fix,
             unordered_variables={'pos', 'bs_strand', 'motif'},
             pre_agg_filters={'motif': ['CG']})
 
@@ -1556,30 +1525,30 @@ class TestAggregateTable:
             CG        c_bc         2      6     6         0.5
             CG        w_bc         1      12     12         0.5
             CG        w_bc         2      14     14         0.5
-            ''')), sep='\s+', header=0, index_col=['motif', 'bs_strand', 'pos'])
+            ''')), sep=r'\s+', header=0, index_col=['motif', 'bs_strand', 'pos'])
 
         pd.testing.assert_frame_equal(agg_data, expected_agg_data)
 
     def test_raises_when_filters_or_variables_do_not_match_index_level_names(
-            self, aggregate_table_mbias_stats_df):
+            self, aggregate_table_mbias_stats_df_fix):
 
         with pytest.raises(ValueError):
-            agg_data = aggregate_table(
-                mbias_stats_df=aggregate_table_mbias_stats_df,
-                unordered_variables={'pos', 'bs_strand', 'motif'},
-                pre_agg_filters={'MOTIF': ['CG']})
+            _ = aggregate_table(
+                    mbias_stats_df=aggregate_table_mbias_stats_df_fix,
+                    unordered_variables={'pos', 'bs_strand', 'motif'},
+                    pre_agg_filters={'MOTIF': ['CG']})
 
         with pytest.raises(ValueError):
-            agg_data = aggregate_table(
-                mbias_stats_df=aggregate_table_mbias_stats_df,
-                unordered_variables={'POS', 'bs_strand', 'motif'},
-                pre_agg_filters={'motif': ['CG']})
+            _ = aggregate_table(
+                    mbias_stats_df=aggregate_table_mbias_stats_df_fix,
+                    unordered_variables={'POS', 'bs_strand', 'motif'},
+                    pre_agg_filters={'motif': ['CG']})
 
 
 class TestMbiasPlotMapping:
     @pytest.mark.xfail(skip=True)
     def test_get_facetting_cmd(self):
-        raise NotImplemented
+        raise NotImplementedError
 
     @pytest.mark.parametrize(
         'kwargs,correct_set',
@@ -1603,157 +1572,157 @@ class TestMbiasPlotMapping:
     #     raise NotImplemented
 
 
-@pytest.mark.xfail(skip=True)
-class TestCreateSingleMbiasStatPlot:
-    def test_create_single_mbias_stat_plot(self):
-
-        mbias_stats_df_test = create_test_mbias_stats_df(
-            [
-                (idxs[:, :, :, 100], [70] * 100, [30] * 100),
-                (idxs[:, :, :, 200], [60] * 100, [40] * 100),
-             ]
-        )
-        previous_working_dir = os.getcwd()
-        with tempfile.TemporaryDirectory as tmpdir:
-            # TODO: more robust reverse chdir at the end of test
-            os.chdir(tmpdir)
-
-            plot_config = MbiasPlotConfig(
-                # TODO: fix
-                datasets='mbias_stats_df_test',
-                aes_mapping=dict(
-                    x='pos', y='beta_value',
-                    color='flen', row='bs_strand',
-                    motifs=['CG'], wrap=2,
-                ),
-                plot_params=dict(mbias_flens_to_display=[100, 200],
-                                 mbias_phreds_to_display=[20, 40],
-                                 panel_height=9,
-                                 panel_width=9,
-                                 theme='poster',
-                                 x_breaks=10, y_breaks=5, ylim_tuples=[(0, 1), (0.5, 1)])
-            )
-
-            agg_mbias_stats_df = (mbias_stats_df_test
-                                  .loc['CG':'CG', :]
-                                  .query('flen in @plot_config.plot_params.mbias_flens_to_display')
-                                  .groupby(['flen', 'pos', 'bs_strand'])
-                                  .sum()
-                                  .assign(beta_value=compute_beta_values)
-                                  )
-            agg_mbias_stats_df
-
-            create_single_mbias_stat_plot(agg_mbias_stats_df,
-                                          plot_config)
-
-            computed_mbias_plot_bytes = (get_mbias_plot_path(plot_config)
-                                         ['ylim-(0.5, 1)']
-                                         .with_suffix('.png').read_bytes())
-
-            pp = plot_config.plot_params
-
-            g = (gg.ggplot(data=agg_mbias_stats_df.reset_index(),
-                           mapping=plot_config.aes.get_plot_aes_dict())
-                 + gg.geom_line()
-                 + gg.facet_wrap('bs_strand', ncol=2)
-                 + PLOTNINE_THEMES[plot_config.plot_params.theme]
-                 + gg.scale_x_continuous(breaks=np.arange(0, 101, 10))
-                 + gg.scale_y_continuous(breaks=np.arange(0, 1.01, 0.2), limits=[0.5, 1])
-                 + gg.labs(x=MBIAS_STATS_DIMENSION_PLOT_LABEL_MAPPING['pos'],
-                           y=MBIAS_STATS_DIMENSION_PLOT_LABEL_MAPPING['beta_value'],
-                           title=plot_config.datasets,
-                           )
-                 )
-            expected_png_path = Path('expected_mbias_plot.png')
-            g.save(filename=str(expected_png_path),
-                   width=pp.panel_width, height=pp.panel_height)
-
-            expected_mbias_plot_bytes = expected_png_path.read_bytes()
-
-            assert computed_mbias_plot_bytes == expected_mbias_plot_bytes
-
-        os.chdir(previous_working_dir)
-
-
-    def test_plots_frequency_plots():
-
-        mbias_stats_df_test = create_test_mbias_stats_df(
-            [
-                (idxs[:, :, :, 100], [70] * 100, [30] * 100),
-                (idxs[:, :, :, 200], [60] * 100, [40] * 100),
-            ]
-        )
-        previous_working_dir = os.getcwd()
-        with tempfile.TemporaryDirectory as tmpdir:
-            # TODO: more robust chdir to previous working dir
-            os.chdir(tmpdir)
-
-            plot_config = MbiasPlotConfig(
-                datasets='mbias_stats_df_test',
-                aes_mapping=dict(x='pos', y='value',
-                                 color='bs_strand', col='statistic',
-                                 motifs=['CG'], wrap=None),
-                plot_params=dict(mbias_flens_to_display=[100, 200],
-                                 mbias_phreds_to_display=[20, 40],
-                                 panel_height=9,
-                                 panel_width=9,
-                                 theme='poster',
-                                 x_breaks=10, y_breaks=5,
-                                 ylim_tuples=[(0, 1), (0.5, 1)])
-            )
-
-            agg_mbias_stats_df = (mbias_stats_df_test
-                                  .loc['CG':'CG', :]
-                                  .groupby(['pos', 'bs_strand'])
-                                  .sum()
-                                  .assign(beta_value=compute_beta_values)
-                                  )
-            agg_mbias_stats_df
-
-            create_single_mbias_stat_plot(agg_mbias_stats_df,
-                                          plot_config)
-
-            computed_mbias_plot_bytes = (get_mbias_plot_path(plot_config)
-                                         ['ylim-(0.5, 1)']
-                                         .with_suffix('.png').read_bytes())
-
-            agg_mbias_stats_df.index.name = 'statistic'
-            agg_mbias_stats_df = (agg_mbias_stats_df
-                                  .stack()
-                                  .to_frame('value'))
-
-            pp = plot_config.plot_params
-
-            g = (gg.ggplot(data=agg_mbias_stats_df.reset_index(),
-                           mapping=plot_config.aes.get_plot_aes_dict())
-                 + gg.geom_line()
-                 + gg.facet_wrap('statistic', ncol=None)
-                 + PLOTNINE_THEMES[plot_config.plot_params.theme]
-                 + gg.scale_x_continuous(breaks=np.arange(0, 101, 10))
-                 + gg.scale_y_continuous(breaks=np.arange(0, 1.01, 0.2), limits=[0.5, 1])
-                 + gg.labs(x=MBIAS_STATS_DIMENSION_PLOT_LABEL_MAPPING['pos'],
-                           y=MBIAS_STATS_DIMENSION_PLOT_LABEL_MAPPING['value'],
-                           title=plot_config.datasets,
-                           )
-                 )
-            expected_png_path = Path('expected_mbias_plot.png')
-            g.save(filename=str(expected_png_path),
-                   width=pp.panel_width, height=pp.panel_height)
-
-            expected_mbias_plot_bytes = expected_png_path.read_bytes()
-
-            assert computed_mbias_plot_bytes == expected_mbias_plot_bytes
-
-        os.chdir(previous_working_dir)
+# @pytest.mark.xfail(skip=True)
+# class TestCreateSingleMbiasStatPlot:
+#     def test_create_single_mbias_stat_plot(self):
+#
+#         mbias_stats_df_test = create_test_mbias_stats_df(
+#             [
+#                 (idxs[:, :, :, 100], [70] * 100, [30] * 100),
+#                 (idxs[:, :, :, 200], [60] * 100, [40] * 100),
+#              ]
+#         )
+#         previous_working_dir = os.getcwd()
+#         with tempfile.TemporaryDirectory as tmpdir:
+#             # TODO: more robust reverse chdir at the end of test
+#             os.chdir(tmpdir)
+#
+#             plot_config = MbiasPlotConfig(
+#                 # TODO: fix
+#                 datasets='mbias_stats_df_test',
+#                 aes_mapping=dict(
+#                     x='pos', y='beta_value',
+#                     color='flen', row='bs_strand',
+#                     motifs=['CG'], wrap=2,
+#                 ),
+#                 plot_params=dict(mbias_flens_to_display=[100, 200],
+#                                  mbias_phreds_to_display=[20, 40],
+#                                  panel_height=9,
+#                                  panel_width=9,
+#                                  theme='poster',
+#                                  x_breaks=10, y_breaks=5, ylim_tuples=[(0, 1), (0.5, 1)])
+#             )
+#
+#             agg_mbias_stats_df = (mbias_stats_df_test
+#                                   .loc['CG':'CG', :]
+#                                   .query('flen in @plot_config.plot_params.mbias_flens_to_display')
+#                                   .groupby(['flen', 'pos', 'bs_strand'])
+#                                   .sum()
+#                                   .assign(beta_value=compute_beta_values)
+#                                   )
+#             agg_mbias_stats_df
+#
+#             create_single_mbias_stat_plot(agg_mbias_stats_df,
+#                                           plot_config)
+#
+#             computed_mbias_plot_bytes = (get_mbias_plot_path(plot_config)
+#                                          ['ylim-(0.5, 1)']
+#                                          .with_suffix('.png').read_bytes())
+#
+#             pp = plot_config.plot_params
+#
+#             g = (gg.ggplot(data=agg_mbias_stats_df.reset_index(),
+#                            mapping=plot_config.aes.get_plot_aes_dict())
+#                  + gg.geom_line()
+#                  + gg.facet_wrap('bs_strand', ncol=2)
+#                  + PLOTNINE_THEMES[plot_config.plot_params.theme]
+#                  + gg.scale_x_continuous(breaks=np.arange(0, 101, 10))
+#                  + gg.scale_y_continuous(breaks=np.arange(0, 1.01, 0.2), limits=[0.5, 1])
+#                  + gg.labs(x=MBIAS_STATS_DIMENSION_PLOT_LABEL_MAPPING['pos'],
+#                            y=MBIAS_STATS_DIMENSION_PLOT_LABEL_MAPPING['beta_value'],
+#                            title=plot_config.datasets,
+#                            )
+#                  )
+#             expected_png_path = Path('expected_mbias_plot.png')
+#             g.save(filename=str(expected_png_path),
+#                    width=pp.panel_width, height=pp.panel_height)
+#
+#             expected_mbias_plot_bytes = expected_png_path.read_bytes()
+#
+#             assert computed_mbias_plot_bytes == expected_mbias_plot_bytes
+#
+#         os.chdir(previous_working_dir)
+#
+#
+#     def test_plots_frequency_plots():
+#
+#         mbias_stats_df_test = create_test_mbias_stats_df(
+#             [
+#                 (idxs[:, :, :, 100], [70] * 100, [30] * 100),
+#                 (idxs[:, :, :, 200], [60] * 100, [40] * 100),
+#             ]
+#         )
+#         previous_working_dir = os.getcwd()
+#         with tempfile.TemporaryDirectory as tmpdir:
+#             # TODO: more robust chdir to previous working dir
+#             os.chdir(tmpdir)
+#
+#             plot_config = MbiasPlotConfig(
+#                 datasets='mbias_stats_df_test',
+#                 aes_mapping=dict(x='pos', y='value',
+#                                  color='bs_strand', col='statistic',
+#                                  motifs=['CG'], wrap=None),
+#                 plot_params=dict(mbias_flens_to_display=[100, 200],
+#                                  mbias_phreds_to_display=[20, 40],
+#                                  panel_height=9,
+#                                  panel_width=9,
+#                                  theme='poster',
+#                                  x_breaks=10, y_breaks=5,
+#                                  ylim_tuples=[(0, 1), (0.5, 1)])
+#             )
+#
+#             agg_mbias_stats_df = (mbias_stats_df_test
+#                                   .loc['CG':'CG', :]
+#                                   .groupby(['pos', 'bs_strand'])
+#                                   .sum()
+#                                   .assign(beta_value=compute_beta_values)
+#                                   )
+#             agg_mbias_stats_df
+#
+#             create_single_mbias_stat_plot(agg_mbias_stats_df,
+#                                           plot_config)
+#
+#             computed_mbias_plot_bytes = (get_mbias_plot_path(plot_config)
+#                                          ['ylim-(0.5, 1)']
+#                                          .with_suffix('.png').read_bytes())
+#
+#             agg_mbias_stats_df.index.name = 'statistic'
+#             agg_mbias_stats_df = (agg_mbias_stats_df
+#                                   .stack()
+#                                   .to_frame('value'))
+#
+#             pp = plot_config.plot_params
+#
+#             g = (gg.ggplot(data=agg_mbias_stats_df.reset_index(),
+#                            mapping=plot_config.aes.get_plot_aes_dict())
+#                  + gg.geom_line()
+#                  + gg.facet_wrap('statistic', ncol=None)
+#                  + PLOTNINE_THEMES[plot_config.plot_params.theme]
+#                  + gg.scale_x_continuous(breaks=np.arange(0, 101, 10))
+#                  + gg.scale_y_continuous(breaks=np.arange(0, 1.01, 0.2), limits=[0.5, 1])
+#                  + gg.labs(x=MBIAS_STATS_DIMENSION_PLOT_LABEL_MAPPING['pos'],
+#                            y=MBIAS_STATS_DIMENSION_PLOT_LABEL_MAPPING['value'],
+#                            title=plot_config.datasets,
+#                            )
+#                  )
+#             expected_png_path = Path('expected_mbias_plot.png')
+#             g.save(filename=str(expected_png_path),
+#                    width=pp.panel_width, height=pp.panel_height)
+#
+#             expected_mbias_plot_bytes = expected_png_path.read_bytes()
+#
+#             assert computed_mbias_plot_bytes == expected_mbias_plot_bytes
+#
+#         os.chdir(previous_working_dir)
 
 
 class TestAggregatedMbiasStats:
 
-    def test_fp_creation(self):
+    def test_fp_creation(self) -> None:
         aggregated_mbias_stats = AggregatedMbiasStats()
         params = MbiasStatAggregationParams(
             dataset_fp='/path/to/dataset.p',
-            variables=['varA', 'varB'],
+            variables={'varA', 'varB'},
             pre_agg_filters={'flen': [1, 2, 3]}
         )
         fp = aggregated_mbias_stats._create_agg_dataset_fp(params)
@@ -1763,7 +1732,7 @@ class TestAggregatedMbiasStats:
            f'_{json.dumps(params.pre_agg_filters).replace(" ", "-")}.p'))
 
     def test_stats_are_only_computed_if_there_is_no_recent_copy_present(
-            self, mocker, tmpdir):
+            self, mocker, tmpdir) -> None:
 
         with TmpChdir(tmpdir):
             aggregated_mbias_stats = AggregatedMbiasStats()
@@ -1773,12 +1742,12 @@ class TestAggregatedMbiasStats:
                 'mqc.mbias.aggregate_table', return_value=mbias_stats_df)
             params = MbiasStatAggregationParams(
                 dataset_fp='path/to/dataset.p',
-                variables=['varA', 'varB'],
+                variables={'varA', 'varB'},
                 pre_agg_filters={'flen': [1, 2, 3]}
             )
             Path(params.dataset_fp).parent.mkdir(parents=True, exist_ok=False)
             Path(params.dataset_fp).touch()
-            for i in range(2):
+            for _ in range(2):
                 aggregated_mbias_stats.precompute_aggregated_stats(
                     params=params,
                     mbias_stats_df=mbias_stats_df
@@ -1794,11 +1763,11 @@ class TestAggregatedMbiasStats:
 @pytest.mark.xfail(skip=True)
 class TestMbiasPlotConfig:
     def test_raises_if_filters_are_not_defined_correctly(self):
-        raise NotImplemented
+        raise NotImplementedError
     def test_raises_if_datasets_are_not_defined_correctly(self):
-        raise NotImplemented
+        raise NotImplementedError
     def test_hash(self):
-        raise NotImplemented
+        raise NotImplementedError
 
 @pytest.fixture()
 def test_mbias_plot_config_file() -> str:
@@ -1807,7 +1776,7 @@ def test_mbias_plot_config_file() -> str:
     Note that this does not append the specification of the config dict
     to be used (e.g. '*::default_config)
     """
-    return Path(__file__).parent / 'test_files' / 'test_mbias_plot_config.py'
+    return str(Path(__file__).parent / 'test_files' / 'test_mbias_plot_config.py')
 
 # TODO: remove
 # @pytest.fixture()
@@ -1909,12 +1878,9 @@ def trimmed_mbias_stats_fp(tmpdir):
 # to test running mbias_plots without the mbias_plot_config option
 # because the current default config file has post_agg_filters with too many
 # levels, which will raise a ValueError
-@pytest.fixture(params=[
-    str(test_mbias_plot_config_file()) + '::default_config',
-])
+@pytest.fixture(params=[test_mbias_plot_config_file() + '::default_config'])  # type: ignore
 def run_mbias_stats_plots(
-        request, test_mbias_plot_config_file,
-        full_mbias_stats_fp,trimmed_mbias_stats_fp):
+        request, full_mbias_stats_fp: str, trimmed_mbias_stats_fp: str) -> None:
 
 
     output_dir = tempfile.mkdtemp()
@@ -1938,8 +1904,7 @@ def run_mbias_stats_plots(
 
 @pytest.mark.xfail(skip=True)
 def test_create_mbias_stats_plots():
-    raise NotImplemented
-
+    raise NotImplementedError
 
 # noinspection PyMethodMayBeStatic
 @pytest.mark.acceptance_test
@@ -2018,13 +1983,13 @@ class TestCuttingSites:
     @pytest.mark.xfail(skip=True)
     def test_invariant_detects_wrong_cutting_sites_df_format_during_init(self):
         with pytest.raises(AssertionError):
-            cutting_sites = CuttingSitesReplacementClass(
+            _ = CuttingSitesReplacementClass(
                 pd.DataFrame({'start': [1, 2, 3]}),
                 max_read_length=100,
             )
 
         with pytest.raises(AssertionError):
-            cutting_sites = CuttingSitesReplacementClass(
+            _ = CuttingSitesReplacementClass(
                 cutting_sites_df=pd.DataFrame(
                     index=pd.MultiIndex.from_product(
                         ['c_bc w_bc'.split(),
@@ -2037,7 +2002,7 @@ class TestCuttingSites:
             )
     @pytest.mark.xfail(skip=True)
     def test_fails_if_mbias_stats_df_does_not_match_max_read_length(self):
-        raise NotImplemented
+        raise NotImplementedError
 
     def test_from_relative_to_frag_end_cutting_sites(self):
 
@@ -2185,10 +2150,11 @@ class TestBinomPvalueBasedCuttingSiteDetermination:
         #                                  low_coverage_strata_i_idx)
 
         if make_interactive:
-            plot_stem = f'{shape_name}_cov-{coverage_int_or_arr}_seed-{seed}_fact-{plateau_height_factor}_high-flen'
-            self._plot_cutting_sites(mbias_stats_df=mbias_stats_stub,
-                                     cutting_sites_df=cutting_sites_df,
-                                     stem=plot_stem)
+            raise NotImplementedError
+            # plot_stem = f'{shape_name}_cov-{coverage_int_or_arr}_seed-{seed}_fact-{plateau_height_factor}_high-flen'
+            # self._plot_cutting_sites(mbias_stats_df=mbias_stats_stub,
+            #                          cutting_sites_df=cutting_sites_df,
+            #                          stem=plot_stem)
 
         if adjust_cutting_site_calls_from_small_flens:
             adjustment_summand = beta_value_arr.shape[0] - np.array(flens)
@@ -2224,21 +2190,15 @@ class TestBinomPvalueBasedCuttingSiteDetermination:
 
         return cutting_sites, mbias_stats_stub
 
-    def _remove_low_coverage_strata(self, cutting_sites_df,
-                                    low_coverage_strata_i_idx):
-        sufficient_coverage_bool_idx = np.ones(cutting_sites_df.shape[0],
-                                               dtype=bool)
-        sufficient_coverage_bool_idx[low_coverage_strata_i_idx] = False
-        cutting_sites_df = cutting_sites_df.loc[sufficient_coverage_bool_idx, :]
-
-    def _assert_cutting_site_correctness(self, cutting_sites_df, correct_start,
+    @staticmethod
+    def _assert_cutting_site_correctness(cutting_sites_df, correct_start,
                                          correct_end, is_low_coverage_situation,
-                                         shape_name):
+                                         shape_name) -> None:
         assert cutting_sites_df_has_correct_format(cutting_sites_df)
         if (is_low_coverage_situation
                 and shape_name in test_mbias_shapes_with_low_coverage_slope
                 and (cutting_sites_df == 0).all().all()):
-            return True
+            return
 
         if (correct_start, correct_end) == (0, 0):
             assert (all(cutting_sites_df['start'] == 0) and all(
@@ -2259,6 +2219,8 @@ class TestBinomPvalueBasedCuttingSiteDetermination:
                 is_correct = cutting_sites_df['start'].between(correct_start[0], correct_start[1])
                 assert all(is_correct), cutting_sites_df.loc[~is_correct, :]
             else:
+                # Pycharm does not understand that we are comparing Series
+                # noinspection PyTypeChecker
                 assert all(cutting_sites_df['start'] >= correct_start[
                     0]), message
         message = f'{cutting_sites_df["end"]}\n{correct_end}'
@@ -2276,10 +2238,13 @@ class TestBinomPvalueBasedCuttingSiteDetermination:
                 is_correct = cutting_sites_df['end'].between(correct_end[0], correct_end[1])
                 assert all(is_correct), cutting_sites_df.loc[~is_correct, :]
             else:
+                # Pycharm does not understand that we are comparing Series
+                # noinspection PyTypeChecker
                 assert all(
                     cutting_sites_df['end'] <= correct_end[1]), message
 
-    def _get_mbias_stats_stub(self, beta_value_arr, coverage_int_or_arr, flens,
+    @staticmethod
+    def _get_mbias_stats_stub(beta_value_arr, coverage_int_or_arr, flens,
                               plateau_height_factor, seed, adjust_small_flens):
         idx_levels = [pd.Categorical(['c_bc', 'w_bc']), flens]
         idx_level_names = ['bs_strand', 'flen']
@@ -2352,4 +2317,3 @@ class TestBinomPvalueBasedCuttingSiteDetermination:
     #      # .save(target_fp, webdriver='firefox')
     #      .save(target_fp)
     #      )
-
