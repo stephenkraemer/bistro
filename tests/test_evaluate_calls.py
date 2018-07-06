@@ -14,6 +14,7 @@ MOTIF_SETS = ['CG', 'CG-CHG-CHH']
 TEST_CHROMS = ['1', '2']
 
 
+@pytest.mark.acceptance_test
 @pytest.mark.parametrize('motifs', MOTIF_SETS)
 def test_evaluate_calls_cmd(motifs):
     with tempfile.TemporaryDirectory() as out_dir:

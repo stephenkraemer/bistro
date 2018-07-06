@@ -85,5 +85,6 @@
   cov_counts                    = "{qc_stats_dir}/{name}_coverage-counts_{motifs_str}"
   coverage_hist                 = "{qc_stats_dir}/{name}_coverage-hist_{motifs_str}.png"
   meth_calls_basepath           = "meth_calls/mcalls"
-  bismark_calls_by_chrom_motif  = "meth_calls/bismark_{name}_[motif]_chr-[chrom].bed.gz"
+  bismark_calls_by_chrom_motif  = "meth_calls/{name}_[motif]_chr-[chrom].bismark.gz"
+  strat_bed_calls_by_chrom_motif  = "meth_calls/{name}_[motif]_chr-[chrom]_stratified.bed.gz"
 

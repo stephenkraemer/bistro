@@ -173,8 +173,8 @@ def mbias_plots(output_dir, sample_name, sample_meta, mbias_plot_config,
 @click.pass_context
 def call(ctx, bam, index_files,
          output_dir, config_file,
-         sample_name, sample_meta, cores, trimming,
-         max_read_length, output_formats) -> None:
+         sample_name: str, sample_meta: str, cores: str, trimming: str,
+         max_read_length: int, output_formats: str) -> None:
     """Methylation calling tool
 
     Command line tool for generating QC-filtered methylation calls
@@ -182,6 +182,12 @@ def call(ctx, bam, index_files,
 
     This tool wraps the base QcAndMethCallingRun.
     """
+
+    # To add new output formats
+    # 1. Add to help message of --output_formats option
+    # 2. Add to allowed_output_formats_set
+    # 3. Modify QcAndMethCallingRun._get_visitors to include appropriate
+    #    Visitors when required
 
     default_config_file = get_resource_abspath('config.default.toml')
 
@@ -203,12 +209,11 @@ def call(ctx, bam, index_files,
     cli_params['motifs_str'] = motifs_str
     cli_params['motifs'] = motifs_str.split('-')
 
-    output_formats = output_formats.split(',')
-    assert set(output_formats) <= set('bed bismark stratified_bed'.split()), \
-        f'Aborting: unknown output formats in {output_formats}'
-    assert not ('bed' in output_formats
-                and 'stratified_bed' in output_formats), \
-        f'Aborting: cannot produce bed and stratified_bed at the same time'
+    allowed_output_formats_set = set('bed bismark stratified_bed'.split())
+    output_formats_list = output_formats.split(',')
+    assert set(output_formats_list) <= allowed_output_formats_set, \
+        f'Aborting: unknown output formats in {output_formats_list}'
+    cli_params['output_formats'] = output_formats_list
 
     config = assemble_config_vars(cli_params,
                                   default_config_file_path=default_config_file,

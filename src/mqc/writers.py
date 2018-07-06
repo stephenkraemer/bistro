@@ -227,6 +227,7 @@ class StratifiedBedWriter(McallWriterABC):
 
         strat_calls_slice = slice(0, scall_ids.all)
 
+        # TODO: improve clumsy string construction
         line = '\t'.join(chain(
             [motif_pileup.idx_pos.chrom, str(motif_pileup.idx_pos.start),
              str(motif_pileup.idx_pos.end), motif_pileup.idx_pos.motif,
@@ -235,9 +236,8 @@ class StratifiedBedWriter(McallWriterABC):
              ],
             *zip(np.char.mod('%.8f', motif_pileup.strat_beta_arr[strat_calls_slice]),
                  motif_pileup.meth_counts_arr[strat_calls_slice, mstat_ids.n_meth].astype(str),
-                 motif_pileup.meth_counts_arr[strat_calls_slice, mstat_ids.n_total].astype(str)),
-            ('\n',)
-        ))
+                 motif_pileup.meth_counts_arr[strat_calls_slice, mstat_ids.n_total].astype(str))
+        )) + '\n'
         # astype(str) is sufficient because meth_counts_array dtype is int
 
         self.meth_calls_fobj_dict[motif_pileup.idx_pos.motif].write(line)

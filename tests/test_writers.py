@@ -300,12 +300,11 @@ def test_stratified_bed_writer(tmpdir: Any) -> None:
 
     with gzip.open(output_by_chrom_motif.replace('[chrom]', '11')
                    .replace('[motif]', 'CG'), 'rt') as fin:
-        computed_cg_header, computed_cg_line1, computed_cg_line2 = [
-            s.rstrip() for s in fin.readlines()]
+        computed_cg_header, computed_cg_line1, computed_cg_line2 = fin.readlines()
 
     with gzip.open(output_by_chrom_motif.replace('[chrom]', '11')
                    .replace('[motif]', 'CHH'), 'rt') as fin:
-        computed_chh_header, computed_chh_line = [s.rstrip() for s in fin.readlines()]
+        computed_chh_header, computed_chh_line = fin.readlines()
     # -
 
     expected_header = '\t'.join(
@@ -317,7 +316,7 @@ def test_stratified_bed_writer(tmpdir: Any) -> None:
              'w_bc_rv_beta_value', 'w_bc_rv_n_meth', 'w_bc_rv_n_total',
              'mate1_beta_value', 'mate1_n_meth', 'mate1_n_total',
              'mate2_beta_value', 'mate2_n_meth', 'mate2_n_total',
-             ])
+             ]) + '\n'
     expected_cg_line1 = compute_expected_calls_str(cg_motif_pileup_stub1)
     expected_cg_line2 = compute_expected_calls_str(cg_motif_pileup_stub2)
     expected_chh_line = compute_expected_calls_str(chh_motif_pileup_stub)
@@ -343,5 +342,5 @@ def compute_expected_calls_str(motif_pileup_stub: StratifiedBedMotifPileupStub) 
         motif_pileup_stub.meth_counts_arr[0:scall_ids.all, [mstat_ids.n_total]].astype(str)
     ]).flatten())
     expected_cg_calls_str = (expected_cg_calls_idx_str + '\t' + expected_cg_calls_calls_substr1
-                             + '\t' + expected_cg_calls_calls_substr2)
+                             + '\t' + expected_cg_calls_calls_substr2 + '\n')
     return expected_cg_calls_str

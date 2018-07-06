@@ -29,7 +29,7 @@ MIN_PHRED = 35
 
 
 @pytest.fixture(scope='module')
-def index_file_paths_dict() -> Dict[str, List[str]]:
+def index_file_paths_dict_fix() -> Dict[str, List[str]]:
     """Provide index files by motif"""
     return {
         'CG': [op.join(TEST_FILES_DIR, 'test_mcall_CG_1.bed.gz'),
@@ -126,10 +126,10 @@ def config_file_path(request):
 
 # noinspection PyShadowingNames
 @pytest.mark.acceptance_test
-@pytest.mark.parametrize('output_formats_csv', 'bismark bismark,bed bed'.split())
+@pytest.mark.parametrize('output_formats_csv', 'bismark bismark,bed bed stratified_bed bismark,stratified_bed'.split())
 @pytest.mark.parametrize('motifs_str', ['CG', 'CG-CHG-CHH'])
 def test_call_tool(tmpdir: Any, config_file_path: str,
-                   index_file_paths_dict: Dict[str, List[str]],
+                   index_file_paths_dict_fix: Dict[str, List[str]],
                    motifs_str: str, output_formats_csv: str,
                    make_interactive: bool, cutting_sites_obj_fp_fix: str) -> None:
     """Test call tool across various combinations of options
@@ -138,11 +138,14 @@ def test_call_tool(tmpdir: Any, config_file_path: str,
         config_file_path: fixture, providing paths to custom config
             files. The config files are used to support testing the
             trimming functionality. See fixture doc for details.
+        index_file_paths_dict_fix: CG or CG-CHG-CHH (combined) index
+            files for chromosomes 1 and 2.
     """
 
     # When new output formats are added:
     # - add to output_formats parametrization (above)
     # - add to all_output_formats variable (below)
+    # - add to output_path_templates (below)
 
     tmpdir = str(tmpdir)
 
@@ -164,7 +167,7 @@ def test_call_tool(tmpdir: Any, config_file_path: str,
                     '--max_read_length', '101',
                     '--cores', '2']
     # add index files as positional arguments
-    command_args += index_file_paths_dict[motifs_str]
+    command_args += index_file_paths_dict_fix[motifs_str]
 
     # If the config file with deliberately wrong config of the fixed
     # cutting sites is used, we must use the cutting sites object
@@ -195,6 +198,8 @@ def test_call_tool(tmpdir: Any, config_file_path: str,
         output_path_templates = dict(
             bed=(config['paths']['meth_calls_basepath'] +
                  f'_{SAMPLE_NAME}_{{motif}}_{{chrom}}.bed.gz'),
+            stratified_bed=(config['paths']['strat_bed_calls_by_chrom_motif']
+                         .replace('[', '{').replace(']', '}')),
             bismark=(config['paths']['bismark_calls_by_chrom_motif']
                      .replace('[', '{').replace(']', '}'))
         )
@@ -207,7 +212,7 @@ def test_call_tool(tmpdir: Any, config_file_path: str,
         # 2. Compute files which should be created
         # 3. Find the complement 1 - 2
         all_motifs = 'CG CHG CHH'.split()
-        all_output_formats = 'bed bismark'.split()
+        all_output_formats = 'bed bismark stratified_bed'.split()
         all_chroms = '1 2'.split()
         all_possible_file_spec_tuples = set(
             product(all_motifs, all_output_formats, all_chroms))
@@ -284,6 +289,15 @@ EXPECTED_RESULTS_DICT2 = {
         1	11299331	11299332	CG	.	-	{1:.8f}	4	4
         """),
 
+    # verified manually
+    ('CG', 'stratified_bed', '1'): space_to_tab(dedent(f"""\
+        #chrom	start	end	motif	score	strand	beta_value	n_meth	n_total	c_bc_beta_value	c_bc_n_meth	c_bc_n_total	c_bc_rv_beta_value	c_bc_rv_n_meth	c_bc_rv_n_total	w_bc_beta_value	w_bc_n_meth	w_bc_n_total	w_bc_rv_beta_value	w_bc_rv_n_meth	w_bc_rv_n_total	mate1_beta_value	mate1_n_meth	mate1_n_total	mate2_beta_value	mate2_n_meth	mate2_n_total
+        1	11298399	11298400	CG	.	+	1.00000000	5	5	nan	0	0	nan	0	0	1.00000000	3	3	1.00000000	2	2	1.00000000	3	3	1.00000000	2	2
+        1	11298400	11298401	CG	.	-	nan	0	0	nan	0	0	nan	0	0	nan	0	0	nan	0	0	nan	0	0	nan	0	0
+        1	11299330	11299331	CG	.	+	1.00000000	3	3	nan	0	0	nan	0	0	1.00000000	2	2	1.00000000	2	2	1.00000000	2	2	1.00000000	2	2
+        1	11299331	11299332	CG	.	-	1.00000000	4	4	1.00000000	4	4	nan	0	0	nan	0	0	nan	0	0	1.00000000	4	4	nan	0	0
+        """)),
+
     ('CG', 'bismark', '1'): space_to_tab(dedent(f"""\
         HWI-ST1153:88:D1E30ACXX:4:1211:7814:62078       +       1       11298399        Z
         HWI-ST1153:88:D1E30ACXX:1:2301:18367:58510      +       1       11298399        Z
@@ -305,6 +319,12 @@ EXPECTED_RESULTS_DICT2 = {
                             1	3258373	3258374	CHG	.	-	{0:.8f}	0	3
                             """),
 
+    ('CHG', 'stratified_bed', '1'): space_to_tab(dedent(f"""\
+        #chrom	start	end	motif	score	strand	beta_value	n_meth	n_total	c_bc_beta_value	c_bc_n_meth	c_bc_n_total	c_bc_rv_beta_value	c_bc_rv_n_meth	c_bc_rv_n_total	w_bc_beta_value	w_bc_n_meth	w_bc_n_total	w_bc_rv_beta_value	w_bc_rv_n_meth	w_bc_rv_n_total	mate1_beta_value	mate1_n_meth	mate1_n_total	mate2_beta_value	mate2_n_meth	mate2_n_total
+        1	3258371	3258372	CHG	.	+	0.00000000	0	3	nan	0	0	nan	0	0	0.00000000	0	1	0.00000000	0	2	0.00000000	0	1	0.00000000	0	2
+        1	3258373	3258374	CHG	.	-	0.00000000	0	3	0.00000000	0	2	0.00000000	0	1	nan	0	0	nan	0	0	0.00000000	0	2	0.00000000	0	1
+        """)),
+
     ('CHG', 'bismark', '1'): space_to_tab(dedent(f"""\
         HWI-ST1153:88:D1E30ACXX:1:2315:8385:43128       -       1       3258371 x
         HWI-ST1153:88:D1E30ACXX:4:2302:5844:61601       -       1       3258371 x
@@ -320,6 +340,13 @@ EXPECTED_RESULTS_DICT2 = {
         1	3258376	3258377	CHH	.	+	{0:.8f}	0	3
         """),
 
+    ('CHH', 'stratified_bed', '1'): space_to_tab(dedent("""\
+        #chrom	start	end	motif	score	strand	beta_value	n_meth	n_total	c_bc_beta_value	c_bc_n_meth	c_bc_n_total	c_bc_rv_beta_value	c_bc_rv_n_meth	c_bc_rv_n_total	w_bc_beta_value	w_bc_n_meth	w_bc_n_total	w_bc_rv_beta_value	w_bc_rv_n_meth	w_bc_rv_n_total	mate1_beta_value	mate1_n_meth	mate1_n_total	mate2_beta_value	mate2_n_meth	mate2_n_total
+        1	3258374	3258375	CHH	.	-	0.00000000	0	3	0.00000000	0	2	0.00000000	0	1	nan	0	0	nan	0	0	0.00000000	0	2	0.00000000	0	1
+        1	3258376	3258377	CHH	.	+	0.00000000	0	3	nan	0	0	nan	0	0	0.00000000	0	1	0.00000000	0	3	0.00000000	0	1	0.00000000	0	3
+        """)),
+
+
     ('CHH', 'bismark', '1'): space_to_tab(dedent(f"""\
         HWI-ST1153:88:D1E30ACXX:1:2106:16572:67528      -       1       3258374 h
         HWI-ST1153:88:D1E30ACXX:1:2316:19549:96321      -       1       3258374 h
@@ -330,12 +357,21 @@ EXPECTED_RESULTS_DICT2 = {
         """)),
 
     ('CG', 'bed', '2'): dedent(f"""\
-         #chrom	start	end	motif	score	strand	beta_value	n_meth	n_total
-         2	9042611	9042612	CG	.	+	{1:.8f}	4	4
-         2	9042612	9042613	CG	.	-	{1:.8f}	1	1
-         2	9042613	9042614	CG	.	+	{1:.8f}	5	5
-         2	9042614	9042615	CG	.	-	{1:.8f}	1	1
-         """),
+        #chrom	start	end	motif	score	strand	beta_value	n_meth	n_total
+        2	9042611	9042612	CG	.	+	{1:.8f}	4	4
+        2	9042612	9042613	CG	.	-	{1:.8f}	1	1
+        2	9042613	9042614	CG	.	+	{1:.8f}	5	5
+        2	9042614	9042615	CG	.	-	{1:.8f}	1	1
+        """),
+
+    # verified manually
+    ('CG', 'stratified_bed', '2'): space_to_tab(dedent(f"""\
+        #chrom	start	end	motif	score	strand	beta_value	n_meth	n_total	c_bc_beta_value	c_bc_n_meth	c_bc_n_total	c_bc_rv_beta_value	c_bc_rv_n_meth	c_bc_rv_n_total	w_bc_beta_value	w_bc_n_meth	w_bc_n_total	w_bc_rv_beta_value	w_bc_rv_n_meth	w_bc_rv_n_total	mate1_beta_value	mate1_n_meth	mate1_n_total	mate2_beta_value	mate2_n_meth	mate2_n_total
+        2	9042611	9042612	CG	.	+	1.00000000	4	4	nan	0	0	nan	0	0	1.00000000	1	1	1.00000000	4	4	1.00000000	1	1	1.00000000	4	4
+        2	9042612	9042613	CG	.	-	1.00000000	1	1	1.00000000	1	1	nan	0	0	nan	0	0	nan	0	0	1.00000000	1	1	nan	0	0
+        2	9042613	9042614	CG	.	+	1.00000000	5	5	nan	0	0	nan	0	0	1.00000000	1	1	1.00000000	5	5	1.00000000	1	1	1.00000000	5	5
+        2	9042614	9042615	CG	.	-	1.00000000	1	1	1.00000000	1	1	nan	0	0	nan	0	0	nan	0	0	1.00000000	1	1	nan	0	0
+        """)),
 
     ('CG', 'bismark', '2'): space_to_tab(dedent(f"""\
         HWI-ST1153:88:D1E30ACXX:4:1105:17809:24267      +       2       9042611 Z
@@ -356,6 +392,11 @@ EXPECTED_RESULTS_DICT2 = {
         2	3281431	3281432	CHG	.	-	{0:.8f}	0	3
         """),
 
+    ('CHG', 'stratified_bed', '2'): space_to_tab(dedent(f"""\
+        #chrom	start	end	motif	score	strand	beta_value	n_meth	n_total	c_bc_beta_value	c_bc_n_meth	c_bc_n_total	c_bc_rv_beta_value	c_bc_rv_n_meth	c_bc_rv_n_total	w_bc_beta_value	w_bc_n_meth	w_bc_n_total	w_bc_rv_beta_value	w_bc_rv_n_meth	w_bc_rv_n_total	mate1_beta_value	mate1_n_meth	mate1_n_total	mate2_beta_value	mate2_n_meth	mate2_n_total
+        2	3281431	3281432	CHG	.	-	0.00000000	0	3	0.00000000	0	1	0.00000000	0	2	nan	0	0	nan	0	0	0.00000000	0	1	0.00000000	0	2
+        """)),
+
     ('CHG', 'bismark', '2'): space_to_tab(dedent(f"""\
         HWI-ST1153:88:D1E30ACXX:1:2115:1487:37860       -       2       3281431 x
         HWI-ST1153:88:D1E30ACXX:4:1302:7825:95345       -       2       3281431 x
@@ -368,6 +409,12 @@ EXPECTED_RESULTS_DICT2 = {
         2	3281432	3281433	CHH	.	-	{0:.8f}	0	3
         2	3281434	3281435	CHH	.	+	{0:.8f}	0	1
         """),
+
+    ('CHH', 'stratified_bed', '2'): space_to_tab(dedent(f"""\
+        #chrom	start	end	motif	score	strand	beta_value	n_meth	n_total	c_bc_beta_value	c_bc_n_meth	c_bc_n_total	c_bc_rv_beta_value	c_bc_rv_n_meth	c_bc_rv_n_total	w_bc_beta_value	w_bc_n_meth	w_bc_n_total	w_bc_rv_beta_value	w_bc_rv_n_meth	w_bc_rv_n_total	mate1_beta_value	mate1_n_meth	mate1_n_total	mate2_beta_value	mate2_n_meth	mate2_n_total
+        2	3281432	3281433	CHH	.	-	0.00000000	0	3	0.00000000	0	1	0.00000000	0	2	nan	0	0	nan	0	0	0.00000000	0	1	0.00000000	0	2
+        2	3281434	3281435	CHH	.	+	0.00000000	0	1	nan	0	0	nan	0	0	0.00000000	0	1	nan	0	0	0.00000000	0	1	nan	0	0
+        """)),
 
     ('CHH', 'bismark', '2'): space_to_tab(dedent(f"""\
         HWI-ST1153:88:D1E30ACXX:1:2115:1487:37860       -       2       3281432 h

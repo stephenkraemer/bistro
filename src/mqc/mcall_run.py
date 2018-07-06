@@ -1,4 +1,24 @@
-"""Manage runs across a set of index positions"""
+"""Commands processing a BAM file by iterating over MotifPileups
+
+Provides PileupRun ABC as template for algorithms that parse a BAM
+file by processing MotifPileups iteratively. To create a valid Runner
+by subclassing PileupRun, the abstract method _get_visitors must be
+implemented. This method determines the order of application of different
+Visitors to the MotifPileup, which defines the processing required by
+the user. The PileupRun ABC provides the logic for running the processing
+in parallel across multiple chromosomes.
+
+You can create own Runners by subclassing PileupRun in your own modules.
+
+This module provides the base runners shipped with mqc, currently:
+- MbiasDeterminationRun :: collects M-bias stats
+- QcAndMethCallingRun :: performs methylation calling with various
+      output formats and QC filters
+
+SNP calling will be added, and functionality to gather information in the
+biscuit epiread format.
+"""
+
 import json
 import multiprocessing as mp
 import sys
@@ -6,28 +26,38 @@ from abc import abstractmethod, ABCMeta
 from collections import OrderedDict
 from copy import deepcopy
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Any, Optional
 
 import pandas as pd
 import pysam
 
 from mqc.index import IndexFile
 from mqc.mbias import MbiasCounter, CuttingSitesReplacementClass
-from mqc.mcaller import MethCaller
+from mqc.mcaller import MethCaller, StratifiedMethCaller
 from mqc.overlap import OverlapHandler
 from mqc.pileup.pileup import stepwise_pileup_generator
 from mqc.qc_filters import PhredFilter, MapqFilter
 from mqc.trimming import Trimmer
 from mqc.visitors import Counter, Visitor
-from mqc.writers import BedWriter, BismarkWriter
+from mqc.writers import BedWriter, BismarkWriter, StratifiedBedWriter
 
 
 # from mqc.mbias import MbiasData, AdjustedMbiasCuttingSites, MbiasCounter
 # from mqc.beta_values import StratifiedBetaValueCounter
 # from mqc.coverage import CoverageCounter
 
+ConfigDict = Dict[str, Any]
 
-def collect_stats(config):
+
+def collect_mbias_stats(config: ConfigDict) -> None:
+    """Runner function for stats command
+
+    Collects M-bias stats as M-bias Counter pickle
+
+    Will be changed to M-bias dataframe output in the future, the
+    current output just makes development on M-bias stats processing
+    easier...
+    """
 
     mbias_run = MbiasDeterminationRun(config, cutting_sites=None)
     mbias_run.run_parallel()
@@ -35,7 +65,8 @@ def collect_stats(config):
         counter.save()
 
 
-def run_mcalling(config):
+def run_mcalling(config: ConfigDict) -> None:
+    """Methylation calling runner function"""
 
     trimm_command, trimm_param = config['run']['trimming'].split('::')
     max_read_length = config['run']['max_read_length']
@@ -49,7 +80,8 @@ def run_mcalling(config):
                              f'for command {trimm_command}')
         try:
             trimm_param_dict = json.loads(trimm_param)
-            set(trimm_param_dict.keys()) == {*'c_bc c_bc_rv w_bc w_bc_rv'.split()}
+            assert set(trimm_param_dict.keys()) == {*'c_bc c_bc_rv w_bc w_bc_rv'.split()}, \
+                'Fragment end-based trimming specification does not have all BS-Seq strands'
         except AttributeError:
             print(param_err_message, file=sys.stderr)
             raise
@@ -85,6 +117,7 @@ def run_mcalling(config):
 
     for counter in second_run.summed_up_counters.values():
         counter.save_dataframe()
+
 
 class PileupRun(metaclass=ABCMeta):
     """ABC for classes managing individual data collection runs
@@ -136,9 +169,10 @@ class PileupRun(metaclass=ABCMeta):
 
     """
 
-    def __init__(self, config, cutting_sites=None):
+    def __init__(self, config: ConfigDict,
+                 cutting_sites: Optional[CuttingSitesReplacementClass] = None) -> None:
 
-        self.summed_up_counters = {}
+        self.summed_up_counters: Dict[str, Counter] = {}
 
         # All config vars used directly by methods of this class
         self.n_cores = config['run']['cores']
@@ -150,7 +184,7 @@ class PileupRun(metaclass=ABCMeta):
         # by the visitor class constructors
         self.config = config
 
-    def run_parallel(self):
+    def run_parallel(self) -> None:
         # TODO: other path for cores=1
         """Parallelize over index files
 
@@ -170,12 +204,8 @@ class PileupRun(metaclass=ABCMeta):
                 self.index_files)
             self.sum_up_counters(counter_dicts_per_idx_file)
 
-
-        # counter = self._single_run_over_index_file(self.index_files[0])
-        # return counter
-
     def sum_up_counters(
-            self, counter_dicts_per_idx_file: List[Dict[str, Counter]]):
+            self, counter_dicts_per_idx_file: List[Dict[str, Counter]]) -> None:
         """Sum up Counters retrieved from run_parallel
 
         Parameters
@@ -200,9 +230,7 @@ class PileupRun(metaclass=ABCMeta):
                 self.summed_up_counters[curr_name].counter_array += (
                     curr_counter.counter_array)
 
-
-    def _single_run_over_index_file(self, index_file_path: str) -> \
-            Dict[str, 'Counter']:
+    def _single_run_over_index_file(self, index_file_path: str) -> Dict[str, Counter]:
         """Iterate over index file, generate MotifPileups and pass to Visitors
 
         Parameters
@@ -244,7 +272,7 @@ class PileupRun(metaclass=ABCMeta):
         return counters
 
     @abstractmethod
-    def _get_visitors(self, chrom) -> Dict[str, Visitor]:
+    def _get_visitors(self, chrom: str) -> Dict[str, Visitor]:
         """Every run specifies its algorithm by providing a list of visitors
 
         Returns
@@ -274,7 +302,7 @@ class MbiasDeterminationRun(PileupRun):
     the number of computations. (or this may be built into PileupRun...)
     """
 
-    def _get_visitors(self, chrom) -> Dict[str, Visitor]:
+    def _get_visitors(self, chrom: str) -> Dict[str, Visitor]:
         # noinspection PyTypeChecker
         return OrderedDict(
             mbias_counter=MbiasCounter(self.config),
@@ -282,9 +310,16 @@ class MbiasDeterminationRun(PileupRun):
 
 
 class QcAndMethCallingRun(PileupRun):
-    """Methylation calling with QC filtering and stats collection"""
+    """Methylation calling with QC filtering and stats collection
 
-    def _get_visitors(self, chrom) -> Dict[str, Visitor]:
+    Notes:
+    - phred filtering is usually done after overlap handling,
+      because overlap handling can be used to adjust phred scores.
+      However, this is currently not implemented in the default
+      overlap handling.
+    """
+
+    def _get_visitors(self, chrom: str) -> Dict[str, Visitor]:
         """Assemble visitors for methylation calling run
 
         First, apply different QC-related visitors which tag the reads
@@ -306,31 +341,34 @@ class QcAndMethCallingRun(PileupRun):
         This would be easy to implement if requested.
         """
 
-        visitors = OrderedDict(
-            mapq_filter=MapqFilter(self.config),
-            trimmer=Trimmer(cutting_sites=self.cutting_sites),
-            overlap_handler=OverlapHandler(),
-            phred_filter=PhredFilter(self.config),
-        )
+        if self.cutting_sites is not None:
+            visitors = OrderedDict(
+                mapq_filter=MapqFilter(self.config),
+                trimmer=Trimmer(cutting_sites=self.cutting_sites),
+                overlap_handler=OverlapHandler(),
+                phred_filter=PhredFilter(self.config),
+            )
+        else:
+            raise TypeError('Methylation calling expects a valid CuttingSites instance')
 
-        output_formats = self.config['run']['output_formats']
+        output_formats_list: List[str] = self.config['run']['output_formats']
 
-        if 'bed' in output_formats and 'stratified_bed' in output_formats:
-            raise ValueError('Output formats bed and stratified_bed '
-                             'are not possible together')
-
-        if 'bed' in output_formats:
+        if 'stratified_bed' in output_formats_list:
+            visitors['meth_caller'] = StratifiedMethCaller()
+            visitors['stratified_bed_writer'] = StratifiedBedWriter(
+                    calls_by_chrom_motif_fp=self.config['paths']['strat_bed_calls_by_chrom_motif'],
+                    motifs=self.config['run']['motifs'],
+                    chrom=chrom).setup()
+            if 'bed' in output_formats_list:
+                # the StratifiedBedWriter provides the necessary MotifPileup attributes
+                print('WARNING: creating BED and stratified BED output at the same time.'
+                      ' These files are redundant - did you specify both options together by mistake?')
+                visitors['bed_writer'] = BedWriter(self.config, chrom=chrom)
+        elif 'bed' in output_formats_list:
             visitors['meth_caller'] = MethCaller()
-            visitors['mcall_writer'] = BedWriter(self.config, chrom=chrom)
+            visitors['bed_writer'] = BedWriter(self.config, chrom=chrom)
 
-        if 'stratified_bed' in output_formats:
-            raise NotImplementedError
-            # visitors['meth_caller'] = StratifiedMethCaller()
-            # if self.config['run']['strat_beta_dist']:
-            #     visitors['beta_counter'] = StratifiedBetaCounter()
-            # visitors['mcall_writer'] = StratifiedBedWriter
-
-        if 'bismark' in output_formats:
+        if 'bismark' in output_formats_list:
             visitors['bismark_writer'] = BismarkWriter(
                 calls_by_chrom_motif_fp=self.config['paths']['bismark_calls_by_chrom_motif'],
                 motifs=self.config['run']['motifs'],
@@ -340,8 +378,8 @@ class QcAndMethCallingRun(PileupRun):
         return visitors
 
 
-def _filter_for_counters(visitors) -> Dict:
-    """Given a dict of Visitors, return a dict of Counters"""
+def _filter_for_counters(visitors: Dict[str, Visitor]) -> Dict[str, Counter]:
+    """Filter dict of visitors, return only the counters"""
     counters = {visitor_name: visitor_obj
                 for visitor_name, visitor_obj in visitors.items()
                 if isinstance(visitor_obj, Counter)}
