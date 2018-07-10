@@ -1,4 +1,4 @@
-from mqc.mbias import CuttingSitesReplacementClass
+from mqc.mbias import CuttingSites
 from mqc.visitors import Visitor
 from mqc.pileup.pileup import MotifPileup
 from mqc.flag_and_index_values import bsseq_strand_indices, methylation_status_flags
@@ -23,7 +23,7 @@ class Trimmer(Visitor):
     are passed
     """
 
-    def __init__(self, cutting_sites: CuttingSitesReplacementClass) -> None:
+    def __init__(self, cutting_sites: CuttingSites) -> None:
         self.cutting_sites_array = cutting_sites.as_array()
         flen_idx = list(cutting_sites.df.index.names).index('flen')
         self.max_flen = self.cutting_sites_array.shape[flen_idx] - 1

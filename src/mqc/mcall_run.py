@@ -32,7 +32,7 @@ import pandas as pd
 import pysam
 
 from mqc.index import IndexFile
-from mqc.mbias import MbiasCounter, CuttingSitesReplacementClass
+from mqc.mbias import MbiasCounter, CuttingSites
 from mqc.mcaller import MethCaller, StratifiedMethCaller
 from mqc.overlap import OverlapHandler
 from mqc.pileup.pileup import stepwise_pileup_generator
@@ -88,7 +88,7 @@ def run_mcalling(config: ConfigDict) -> None:
         if not isinstance(trimm_param_dict['c_bc'], list):
             raise ValueError(param_err_message)
 
-        cutting_sites = CuttingSitesReplacementClass.from_rel_to_frag_end_cutting_sites(
+        cutting_sites = CuttingSites.from_rel_to_frag_end_cutting_sites(
             cut_site_spec=trimm_param_dict, max_read_length=max_read_length)
 
     elif trimm_command == 'cutting_sites':
@@ -107,8 +107,8 @@ def run_mcalling(config: ConfigDict) -> None:
             # TODO-important: fill
             raise NotImplementedError
 
-        cutting_sites = CuttingSitesReplacementClass(cutting_sites_df=cutting_sites_df,
-                                                     max_read_length=max_read_length)
+        cutting_sites = CuttingSites(cutting_sites_df=cutting_sites_df,
+                                     max_read_length=max_read_length)
 
     # noinspection PyUnboundLocalVariable
     second_run = QcAndMethCallingRun(config,
@@ -170,7 +170,7 @@ class PileupRun(metaclass=ABCMeta):
     """
 
     def __init__(self, config: ConfigDict,
-                 cutting_sites: Optional[CuttingSitesReplacementClass] = None) -> None:
+                 cutting_sites: Optional[CuttingSites] = None) -> None:
 
         self.summed_up_counters: Dict[str, Counter] = {}
 

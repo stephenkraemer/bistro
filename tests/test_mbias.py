@@ -27,14 +27,14 @@ from mqc.pileup.pileup import MotifPileup
 from mqc.mbias import (
     MbiasCounter, get_sequence_context_to_array_index_table,
     fit_normalvariate_plateau,
-    fit_percentiles, AdjustedCuttingSites,
+    fit_percentiles,
     mask_mbias_stats_df, map_seq_ctx_to_motif,
-    convert_cutting_sites_df_to_array, compute_beta_values,
+    compute_beta_values,
     get_plot_configs, MbiasPlotConfig,
     aggregate_table, create_aggregated_tables,
     MbiasPlotParams, MbiasPlotMapping, MbiasAnalysisConfig,
     AggregatedMbiasStats,
-    MbiasStatAggregationParams, CuttingSitesReplacementClass,
+    MbiasStatAggregationParams, CuttingSites,
     BinomPvalueBasedCuttingSiteDetermination,
     cutting_sites_df_has_correct_format,
 )
@@ -469,18 +469,6 @@ class TestMbiasCounterMotifPileupProcessing:
         assert (mbias_counter.counter_array == 0).all()
 
 
-def test_cutting_site_df_to_cutting_site_array_conversion():
-    df = pd.DataFrame([
-        ['w_bc', 100, 'left_cut_end', 10],
-        ['c_bc', 110, 'right_cut_end', 20],
-    ], columns=['bs_strand', 'flen', 'cut_end', 'cut_pos']).set_index(
-        ['bs_strand', 'flen', 'cut_end'])
-    max_flen = 120
-    arr = convert_cutting_sites_df_to_array(df, max_flen)
-    assert arr[b_inds.w_bc, 100, 0] == 10
-    assert arr[b_inds.c_bc, 110, 1] == 20
-
-
 @pytest.fixture()
 def config_fit_normal_variate_plateau():
     config = defaultdict(defaultdict)
@@ -701,46 +689,6 @@ class TestFitNormalVariatePlateau:
         assert res_ser.left_cut_end == 0.0
         assert res_ser.right_cut_end == 0.0
 
-
-class TestAdjustedCuttingSites:
-    def test_compute_df_provides_df_in_standard_cutting_sites_df_format(self,
-                                                                        mocker):
-        mbias_df_stub = pd.DataFrame([
-            ['CG', 'w_bc', 100, 1, 0.8],
-            ['CG', 'w_bc', 100, 2, 0.8],
-            ['CG', 'c_bc', 101, 1, 0.7],
-            ['CG', 'c_bc', 101, 2, 0.7],
-            ['CG', 'w_bc', 101, 1, 0.8],
-            ['CG', 'w_bc', 101, 2, 0.8],
-        ], columns=['motif', 'bs_strand', 'flen', 'pos',
-                    'beta_value']).set_index(
-            ['motif', 'bs_strand', 'flen', 'pos'])
-
-        fit_mock = MagicMock(side_effect=[
-            pd.Series([10, 11], index=['left_cut_end', 'right_cut_end']),
-            pd.Series([10, 11], index=['left_cut_end', 'right_cut_end']),
-            pd.Series([10, 11], index=['left_cut_end', 'right_cut_end']),
-        ])
-        mocker.patch('mqc.mbias.fit_percentiles', fit_mock)
-
-        computed_cutting_sites_df = AdjustedCuttingSites._compute_df(
-            mbias_df_stub, config={})
-
-        # Note that this is sorted
-        expected_cutting_sites_df = pd.DataFrame([
-            ['c_bc', 101, 'left_cut_end', 10],
-            ['c_bc', 101, 'right_cut_end', 11],
-            ['w_bc', 100, 'left_cut_end', 10],
-            ['w_bc', 100, 'right_cut_end', 11],
-            ['w_bc', 101, 'left_cut_end', 10],
-            ['w_bc', 101, 'right_cut_end', 11],
-        ], columns=['bs_strand', 'flen', 'cut_end', 'cut_pos']).set_index(
-            ['bs_strand', 'flen', 'cut_end'])
-
-        pd.testing.assert_frame_equal(computed_cutting_sites_df,
-                                      expected_cutting_sites_df)
-
-
 # TODO: adapt to extended Mbias stats counter
 def test_compute_mbias_stats_df_converts_mbias_counts_to_mbias_stats_df():
     """
@@ -790,40 +738,39 @@ def test_compute_mbias_stats_df_converts_mbias_counts_to_mbias_stats_df():
 
 
 def test_mask_mbias_stats_df_sets_positions_in_trimming_zone_to_nan():
-    mbias_stats_df_stub = (pd.DataFrame([
-        ['CG', 'w_bc', 1, 1, 0.5, 10, 10],
-        ['CG', 'w_bc', 2, 1, 0.5, 10, 10],
-        ['CG', 'w_bc', 2, 2, 0.5, 10, 10],
-        ['CG', 'w_bc', 3, 1, 0.5, 10, 10],
-        ['CG', 'w_bc', 3, 2, 0.5, 10, 10],
-        ['CG', 'w_bc', 3, 3, 0.5, 10, 10], ],
-        columns=['motif', 'bs_strand', 'flen', 'pos', 'beta_value', 'n_meth',
-                 'n_unmeth'])
+
+    mbias_stats_df_stub = (pd.DataFrame([['CG', 'w_bc', 1, 1, 0.5, 10, 10],
+                                         ['CG', 'w_bc', 2, 1, 0.5, 10, 10],
+                                         ['CG', 'w_bc', 2, 2, 0.5, 10, 10],
+                                         ['CG', 'w_bc', 3, 1, 0.5, 10, 10],
+                                         ['CG', 'w_bc', 3, 2, 0.5, 10, 10],
+                                         ['CG', 'w_bc', 3, 3, 0.5, 10, 10], ],
+                                        columns=['motif', 'bs_strand', 'flen', 'pos',
+                                                 'beta_value', 'n_meth', 'n_unmeth'])
                            .set_index(['motif', 'bs_strand', 'flen', 'pos']))
 
-    cutting_sites_df_stub = (pd.DataFrame([
-        ['w_bc', 1, 'left_cut_end', 1],
-        ['w_bc', 1, 'right_cut_end', 1],
-        ['w_bc', 2, 'left_cut_end', 2],
-        ['w_bc', 2, 'right_cut_end', 2],
-        ['w_bc', 3, 'left_cut_end', 2],
-        ['w_bc', 3, 'right_cut_end', 3],
-    ], columns=['bs_strand', 'flen', 'cut_end', 'cut_pos'])
-                             .set_index(['bs_strand', 'flen', 'cut_end']))
+    cutting_sites_df_stub = (pd.DataFrame([['w_bc', 1, 1, 1],
+                                           ['w_bc', 2, 2, 3],
+                                           ['w_bc', 3, 2, 4]],
+                                          columns=['bs_strand', 'flen', 'start', 'end'])
+                             .set_index(['bs_strand', 'flen'])
+                             )
+    cutting_sites_df_stub.columns.name = 'cutting_site'
 
-    exp_masked_df = (pd.DataFrame([
-        ['CG', 'w_bc', 1, 1, 0.5, 10, 10],
-        ['CG', 'w_bc', 2, 1, np.nan, np.nan, np.nan],
-        ['CG', 'w_bc', 2, 2, 0.5, 10, 10],
-        ['CG', 'w_bc', 3, 1, np.nan, np.nan, np.nan],
-        ['CG', 'w_bc', 3, 2, 0.5, 10, 10],
-        ['CG', 'w_bc', 3, 3, 0.5, 10, 10], ],
-        columns=['motif', 'bs_strand', 'flen', 'pos', 'beta_value', 'n_meth',
-                 'n_unmeth'])
+    exp_masked_df = (pd.DataFrame([['CG', 'w_bc', 1, 1, 0.5, 10, 10],
+                                   ['CG', 'w_bc', 2, 1, np.nan, np.nan, np.nan],
+                                   ['CG', 'w_bc', 2, 2, 0.5, 10, 10],
+                                   ['CG', 'w_bc', 3, 1, np.nan, np.nan, np.nan],
+                                   ['CG', 'w_bc', 3, 2, 0.5, 10, 10],
+                                   ['CG', 'w_bc', 3, 3, 0.5, 10, 10]],
+                                  columns=['motif', 'bs_strand', 'flen', 'pos',
+                                           'beta_value', 'n_meth', 'n_unmeth'])
                      .set_index(['motif', 'bs_strand', 'flen', 'pos']))
 
     computed_masked_df = mask_mbias_stats_df(mbias_stats_df_stub,
                                              cutting_sites_df_stub)
+    computed_masked_df
+    exp_masked_df
 
     assert exp_masked_df.equals(computed_masked_df)
 
@@ -833,54 +780,7 @@ def max_flen_cutting_df_to_array_conversion():
     return 100
 
 
-@pytest.fixture()
-def cutting_sites_array_computed_from_df(
-        max_flen_cutting_df_to_array_conversion):
-    cutting_sites_df_stub = (pd.DataFrame([
-        ['w_bc', 1, 'left_cut_end', 1],
-        ['w_bc', 1, 'right_cut_end', 1],
-        ['w_bc', 2, 'left_cut_end', 2],
-        ['w_bc', 2, 'right_cut_end', 2],
-        ['w_bc', 3, 'left_cut_end', 2],
-        ['w_bc', 3, 'right_cut_end', 3],
-    ], columns=['bs_strand', 'flen', 'cut_end', 'cut_pos'])
-                             .set_index(['bs_strand', 'flen', 'cut_end']))
 
-    cutting_sites_array = convert_cutting_sites_df_to_array(
-        cutting_sites_df_stub, max_flen_cutting_df_to_array_conversion)
-
-    return cutting_sites_array
-
-
-class TestConvertCuttingSitesDfToArray:
-    def test_cutting_sites_array_covers_all_possible_strata(
-            self, cutting_sites_array_computed_from_df,
-            max_flen_cutting_df_to_array_conversion
-    ):
-        assert cutting_sites_array_computed_from_df.shape == (
-            4, max_flen_cutting_df_to_array_conversion + 1, 2)
-
-    @pytest.mark.parametrize('stratum,exp_value',
-                             (((2, 1, 0), 1,),
-                              ((2, 1, 1), 1,),
-                              ((2, 2, 0), 2,),
-                              ((2, 2, 1), 2),
-                              ((2, 3, 0), 2),
-                              ((2, 3, 1), 3)))
-    def test_cutting_sites_array_is_filled_based_on_df_where_data_are_available(
-            self, stratum, exp_value, cutting_sites_array_computed_from_df):
-        assert cutting_sites_array_computed_from_df[stratum] == exp_value
-
-    def test_cutting_sites_array_is_0_0_where_no_data_are_available(
-            self, cutting_sites_array_computed_from_df):
-        idx = list(zip((2, 1, 0),
-                       (2, 1, 1),
-                       (2, 2, 0),
-                       (2, 2, 1),
-                       (2, 3, 0),
-                       (2, 3, 1)))
-        cutting_sites_array_computed_from_df[idx] = 0
-        assert (cutting_sites_array_computed_from_df == 0).all()
 
 
 # -----------------------------------------------------------------------------
@@ -1966,7 +1866,7 @@ class TestCuttingSitesPlots:
         )
         cutting_sites_df.loc[('c_bc', slice(70, 90)), 'start'] = 15
         cutting_sites_df.columns.name = 'cutting_site'
-        cutting_sites = CuttingSitesReplacementClass(
+        cutting_sites = CuttingSites(
             cutting_sites_df=cutting_sites_df,
             max_read_length=101,
         )
@@ -1983,13 +1883,13 @@ class TestCuttingSites:
     @pytest.mark.xfail(skip=True)
     def test_invariant_detects_wrong_cutting_sites_df_format_during_init(self):
         with pytest.raises(AssertionError):
-            _ = CuttingSitesReplacementClass(
+            _ = CuttingSites(
                 pd.DataFrame({'start': [1, 2, 3]}),
                 max_read_length=100,
             )
 
         with pytest.raises(AssertionError):
-            _ = CuttingSitesReplacementClass(
+            _ = CuttingSites(
                 cutting_sites_df=pd.DataFrame(
                     index=pd.MultiIndex.from_product(
                         ['c_bc w_bc'.split(),
@@ -2012,7 +1912,7 @@ class TestCuttingSites:
             w_bc_rv = [1, 0],
             c_bc_rv = [1, 0],
         )
-        cutting_sites = CuttingSitesReplacementClass.from_rel_to_frag_end_cutting_sites(
+        cutting_sites = CuttingSites.from_rel_to_frag_end_cutting_sites(
             cut_site_spec=cut_site_spec, max_read_length=2)
 
         # max flen is the first flen where the read cannot be affected any
@@ -2055,7 +1955,7 @@ class TestCuttingSites:
         cutting_sites_df.loc[idxs[:, 60], 'end'] = 101
 
         cutting_sites_df.columns.name = 'cutting_site'
-        cutting_sites = CuttingSitesReplacementClass(
+        cutting_sites = CuttingSites(
             cutting_sites_df=cutting_sites_df, max_read_length=100)
 
         expected_arr = np.zeros((4, 61, 2), dtype='i8')

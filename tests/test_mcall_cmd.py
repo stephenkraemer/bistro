@@ -15,7 +15,7 @@ from typing import Dict, List, Any
 import pytest
 
 from mqc.config import assemble_config_vars
-from mqc.mbias import CuttingSitesReplacementClass
+from mqc.mbias import CuttingSites
 from mqc.utils import get_resource_abspath
 
 TESTS_DIR = op.dirname(__file__)
@@ -46,7 +46,7 @@ def space_to_tab(s: str) -> str:
 @pytest.fixture(scope="module")
 def cutting_sites_obj_fp_fix():
     """Provide FixedRelativeCuttingSites as fixture"""
-    cutting_sites = CuttingSitesReplacementClass.from_rel_to_frag_end_cutting_sites(
+    cutting_sites = CuttingSites.from_rel_to_frag_end_cutting_sites(
         cut_site_spec=dict(w_bc=[0, 20], c_bc=[0, 20],
                            w_bc_rv=[15, 0], c_bc_rv=[15, 0]),
         max_read_length=101)

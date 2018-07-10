@@ -2,6 +2,7 @@ tests/test_writers.py
 tests/test_mcall_cmd.py
 tests/test_mbias.py
 tests/test_qc_filters.py
+tests/test_mbias.py
 src/mqc/flag_and_index_values.py
 src/mqc/mcaller.py
 src/mqc/overlap.py
@@ -13,3 +14,4 @@ src/mqc/writers.py
 src/mqc/cli.py
 src/mqc/mcall_run.py
 src/mqc/index.py
+src/mqc/mbias.py
