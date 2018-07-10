@@ -749,9 +749,9 @@ def test_mask_mbias_stats_df_sets_positions_in_trimming_zone_to_nan():
                                                  'beta_value', 'n_meth', 'n_unmeth'])
                            .set_index(['motif', 'bs_strand', 'flen', 'pos']))
 
-    cutting_sites_df_stub = (pd.DataFrame([['w_bc', 1, 1, 1],
-                                           ['w_bc', 2, 2, 3],
-                                           ['w_bc', 3, 2, 4]],
+    cutting_sites_df_stub = (pd.DataFrame([['w_bc', 1, 0, 1],
+                                           ['w_bc', 2, 1, 2],
+                                           ['w_bc', 3, 0, 2]],
                                           columns=['bs_strand', 'flen', 'start', 'end'])
                              .set_index(['bs_strand', 'flen'])
                              )
@@ -760,9 +760,9 @@ def test_mask_mbias_stats_df_sets_positions_in_trimming_zone_to_nan():
     exp_masked_df = (pd.DataFrame([['CG', 'w_bc', 1, 1, 0.5, 10, 10],
                                    ['CG', 'w_bc', 2, 1, np.nan, np.nan, np.nan],
                                    ['CG', 'w_bc', 2, 2, 0.5, 10, 10],
-                                   ['CG', 'w_bc', 3, 1, np.nan, np.nan, np.nan],
+                                   ['CG', 'w_bc', 3, 1, 0.5, 10, 10],
                                    ['CG', 'w_bc', 3, 2, 0.5, 10, 10],
-                                   ['CG', 'w_bc', 3, 3, 0.5, 10, 10]],
+                                   ['CG', 'w_bc', 3, 3, np.nan, np.nan, np.nan]],
                                   columns=['motif', 'bs_strand', 'flen', 'pos',
                                            'beta_value', 'n_meth', 'n_unmeth'])
                      .set_index(['motif', 'bs_strand', 'flen', 'pos']))
@@ -1693,13 +1693,13 @@ class TestCuttingSites:
     def test_fails_if_mbias_stats_df_does_not_match_max_read_length(self):
         raise NotImplementedError
 
-    def test_from_relative_to_frag_end_cutting_sites(self):
+    def test_from_relative_to_frag_end_cutting_sites(self) -> None:
 
         cut_site_spec = dict(
-            w_bc = [0, 1],
-            c_bc = [0, 1],
-            w_bc_rv = [1, 0],
-            c_bc_rv = [1, 0],
+            w_bc = (0, 1),
+            c_bc = (0, 2),
+            w_bc_rv = (5, 0),
+            c_bc_rv = (1, 0),
         )
         cutting_sites = CuttingSites.from_rel_to_frag_end_cutting_sites(
             cut_site_spec=cut_site_spec, max_read_length=2)
@@ -1709,20 +1709,24 @@ class TestCuttingSites:
         expected_df = pd.DataFrame([
             ['c_bc', 0, 0, 0],
             ['c_bc', 1, 0, 0],
-            ['c_bc', 2, 0, 1],
-            ['c_bc', 3, 0, 3],
+            ['c_bc', 2, 0, 0],
+            ['c_bc', 3, 0, 1],
+            ['c_bc', 4, 0, 2],
             ['c_bc_rv', 0, 0, 0],
             ['c_bc_rv', 1, 0, 0],
-            ['c_bc_rv', 2, 1, 3],
-            ['c_bc_rv', 3, 1, 3],
+            ['c_bc_rv', 2, 1, 2],
+            ['c_bc_rv', 3, 1, 2],
+            ['c_bc_rv', 4, 1, 2],
             ['w_bc', 0, 0, 0],
             ['w_bc', 1, 0, 0],
             ['w_bc', 2, 0, 1],
-            ['w_bc', 3, 0, 3],
+            ['w_bc', 3, 0, 2],
+            ['w_bc', 4, 0, 2],
             ['w_bc_rv', 0, 0, 0],
             ['w_bc_rv', 1, 0, 0],
-            ['w_bc_rv', 2, 1, 3],
-            ['w_bc_rv', 3, 1, 3],
+            ['w_bc_rv', 2, 0, 0],
+            ['w_bc_rv', 3, 0, 0],
+            ['w_bc_rv', 4, 0, 0],
         ], columns=['bs_strand', 'flen', 'start', 'end'])
         expected_df['bs_strand'] = pd.Categorical(expected_df['bs_strand'], ordered=True)
         expected_df = expected_df.set_index(['bs_strand', 'flen'])

@@ -533,7 +533,10 @@ def mask_mbias_stats_df(mbias_stats_df: pd.DataFrame, cutting_sites_df: pd.DataF
     def mask_trimming_zones(group_df, cutting_sites_df):
         bs_strand, flen, pos = group_df.name
         left, right = cutting_sites_df.loc[(bs_strand, flen), ['start', 'end']]
-        if left <= pos < right:
+        # left, right are indicated as slice(left, right) for 0-based
+        # position coordinates
+        left += 1
+        if left <= pos <= right:
             return True
         else:
             return False
@@ -1590,6 +1593,14 @@ def cutting_sites_df_has_correct_format(cutting_sites_df: pd.DataFrame) -> bool:
 # @invariant('Meets cutting site df format',
 #            lambda inst: cutting_sites_df_has_correct_format(inst.df))
 class CuttingSites:
+    """CuttingSites for M-bias trimming
+
+    Start and end indicate the python slice containing the plateau
+    positions. I.e. all zero-based positions in [start, end[ are in
+    the plateau.
+
+    See the invariant checks for further format specs.
+    """
 
     def __init__(self, cutting_sites_df: pd.DataFrame, max_read_length: int) -> None:
         self.df = cutting_sites_df
@@ -1608,10 +1619,30 @@ class CuttingSites:
 
     @staticmethod
     def from_rel_to_frag_end_cutting_sites(
-            cut_site_spec: Dict[str, Tuple[int, int]], max_read_length: int) \
+            cut_site_spec: Mapping[str, Tuple[int, int]], max_read_length: int) \
             -> 'CuttingSites':
+        """Construct from #bp to be removed from the fragment ends
 
-        max_flen = max_read_length + max([elem[1] for elem in cut_site_spec.values()])
+        The maximum fragment length requiring a specific definition
+        of the plateau positions is automatically determined
+        based on the max_read_length and the cut_site_spec.
+        (All fragment lengths larger than the maximum fragment length
+        defined in a CuttingSites object are automatically
+        treated like the maximum defined fragment length.)
+
+        Examples:
+            >>> cut_site_spec = dict(
+            >>>     w_bc = (0, 9),
+            >>>     c_bc = (0, 9),
+            >>>     w_bc_rv = (9, 0),
+            >>>     c_bc_rv = (9, 0),
+            >>> )
+            >>> cutting_sites = CuttingSites.from_rel_to_frag_end_cutting_sites(
+            >>>     cut_site_spec=cut_site_spec, max_read_length=125)
+        """
+
+        max_n_bp_removed_from_end = max([elem[1] for elem in cut_site_spec.values()])
+        max_flen = max_read_length + max_n_bp_removed_from_end
 
         midx = pd.MultiIndex.from_product([
             pd.Categorical(bstrand_idxs._fields, ordered=True),
@@ -1627,7 +1658,7 @@ class CuttingSites:
                                                     cut_site_spec[strand][1])
         bad_fragment_pos_are_outside_of_read_length = cutting_sites_df['end'] >= max_read_length
         cutting_sites_df.loc[bad_fragment_pos_are_outside_of_read_length, 'end'] = \
-            max_read_length + 1
+            max_read_length
         cutting_sites_df.loc[cutting_sites_df['start'] >= cutting_sites_df['end'], :] = 0
         # implies:
         # cutting_sites_df.loc[cutting_sites_df['end'] < 0, 'end'] = 0
