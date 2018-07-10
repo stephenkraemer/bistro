@@ -1,12 +1,12 @@
 import importlib
 import itertools
+from itertools import product, count
 import json
 import os
 import os.path as op
 from copy import deepcopy
 from dataclasses import dataclass
 # from dpcontracts import invariant
-from itertools import product, count
 from math import floor, ceil
 import more_itertools
 from pathlib import Path
@@ -536,10 +536,7 @@ def mask_mbias_stats_df(mbias_stats_df: pd.DataFrame, cutting_sites_df: pd.DataF
         # left, right are indicated as slice(left, right) for 0-based
         # position coordinates
         left += 1
-        if left <= pos <= right:
-            return True
-        else:
-            return False
+        return left <= pos <= right
 
     return (mbias_stats_df
             .groupby(['bs_strand', 'flen', 'pos'])
@@ -548,35 +545,31 @@ def mask_mbias_stats_df(mbias_stats_df: pd.DataFrame, cutting_sites_df: pd.DataF
             )
 
 
-
-
-"""
-For testing compute_mbias_stats:
-
-from mqc.config import assemble_config_vars
-from mqc.utils import get_resource_abspath
-cli_params = {'motifs_str': 'CG',
-              'sample_name': 'sample1',
-              'sample_meta': None,
-              'output_dir': (
-                  "/icgc/dkfzlsdf/analysis/B080/kraemers/projects/mbias"
-                  "/results_per_sample/prostate/wgbs/"
-                  "BPH203_st-normal-luminal_se-x_me-wgbs_sw-34038/bseqtools"),
-              'no_cache': False}
-default_config_file = get_resource_abspath('config.default.toml')
-config = assemble_config_vars(cli_params,
-                              default_config_file_path=default_config_file)
-config['plots']['mbias_flens_to_display'] = [60, 75, 90, 100, 125, 150, 171, 191, 251, 311, 411]
+# For testing compute_mbias_stats:
+#
+# from mqc.config import assemble_config_vars
+# from mqc.utils import get_resource_abspath
+# cli_params = {'motifs_str': 'CG',
+#               'sample_name': 'sample1',
+#               'sample_meta': None,
+#               'output_dir': (
+#                   "/icgc/dkfzlsdf/analysis/B080/kraemers/projects/mbias"
+#                   "/results_per_sample/prostate/wgbs/"
+#                   "BPH203_st-normal-luminal_se-x_me-wgbs_sw-34038/bseqtools"),
+#               'no_cache': False}
+# default_config_file = get_resource_abspath('config.default.toml')
+# config = assemble_config_vars(cli_params,
+#                               default_config_file_path=default_config_file)
+# config['plots']['mbias_flens_to_display'] = [60, 75, 90, 100, 125, 150, 171, 191, 251, 311, 411]
+# # config['paths']['mbias_counts'] = (
+# #    "/icgc/dkfzlsdf/analysis/B080/kraemers/projects/mbias"
+# #    "/results_per_sample/prostate/wgbs/"
+# #    "BPH171_st-normal-basal_se-x_me-wgbs_sw-34038/bseqtools/"
+# #    "qc_stats/BPH171_st-normal-basal_se-x_me-wgbs_sw-34038_mbias-counts_CG")
 # config['paths']['mbias_counts'] = (
-#    "/icgc/dkfzlsdf/analysis/B080/kraemers/projects/mbias"
-#    "/results_per_sample/prostate/wgbs/"
-#    "BPH171_st-normal-basal_se-x_me-wgbs_sw-34038/bseqtools/"
-#    "qc_stats/BPH171_st-normal-basal_se-x_me-wgbs_sw-34038_mbias-counts_CG")
-config['paths']['mbias_counts'] = (
-    "/icgc/dkfzlsdf/analysis/B080/kraemers/projects/mbias/results_per_sample/"
-    "prostate/wgbs/BPH203_st-normal-luminal_se-x_me-wgbs_sw-34038/bseqtools/"
-    "qc_stats/BPH203_st-normal-luminal_se-x_me-wgbs_sw-34038_mbias-counts_CG")
-"""
+#     "/icgc/dkfzlsdf/analysis/B080/kraemers/projects/mbias/results_per_sample/"
+#     "prostate/wgbs/BPH203_st-normal-luminal_se-x_me-wgbs_sw-34038/bseqtools/"
+#    "qc_stats/BPH203_st-normal-luminal_se-x_me-wgbs_sw-34038_mbias-counts_CG")
 
 
 def compute_mbias_stats(config: ConfigDict) -> None:
@@ -1559,7 +1552,7 @@ def convert_phred_bins_to_thresholds(mbias_stats_df: pd.DataFrame) -> pd.DataFra
 
     # Discard the highest phred bin - it has no events left after filtering
     # noinspection PyUnusedLocal
-    phred_idx = res.index.get_level_values("phred").unique()[:-2]
+    phred_idx = res.index.get_level_values("phred").unique()[:-2]  # pylint: disable=unused-variable
     res = res.query("phred in @phred_idx")
 
     return res
@@ -1764,6 +1757,7 @@ class BinomPvalueBasedCuttingSiteDetermination:
             strip_low_bound, windowed_counts)
 
         # noinspection PyUnusedLocal
+        # pylint: disable=unused-variable
         predecessor_p_values_integrated = self.integrate_p_values(
             beta_values=windowed_counts['beta_value', 'predecessors'],
             high_p_values=windowed_p_values['predecessors', 'high'],
@@ -1948,15 +1942,13 @@ class BinomPvalueBasedCuttingSiteDetermination:
             arr = ser.values
 
         window_half_size = np.int(window_size/2 - 1/2)
-        left_repr_value, left_repr_value_counts = self.get_representative_value(
+        left_repr_value, unused_left_repr_value_counts = self.get_representative_value(
             arr[0:window_half_size])
-        right_repr_value, right_repr_value_counts = self.get_representative_value(
+        right_repr_value, unused_right_repr_value_counts = self.get_representative_value(
             arr[-window_half_size:])
         if left_repr_value == right_repr_value:
             return left_repr_value
-
-        else:
-            return arr[window_half_size]
+        return arr[window_half_size]
 
     @staticmethod
     def get_representative_value(arr):
@@ -1976,51 +1968,57 @@ class BinomPvalueBasedCuttingSiteDetermination:
     def _compute_window_based_p_value(p_value_arr):
         return np.min(p_value_arr)
 
-    @staticmethod
-    def _find_breakpoints(row, p_value_threshold=10**-6,
-                          n_consecutive_plateau_points=5):
-
-        def go_from_seed_to_plateau(seed_idx, direction):
-            if direction == 'forward':
-                step = 1
-            else:
-                step = -1
-            n_good_points = 0
-            for i in count(seed_idx + step, step):
-                try:
-                    if row.iloc[i] > p_value_threshold:
-                        n_good_points += 1
-                        if n_good_points > n_consecutive_plateau_points:
-                            if direction == 'forward':
-                                return i - n_consecutive_plateau_points
-                            else:
-                                return row.shape[0] + (i + n_consecutive_plateau_points) + 1
-                    else:
-                        n_good_points = 0
-                except IndexError:
-                    return -1
-
-        if row.iloc[0] < p_value_threshold:
-            left_bkp = go_from_seed_to_plateau(0, 'forward')
-            if left_bkp == -1:
-                return pd.Series(dict(start=0, end=0))
-        else:
-            left_bkp = 0
-
-        if row.iloc[-1] < p_value_threshold:
-            right_bkp = go_from_seed_to_plateau(-1, 'backward')
-            if right_bkp == -1:
-                return pd.Series(dict(start=0, end=0))
-        else:
-            right_bkp = row.shape[0] - 1
-
-        return pd.Series((dict(start=left_bkp, end=right_bkp)))
+    # @staticmethod
+    # def _find_breakpoints(row, p_value_threshold=10**-6,
+    #                       n_consecutive_plateau_points=5):
+    #
+    #     def go_from_seed_to_plateau(seed_idx, direction):
+    #         if direction == 'forward':
+    #             step = 1
+    #         else:
+    #             step = -1
+    #         n_good_points = 0
+    #         for i in count(seed_idx + step, step):
+    #             try:
+    #                 if row.iloc[i] > p_value_threshold:
+    #                     n_good_points += 1
+    #                     if n_good_points > n_consecutive_plateau_points:
+    #                         if direction == 'forward':
+    #                             return i - n_consecutive_plateau_points
+    #                         return row.shape[0] + (i + n_consecutive_plateau_points) + 1
+    #                 else:
+    #                     n_good_points = 0
+    #             except IndexError:
+    #                 return -1
+    #
+    #     if row.iloc[0] < p_value_threshold:
+    #         left_bkp = go_from_seed_to_plateau(0, 'forward')
+    #         if left_bkp == -1:
+    #             return pd.Series(dict(start=0, end=0))
+    #     else:
+    #         left_bkp = 0
+    #
+    #     if row.iloc[-1] < p_value_threshold:
+    #         right_bkp = go_from_seed_to_plateau(-1, 'backward')
+    #         if right_bkp == -1:
+    #             return pd.Series(dict(start=0, end=0))
+    #     else:
+    #         right_bkp = row.shape[0] - 1
+    #
+    #     return pd.Series((dict(start=left_bkp, end=right_bkp)))
 
     # noinspection PyUnusedLocal
+    # pylint: disable=unused-argument
     @staticmethod
     def _find_breakpoints2(neighbors, row, p_value_threshold=10**-6,
                            n_consecutive_plateau_points=5, flen=None):
 
+
+        # pylint does not understand that the count loop must end in
+        # an IndexError. Therefore, this cannot return None
+        # Independent of that: This should be refactored to use a
+        # more explicit looping construct
+        # pylint: disable=inconsistent-return-statements
         def go_from_seed_to_plateau(seed_idx, direction, p_value_threshold=0.1):
             if direction == 'forward':
                 step = 1
@@ -2034,8 +2032,8 @@ class BinomPvalueBasedCuttingSiteDetermination:
                         if n_good_points > n_consecutive_plateau_points:
                             if direction == 'forward':
                                 return i - n_consecutive_plateau_points
-                            else:
-                                return neighbors.shape[0] + (i + n_consecutive_plateau_points) + 1
+                            # direction == reverse
+                            return neighbors.shape[0] + (i + n_consecutive_plateau_points) + 1
                     else:
                         n_good_points = 0
                 except IndexError:
