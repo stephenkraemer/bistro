@@ -99,7 +99,7 @@ class MbiasCounter(Counter):
         self.flen_bin_size = sts["flen_bin_size"]
         self.max_phred = sts["max_phred"]
         self.phred_bin_size = sts["phred_bin_size"]
-        # TODO: get from IndexFile
+        # TODO-api_change: get from IndexFile
         self.seq_context_size = config["stats"]["seq_context_size"]
 
         dim_names = ["seq_context", "bs_strand", "flen",
@@ -180,7 +180,7 @@ class MbiasCounter(Counter):
         # noinspection PyUnusedLocal
         curr_read: BSSeqPileupRead
         for curr_read in motif_pileup.reads:
-            # TODO: currently this sorts out any qc_fail, including phred
+            # TODO-important: currently this sorts out any qc_fail, including phred
             # score fails, phred score fails should be kept here
             if (curr_read.qc_fail_flag
                 or curr_read.bsseq_strand_ind == b_na_ind):
@@ -270,7 +270,7 @@ def map_seq_ctx_to_motif(seq_ctx: str, use_classical: bool = True) -> str:
     """Map sequence context strings containing [ACGTW] to motifs
 
     Motifs may be classical: [CG, CHG, CHH] or extended (composed of C,G,W)
-    # TODO: Ns? at the end of chroms?
+    # TODO-minor: Ns? at the end of chroms?
     """
 
     middle_idx = len(seq_ctx) // 2
@@ -575,14 +575,10 @@ def mask_mbias_stats_df(mbias_stats_df: pd.DataFrame, cutting_sites_df: pd.DataF
 def compute_mbias_stats(config: ConfigDict) -> None:
     """ Run standard analysis on Mbias-Stats"""
 
-    # TODO: remove or improve
-
-    # TODO: get phred threshold dfs from cache
     fps = config['paths']
 
     os.makedirs(fps['qc_stats_dir'], exist_ok=True, mode=0o770)
 
-    # TODO: pickle is delted by snakemake?
     if (Path(fps['mbias_stats_trunk'] + '.p').exists()
         and config['run']['use_cached_mbias_stats']):
         print('Reading mbias stats from previously computed pickle')
@@ -594,7 +590,7 @@ def compute_mbias_stats(config: ConfigDict) -> None:
         mbias_stats_df = add_mate_info(mbias_stats_df)
         mbias_stats_df = mbias_stats_df.sort_index()
 
-        # TODO: Important: fix hardcoding
+        # TODO-important: fix hardcoding
         mbias_stats_df = mbias_stats_df.loc[idxs[:, :, :, :, :, :, 1:150], :]
 
         # discard phreds which are not present in bins
@@ -671,13 +667,9 @@ def compute_derived_mbias_stats(mbias_stats_df: pd.DataFrame, config: ConfigDict
 
     """
 
-    # TODO: switch to trunk paths in config file
-    # TODO: switch to integer labels in MbiasCounterfps = config['paths']
-
     print("Computing cutting sites")
     classic_mbias_stats_df = compute_classic_mbias_stats_df(mbias_stats_df)
 
-    # TODO: important: get params from config or function call
     classic_mbias_stats_df_with_n_total = classic_mbias_stats_df.assign(
         n_total = lambda df: df['n_meth'] + df['n_unmeth']
     )
@@ -705,7 +697,7 @@ def compute_derived_mbias_stats(mbias_stats_df: pd.DataFrame, config: ConfigDict
     fps = config['paths']
     os.makedirs(fps['qc_stats_dir'], exist_ok=True, mode=0o770)
 
-    # TODO: clean up
+    # TODO-refactor: clean up
     fps["mbias_stats_classic_trunk"] = fps['mbias_stats_classic_p'].replace('.p', '')
     fps["mbias_stats_masked_trunk"] = fps['mbias_stats_masked_p'].replace('.p', '')
     fps["adjusted_cutting_sites_df_trunk"] = fps["adjusted_cutting_sites_df_p"].replace('.p', '')
@@ -964,21 +956,6 @@ class MbiasPlotMapping:
             [self.x, self.column, self.row, self.color, self.detail])
                 if x is not None and x not in ['dataset', 'statistic']}
 
-    # # TODO: adjust for tuples in col and row
-    # def get_facetting_cmd(self):
-    #     """Get facetting command for plotnine"""
-    #     if self.wrap and self.col and self.row:
-    #         raise ValueError("Can't set wrap, row and col all at once")
-    #     elif self.wrap and not (self.col or self.row):
-    #         raise ValueError("Wrap is set, but not a row or col variable")
-    #     elif self.col and self.row:
-    #         return gg.facet_grid(self.row, self.col)
-    #     # self.wrap may be None
-    #     elif self.col:
-    #         return gg.facet_wrap(self.col, nrow=self.wrap)
-    #     elif self.row:
-    #         return gg.facet_wrap(self.row, ncol=self.wrap)
-
     def __eq__(self, other: Any) -> bool:
         if isinstance(other, MbiasPlotMapping):
             return self.__dict__ == other.__dict__
@@ -1017,7 +994,6 @@ class MbiasPlotConfig:
         return False
 
     def __hash__(self):
-        # TODO: test and improve
         return sum([hash_dict(x) for x in [
             tuple(self.datasets.values()),
             self.aes.__dict__,
@@ -1188,8 +1164,7 @@ def create_aggregated_tables(
         importantly this allows quick combination of aggregated
         dataframes across many samples for cohort-wide plots
     """
-    # TODO: make sure that absolute dataset path is used for hashing/storage
-    # or change docstring
+    # TODO-minor: make sure that absolute dataset path is used for hashing/storage or change docstring
 
     # Collect individual (per dataset) aggregation tasks
     # M-bias plot configs may include more than one dataset, but aggregation
@@ -1284,7 +1259,7 @@ def calculate_plot_df(mbias_stats_df: pd.DataFrame, complete_aes: Dict, flens_to
 
     # We can't show all flens. Selection of flens is config param
     if 'flen' in groupby_vars:
-        # TODO: make robust against changes in index levels
+        # TODO-minor: make robust against changes in index levels
         idx = idxs[:, :, :, :, flens_to_display]
         mbias_stats_df = mbias_stats_df.loc[idx, :]
 
@@ -1298,7 +1273,7 @@ def calculate_plot_df(mbias_stats_df: pd.DataFrame, complete_aes: Dict, flens_to
                )
 
     # Remove unused levels in index and categoricals
-    # TODO: make more general
+    # TODO-minor: make more general
     if "seq_context" in plot_df:
         plot_df["seq_context"].cat.remove_unused_categories(inplace=True)
     if "phred" in plot_df:
@@ -1683,7 +1658,7 @@ class CuttingSites:
         return arr
 
     def plot(self, path: str) -> None:
-        # TODO: account for motif or assume this will always be CG?
+        # TODO-important: account for motif or assume this will always be CG?
         if 'motif' in self.df.index.names:
             row_facetting_dict = {'row': 'motif'}
         else:
@@ -2053,8 +2028,8 @@ class BinomPvalueBasedCuttingSiteDetermination:
         else:
             last_pos_idx = -1
 
-        # TODO: coverage of zero -> p value of 1
-        # TODO: skip nan inwards
+        # TODO-important: coverage of zero -> p value of 1
+        # TODO-important: skip nan inwards
         if neighbors.iloc[last_pos_idx] < p_value_threshold:
             right_bkp = go_from_seed_to_plateau(last_pos_idx, 'backward')
             if right_bkp == -1:
@@ -2094,7 +2069,7 @@ class BinomPvalueBasedCuttingSiteDetermination:
                                             n=coverage_arr[np.newaxis, :],
                                             p=plateau_heights[:, np.newaxis])
         p_value_mat[p_value_mat > 0.5] = 1 - p_value_mat[p_value_mat > 0.5]
-        # TODO: only take elements times 2 where it makes sense
+        # TODO-important: only take elements times 2 where it makes sense
         p_value_mat *= 2
         log_p_value_mat = np.log10(p_value_mat + 10**-30)
         # TODO-important: discarding rows if more than half of the row is bad may be too harsh
