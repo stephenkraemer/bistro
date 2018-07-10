@@ -11,9 +11,10 @@ from math import floor, ceil
 import more_itertools
 from pathlib import Path
 import toolz as tz
-from typing import Dict, List, Union, Optional, Set, Any, Tuple
+from typing import Dict, List, Union, Optional, Set, Any, Tuple, Mapping
 
 import matplotlib
+
 matplotlib.use('Agg')  # import before pyplot import!
 import altair as alt
 
@@ -38,7 +39,6 @@ from mqc.utils import (update_nested_dict, NamedIndexSlice,
 nidxs = NamedIndexSlice
 
 from mqc.flag_and_index_values import (
-    bsseq_strand_indices as b_inds,
     bsseq_strand_na_index as b_na_ind,
     methylation_status_flags as m_flags
 )
@@ -115,7 +115,7 @@ class MbiasCounter(Counter):
                 self.binned_motif_to_index_dict.items(),
                 key=lambda x: x[1])]
 
-        def get_categorical(ordered_str_labels):
+        def get_categorical(ordered_str_labels: List[str]):
             return pd.Categorical(ordered_str_labels,
                                   categories=ordered_str_labels,
                                   ordered=True)
@@ -177,6 +177,7 @@ class MbiasCounter(Counter):
         except KeyError:
             return  # can't count this MotifPileup
 
+        # noinspection PyUnusedLocal
         curr_read: BSSeqPileupRead
         for curr_read in motif_pileup.reads:
             # TODO: currently this sorts out any qc_fail, including phred
@@ -265,7 +266,7 @@ def get_sequence_context_to_array_index_table(motif_size: int) \
     return _5bp_to_three_letter_motif_index_mapping, binned_motif_to_idx_mapping
 
 
-def map_seq_ctx_to_motif(seq_ctx: str, use_classical=True) -> str:
+def map_seq_ctx_to_motif(seq_ctx: str, use_classical: bool = True) -> str:
     """Map sequence context strings containing [ACGTW] to motifs
 
     Motifs may be classical: [CG, CHG, CHH] or extended (composed of C,G,W)
@@ -288,7 +289,7 @@ def map_seq_ctx_to_motif(seq_ctx: str, use_classical=True) -> str:
     return motif
 
 
-def fit_normalvariate_plateau(group_df: pd.DataFrame, config) -> pd.Series:
+def fit_normalvariate_plateau(group_df: pd.DataFrame, config: ConfigDict) -> pd.Series:
     """Find the longest possible plateau of good quality
 
     Good quality: std along the plateau below a threshold, ends of the plateau
@@ -352,7 +353,7 @@ def fit_normalvariate_plateau(group_df: pd.DataFrame, config) -> pd.Series:
                      index=['left_cut_end', 'right_cut_end'])
 
 
-def fit_percentiles(group_df: pd.DataFrame, config) -> pd.Series:
+def fit_percentiles(group_df: pd.DataFrame) -> pd.Series:
 
     min_perc = 0.5  # min_plateau_length = effective_read_length * min_perc
     percentiles = (0.02, 0.98)
@@ -415,7 +416,7 @@ def fit_percentiles(group_df: pd.DataFrame, config) -> pd.Series:
                      index=['left_cut_end', 'right_cut_end'])
 
 
-def compute_mbias_stats_df(mbias_counter_fp_str):
+def compute_mbias_stats_df(mbias_counter_fp_str: str) -> pd.DataFrame:
     """Compute DataFrame of Mbias-Stats
 
     Parameters
@@ -476,7 +477,7 @@ def compute_mbias_stats_df(mbias_counter_fp_str):
     return mbias_stats_df_with_motif_idx
 
 
-def prepend_motif_level_to_index(mbias_stats_df):
+def prepend_motif_level_to_index(mbias_stats_df: pd.DataFrame) -> pd.DataFrame:
     # first, create motif column. This way is much faster than using
     # apply(map_seq_ctx_to_motif) on seq_contexts (15s)
 
@@ -507,7 +508,7 @@ def prepend_motif_level_to_index(mbias_stats_df):
             .reorder_levels(index_cols, axis=0))
 
 
-def compute_classic_mbias_stats_df(mbias_stats_df):
+def compute_classic_mbias_stats_df(mbias_stats_df: pd.DataFrame) -> pd.DataFrame:
     """Compute Mbias-Stats df with only 'standard' levels
 
     Takes ~30s
@@ -524,7 +525,7 @@ def compute_classic_mbias_stats_df(mbias_stats_df):
             )
 
 
-def mask_mbias_stats_df(mbias_stats_df, cutting_sites_df):
+def mask_mbias_stats_df(mbias_stats_df: pd.DataFrame, cutting_sites_df: pd.DataFrame) -> pd.DataFrame:
     """Cover pos in trimming zones (depends on bs_strand, flen...) with NA"""
 
     print("Masking dataframe")
@@ -575,7 +576,7 @@ config['paths']['mbias_counts'] = (
 """
 
 
-def compute_mbias_stats(config: ConfigDict):
+def compute_mbias_stats(config: ConfigDict) -> None:
     """ Run standard analysis on Mbias-Stats"""
 
     # TODO: remove or improve
@@ -625,7 +626,7 @@ def compute_mbias_stats(config: ConfigDict):
 
 
 
-def add_mate_info(mbias_stats_df):
+def add_mate_info(mbias_stats_df: pd.DataFrame) -> pd.DataFrame:
     # Alternatively merge mate1 and mate2 calls
     # index_level_order = list(mbias_stats_df.index.names)
     # res = mbias_stats_df.reset_index("bs_strand")
@@ -660,7 +661,7 @@ def add_mate_info(mbias_stats_df):
     return mbias_stats_df
 
 
-def compute_derived_mbias_stats(mbias_stats_df, config):
+def compute_derived_mbias_stats(mbias_stats_df: pd.DataFrame, config: ConfigDict) -> None:
     """Compute different M-bias stats
 
     Computes and saves
@@ -726,9 +727,9 @@ def compute_derived_mbias_stats(mbias_stats_df, config):
 
 
 def mbias_stat_plots(
-        output_dir: str, sample_meta: dict,
+        output_dir: str,
         dataset_name_to_fp: dict,
-        compact_mbias_plot_config_dict_fp: Optional[str] = None):
+        compact_mbias_plot_config_dict_fp: Optional[str] = None) -> None:
     """ Analysis workflow creating the M-bias plots and report
 
     Creates all M-bias plots specified through the compact
@@ -790,8 +791,7 @@ def mbias_stat_plots(
 
     aggregated_mbias_stats = AggregatedMbiasStats()
     create_aggregated_tables(mbias_plot_configs=mbias_plot_configs,
-                             aggregated_mbias_stats=aggregated_mbias_stats,
-                             dataset_filepath_mapping=dataset_name_to_fp)
+                             aggregated_mbias_stats=aggregated_mbias_stats)
 
     create_mbias_stats_plots(mbias_plot_configs=mbias_plot_configs,
                              aggregated_mbias_stats=aggregated_mbias_stats)
@@ -822,7 +822,7 @@ class MbiasPlotAxisDefinition:
         self.share = share
         self.rotate_labels = rotate_labels
 
-    def __eq__(self, other):
+    def __eq__(self, other: Any) -> bool:
         if isinstance(other, MbiasPlotAxisDefinition):
             return self.__dict__ == other.__dict__
         return False
@@ -846,7 +846,7 @@ class MbiasPlotParams:
         else:
             self.plot = plot
 
-    def __eq__(self, other):
+    def __eq__(self, other: Any) -> bool:
         if isinstance(other, type(self)):
             return self.__dict__ == other.__dict__
         return False
@@ -916,10 +916,10 @@ class MbiasPlotMapping:
         self.wrap = wrap
 
     # noinspection PyIncorrectDocstring
-    def get_plot_aes_dict(self, include_facetting: bool =False,
-                          x_name='x', y_name='y', color_name='color',
-                          column_name='column', row_name='row',
-                          detail_name='detail') -> dict:
+    def get_plot_aes_dict(self, include_facetting: bool = False,
+                          x_name: str = 'x', y_name: str = 'y', color_name: str = 'color',
+                          column_name: str = 'column', row_name: str = 'row',
+                          detail_name: str = 'detail') -> Dict:
         """Get mapping of column names to encoding channels (aes. mappings)
 
         Args:
@@ -949,12 +949,12 @@ class MbiasPlotMapping:
 
         return base_dict
 
-    def get_facetting_vars(self, column_name='column', row_name='row'):
+    def get_facetting_vars(self, column_name: str = 'column', row_name:str = 'row'):
         return {k: v for k, v in {column_name: self.column,
                                   row_name: self.row}.items()
                 if v is not None}
 
-    def get_all_agg_variables_unordered(self) -> set:
+    def get_all_agg_variables_unordered(self) -> Set[str]:
         """Get dictionary with all variables to be used in agg. groupby
 
         Notes:
@@ -983,7 +983,7 @@ class MbiasPlotMapping:
     #     elif self.row:
     #         return gg.facet_wrap(self.row, ncol=self.wrap)
 
-    def __eq__(self, other):
+    def __eq__(self, other: Any) -> bool:
         if isinstance(other, MbiasPlotMapping):
             return self.__dict__ == other.__dict__
         return False
@@ -1015,7 +1015,7 @@ class MbiasPlotConfig:
         self.pre_agg_filters = pre_agg_filters
         self.post_agg_filters = post_agg_filters
 
-    def __eq__(self, other):
+    def __eq__(self, other: Any) -> bool:
         if isinstance(other, MbiasPlotConfig):
             return self.__dict__ == other.__dict__
         return False
@@ -1030,7 +1030,7 @@ class MbiasPlotConfig:
             self.post_agg_filters
         ]])
 
-    def get_str_repr_for_filename_construction(self):
+    def get_str_repr_for_filename_construction(self) -> str:
         return str(self.__hash__())
 
 
@@ -1038,7 +1038,7 @@ class MbiasPlotConfig:
         return str(self.__dict__)
 
     @staticmethod
-    def _check_filter_dicts(filter_dict):
+    def _check_filter_dicts(filter_dict: Dict) -> None:
         """Make sure that filter dicts only contain lists of scalars
 
         Filtering is not meant to remove index levels. The filtering values
@@ -1052,8 +1052,8 @@ class MbiasPlotConfig:
                                 f' {filter_value}')
 
 
-def get_plot_configs(mbias_plot_config: dict,
-                     dataset_name_to_fp: dict) -> List[MbiasPlotConfig]:
+def get_plot_configs(mbias_plot_config: Dict,
+                     dataset_name_to_fp: Dict[str, str]) -> List[MbiasPlotConfig]:
     """ Get MbiasPlotConfig objects for plotting function
 
     Args:
@@ -1112,7 +1112,7 @@ def get_plot_configs(mbias_plot_config: dict,
 class MbiasStatAggregationParams:
     dataset_fp: str
     variables: Set[str]
-    pre_agg_filters: dict
+    pre_agg_filters: Optional[Dict[str, List]]
 
     def __hash__(self):
         return hash(json.dumps(self.pre_agg_filters, sort_keys=True)
@@ -1138,7 +1138,7 @@ class AggregatedMbiasStats:
     subsequent steps
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.output_dir = mqc.filepaths.aggregated_mbias_stats_dir
 
     def _create_agg_dataset_fp(self, params: MbiasStatAggregationParams) -> Path:
@@ -1154,7 +1154,7 @@ class AggregatedMbiasStats:
         return pd.read_pickle(fp)
 
     def precompute_aggregated_stats(
-            self, params: MbiasStatAggregationParams, mbias_stats_df) -> None:
+            self, params: MbiasStatAggregationParams, mbias_stats_df: pd.DataFrame) -> None:
         fp = self._create_agg_dataset_fp(params)
         if (not fp.exists()
                 or fp.stat().st_mtime < Path(params.dataset_fp).stat().st_mtime):
@@ -1169,8 +1169,7 @@ class AggregatedMbiasStats:
 
 def create_aggregated_tables(
         mbias_plot_configs: List[MbiasPlotConfig],
-        aggregated_mbias_stats: AggregatedMbiasStats,
-        dataset_filepath_mapping: dict) -> None:
+        aggregated_mbias_stats: AggregatedMbiasStats) -> None:
     """Compute aggregation tasks derived from MbiasPlotConfigs
 
     Aggregation tasks per dataset are determined from the
@@ -1185,11 +1184,6 @@ def create_aggregated_tables(
     Args:
         mbias_plot_configs
         aggregated_mbias_stats
-        dataset_filepath_mapping: Datasets are referenced by a shorthand
-            name in the MbiasPlotConfigs. This mapping allows finding the
-            corresponding dataset. Lookup for already existing results is
-            always done based on the absolute dataset filepath, not based on
-            the shorthand name
 
     Note:
         Aggregation tasks are performed explicitely (as opposed to
@@ -1221,6 +1215,7 @@ def create_aggregated_tables(
     # save memory, or to start one process per dataset
     plots_by_dataset = tz.groupby(lambda x: x.dataset_fp,
                                   unique_single_dataset_plot_configs)
+    # noinspection PyUnusedLocal
     agg_configs: List[MbiasStatAggregationParams]
     for dataset_fp, agg_configs in plots_by_dataset.items():
         curr_mbias_stats_df = pd.read_pickle(dataset_fp)
@@ -1281,8 +1276,7 @@ def aggregate_table(
     return agg_df
 
 
-def calculate_plot_df(mbias_stats_df, complete_aes, flens_to_display,
-                      plot_df_var_names):
+def calculate_plot_df(mbias_stats_df: pd.DataFrame, complete_aes: Dict, flens_to_display: List[int]) -> pd.DataFrame:
 
     # We need to aggregate variables which are not part of the plot
     # ourselves, seaborn can't do that
@@ -1330,8 +1324,8 @@ def calculate_plot_df(mbias_stats_df, complete_aes, flens_to_display,
 
 class MbiasAnalysisConfig:
     """Configuration of the analysis workflow creating M-bias plots"""
-    def __init__(self, grouped_mbias_plot_configs: dict,
-                 dataset_name_to_fp: dict) -> None:
+    def __init__(self, grouped_mbias_plot_configs: Dict,
+                 dataset_name_to_fp: Mapping[str, str]) -> None:
         """MbiasAnalysiConfig default constructor
 
         In most cases, one of the convenience
@@ -1354,7 +1348,7 @@ class MbiasAnalysisConfig:
         self.dataset_name_to_fp = dataset_name_to_fp
 
     @staticmethod
-    def from_compact_config_dict(mbias_plot_config, dataset_name_to_fp):
+    def from_compact_config_dict(mbias_plot_config: Dict, dataset_name_to_fp: Mapping[str, str]):
         """Constructor based on compact config dict for the analysis
 
         Args:
@@ -1375,7 +1369,7 @@ class MbiasAnalysisConfig:
         except KeyError:
             defaults = {}
 
-        grouped_mbias_plot_configs = {}
+        grouped_mbias_plot_configs: Dict[str, Any] = {}
         for plot_group_name, plot_group_dict in mbias_plot_config.items():
 
             grouped_mbias_plot_configs[plot_group_name] = []
@@ -1404,7 +1398,7 @@ class MbiasAnalysisConfig:
         return MbiasAnalysisConfig(grouped_mbias_plot_configs=grouped_mbias_plot_configs,
                                    dataset_name_to_fp=dataset_name_to_fp)
 
-    def get_report_config(self) -> dict:
+    def get_report_config(self) -> Dict[str, Dict]:
         """Return config dict in the format used by figure_report.Report
 
         Returns:
@@ -1519,7 +1513,7 @@ def create_single_mbias_stat_plot(plot_config: MbiasPlotConfig,
 
 
 
-def convert_phred_bins_to_thresholds(mbias_stats_df):
+def convert_phred_bins_to_thresholds(mbias_stats_df: pd.DataFrame) -> pd.DataFrame:
     """Takes full Mbias stats df and returns CG only, flen agg df
     with phred bins converted to phred thresholds
 
@@ -1540,7 +1534,7 @@ def convert_phred_bins_to_thresholds(mbias_stats_df):
     non_flen_phred_levels = [n for n in non_flen_levels if n != "phred"]
 
     print("Aggregating counts with same flen")
-    mbias_stats_df_cg = mbias_stats_df.loc[idxs['CG':'CG'], :]
+    mbias_stats_df_cg = mbias_stats_df.loc[idxs['CG':'CG'], :] # type: ignore
     # ~ 15s
     mbias_stats_df_cg_flen_agg = (mbias_stats_df_cg
                                   .drop(['beta_value'], axis=1)
@@ -1550,7 +1544,7 @@ def convert_phred_bins_to_thresholds(mbias_stats_df):
 
     print("Computing phred threshold scores")
     # ~ 1.5 min
-    def compute_phred_threshold_counts_for_group(ser):
+    def compute_phred_threshold_counts_for_group(ser: pd.Series) -> pd.Series:
         """Will work on n_meth and n_unmeth"""
         cum_ser = ser.cumsum()
         return cum_ser[-1] - cum_ser
@@ -1561,17 +1555,18 @@ def convert_phred_bins_to_thresholds(mbias_stats_df):
            )
 
     # Discard the highest phred bin - it has no events left after filtering
+    # noinspection PyUnusedLocal
     phred_idx = res.index.get_level_values("phred").unique()[:-2]
     res = res.query("phred in @phred_idx")
 
     return res
 
 
-def compute_beta_values(df):
+def compute_beta_values(df: pd.DataFrame) -> pd.Series:
     return df['n_meth'] / (df['n_meth'] + df['n_unmeth'])
 
 
-def save_df_to_trunk_path(df, trunk_path):
+def save_df_to_trunk_path(df: pd.DataFrame, trunk_path: str) -> None:
     print(f"Saving {op.basename(trunk_path)}")
     print("Saving pickle")
     df.to_pickle(trunk_path + '.p')
@@ -1579,7 +1574,7 @@ def save_df_to_trunk_path(df, trunk_path):
     df.reset_index().to_feather(trunk_path + '.feather')
 
 
-def cutting_sites_df_has_correct_format(cutting_sites_df: pd.DataFrame):
+def cutting_sites_df_has_correct_format(cutting_sites_df: pd.DataFrame) -> bool:
     # False positive for all() call
     # noinspection PyUnresolvedReferences
     return (not cutting_sites_df.empty
@@ -1685,11 +1680,11 @@ class CuttingSites:
 
 class BinomPvalueBasedCuttingSiteDetermination:
 
-    def __init__(self, mbias_stats_df, max_read_length,
-                 allow_slope=False,
-                 min_plateau_length=30, max_slope=0.0006, plateau_flen=210,
-                 plateau_bs_strands=('c_bc', 'w_bc'),
-                 ):
+    def __init__(self, mbias_stats_df: pd.DataFrame, max_read_length: int,
+                 allow_slope: bool = False,
+                 min_plateau_length: int = 30, max_slope: float = 0.0006,
+                 plateau_flen: int = 210, plateau_bs_strands: Tuple[str, ...] =('c_bc', 'w_bc'),
+                 ) -> None:
         self.plateau_flen = plateau_flen
         self.max_slope = max_slope
         self.max_read_length = max_read_length
@@ -1737,6 +1732,7 @@ class BinomPvalueBasedCuttingSiteDetermination:
             estimated_plateau_heights, n_meth_wide, strip_high_bound,
             strip_low_bound, windowed_counts)
 
+        # noinspection PyUnusedLocal
         predecessor_p_values_integrated = self.integrate_p_values(
             beta_values=windowed_counts['beta_value', 'predecessors'],
             high_p_values=windowed_p_values['predecessors', 'high'],
@@ -1786,7 +1782,7 @@ class BinomPvalueBasedCuttingSiteDetermination:
         group_levels.remove('flen')
         # bug in groupby in pandas 0.23, need to take elaborate construct
         min_flen = df.index.get_level_values('flen')[0]
-        def fn(df):
+        def fn(df: pd.DataFrame) -> pd.DataFrame:
             window_size = 21
             return (df
                     .rolling(window=window_size, center=True, min_periods=1)
@@ -1854,7 +1850,8 @@ class BinomPvalueBasedCuttingSiteDetermination:
         # TODO-important: times 2 correct?
         return binom_prob * 2
 
-    def _compute_pre_and_successor_counts(self, n_meth_wide, n_total_wide):
+    @staticmethod
+    def _compute_pre_and_successor_counts(n_meth_wide, n_total_wide):
         successor_filter = np.concatenate([np.tile(1, 10), np.tile(0, 11)])
         predecessor_filter = successor_filter[::-1]
         windowed_counts = {}
@@ -1988,6 +1985,7 @@ class BinomPvalueBasedCuttingSiteDetermination:
 
         return pd.Series((dict(start=left_bkp, end=right_bkp)))
 
+    # noinspection PyUnusedLocal
     @staticmethod
     def _find_breakpoints2(neighbors, row, p_value_threshold=10**-6,
                            n_consecutive_plateau_points=5, flen=None):
@@ -2060,7 +2058,8 @@ class BinomPvalueBasedCuttingSiteDetermination:
         # also return slope
         return plateau_guess, 0
 
-    def _estimate_plateau(self, n_meth, coverage_arr):
+    @staticmethod
+    def _estimate_plateau(n_meth, coverage_arr):
         plateau_heights = np.linspace(0, 1, 1000)
         p_value_mat = scipy.stats.binom.cdf(k=n_meth[np.newaxis, :],
                                             n=coverage_arr[np.newaxis, :],
@@ -2081,7 +2080,8 @@ class BinomPvalueBasedCuttingSiteDetermination:
             plateau_height_ = -1
         return plateau_height_, 0
 
-    def _estimate_plateau_with_slope(self, n_meth, coverage_arr):
+    @staticmethod
+    def _estimate_plateau_with_slope(n_meth, coverage_arr):
         # n_meth = np.concatenate([np.tile(0, 9), np.tile(70, 92)])
         # coverage_arr = np.tile(100, 101)
         plateau_heights = np.linspace(0, 1, 200)
@@ -2116,7 +2116,7 @@ class BinomPvalueBasedCuttingSiteDetermination:
         p_values = scipy.stats.binom.cdf(n=coverage_arr,
                                          p=plateau_heights_, k=n_meth)
         p_values[p_values > 0.5] = 1 - p_values[p_values > 0.5]
-        p_values = p_values * 2
+        p_values *= 2
         return p_values
 
     def _estimate_most_plausible_linear_model_with_slope(
@@ -2161,7 +2161,7 @@ class BinomPvalueBasedCuttingSiteDetermination:
         line_heights[line_heights < 0] = 0
         p_values = scipy.stats.binom.cdf(n=coverage_arr, p=line_heights, k=n_meth)
         p_values[p_values > 0.5] = 1 - p_values[p_values > 0.5]
-        p_values = p_values * 2
+        p_values *= 2
         n_unexplained = sum(p_values < p_threshold)
         return n_unexplained
 

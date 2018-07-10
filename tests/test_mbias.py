@@ -769,8 +769,6 @@ def test_mask_mbias_stats_df_sets_positions_in_trimming_zone_to_nan():
 
     computed_masked_df = mask_mbias_stats_df(mbias_stats_df_stub,
                                              cutting_sites_df_stub)
-    computed_masked_df
-    exp_masked_df
 
     assert exp_masked_df.equals(computed_masked_df)
 
@@ -1334,8 +1332,7 @@ def test_create_aggregated_tables(mocker, tmpdir,
     aggregated_mbias_stats = AggregatedMbiasStats()
 
     create_aggregated_tables(mbias_plot_configs=plot_configs,
-                             aggregated_mbias_stats=aggregated_mbias_stats,
-                             dataset_filepath_mapping=dataset_name_to_fp)
+                             aggregated_mbias_stats=aggregated_mbias_stats)
 
     shared_variables = {'x_col', 'color_col', 'row_col'}
     expected_calls = [
@@ -1472,148 +1469,6 @@ class TestMbiasPlotMapping:
     #     raise NotImplemented
 
 
-# @pytest.mark.xfail(skip=True)
-# class TestCreateSingleMbiasStatPlot:
-#     def test_create_single_mbias_stat_plot(self):
-#
-#         mbias_stats_df_test = create_test_mbias_stats_df(
-#             [
-#                 (idxs[:, :, :, 100], [70] * 100, [30] * 100),
-#                 (idxs[:, :, :, 200], [60] * 100, [40] * 100),
-#              ]
-#         )
-#         previous_working_dir = os.getcwd()
-#         with tempfile.TemporaryDirectory as tmpdir:
-#             # TODO: more robust reverse chdir at the end of test
-#             os.chdir(tmpdir)
-#
-#             plot_config = MbiasPlotConfig(
-#                 # TODO: fix
-#                 datasets='mbias_stats_df_test',
-#                 aes_mapping=dict(
-#                     x='pos', y='beta_value',
-#                     color='flen', row='bs_strand',
-#                     motifs=['CG'], wrap=2,
-#                 ),
-#                 plot_params=dict(mbias_flens_to_display=[100, 200],
-#                                  mbias_phreds_to_display=[20, 40],
-#                                  panel_height=9,
-#                                  panel_width=9,
-#                                  theme='poster',
-#                                  x_breaks=10, y_breaks=5, ylim_tuples=[(0, 1), (0.5, 1)])
-#             )
-#
-#             agg_mbias_stats_df = (mbias_stats_df_test
-#                                   .loc['CG':'CG', :]
-#                                   .query('flen in @plot_config.plot_params.mbias_flens_to_display')
-#                                   .groupby(['flen', 'pos', 'bs_strand'])
-#                                   .sum()
-#                                   .assign(beta_value=compute_beta_values)
-#                                   )
-#             agg_mbias_stats_df
-#
-#             create_single_mbias_stat_plot(agg_mbias_stats_df,
-#                                           plot_config)
-#
-#             computed_mbias_plot_bytes = (get_mbias_plot_path(plot_config)
-#                                          ['ylim-(0.5, 1)']
-#                                          .with_suffix('.png').read_bytes())
-#
-#             pp = plot_config.plot_params
-#
-#             g = (gg.ggplot(data=agg_mbias_stats_df.reset_index(),
-#                            mapping=plot_config.aes.get_plot_aes_dict())
-#                  + gg.geom_line()
-#                  + gg.facet_wrap('bs_strand', ncol=2)
-#                  + PLOTNINE_THEMES[plot_config.plot_params.theme]
-#                  + gg.scale_x_continuous(breaks=np.arange(0, 101, 10))
-#                  + gg.scale_y_continuous(breaks=np.arange(0, 1.01, 0.2), limits=[0.5, 1])
-#                  + gg.labs(x=MBIAS_STATS_DIMENSION_PLOT_LABEL_MAPPING['pos'],
-#                            y=MBIAS_STATS_DIMENSION_PLOT_LABEL_MAPPING['beta_value'],
-#                            title=plot_config.datasets,
-#                            )
-#                  )
-#             expected_png_path = Path('expected_mbias_plot.png')
-#             g.save(filename=str(expected_png_path),
-#                    width=pp.panel_width, height=pp.panel_height)
-#
-#             expected_mbias_plot_bytes = expected_png_path.read_bytes()
-#
-#             assert computed_mbias_plot_bytes == expected_mbias_plot_bytes
-#
-#         os.chdir(previous_working_dir)
-#
-#
-#     def test_plots_frequency_plots():
-#
-#         mbias_stats_df_test = create_test_mbias_stats_df(
-#             [
-#                 (idxs[:, :, :, 100], [70] * 100, [30] * 100),
-#                 (idxs[:, :, :, 200], [60] * 100, [40] * 100),
-#             ]
-#         )
-#         previous_working_dir = os.getcwd()
-#         with tempfile.TemporaryDirectory as tmpdir:
-#             # TODO: more robust chdir to previous working dir
-#             os.chdir(tmpdir)
-#
-#             plot_config = MbiasPlotConfig(
-#                 datasets='mbias_stats_df_test',
-#                 aes_mapping=dict(x='pos', y='value',
-#                                  color='bs_strand', col='statistic',
-#                                  motifs=['CG'], wrap=None),
-#                 plot_params=dict(mbias_flens_to_display=[100, 200],
-#                                  mbias_phreds_to_display=[20, 40],
-#                                  panel_height=9,
-#                                  panel_width=9,
-#                                  theme='poster',
-#                                  x_breaks=10, y_breaks=5,
-#                                  ylim_tuples=[(0, 1), (0.5, 1)])
-#             )
-#
-#             agg_mbias_stats_df = (mbias_stats_df_test
-#                                   .loc['CG':'CG', :]
-#                                   .groupby(['pos', 'bs_strand'])
-#                                   .sum()
-#                                   .assign(beta_value=compute_beta_values)
-#                                   )
-#             agg_mbias_stats_df
-#
-#             create_single_mbias_stat_plot(agg_mbias_stats_df,
-#                                           plot_config)
-#
-#             computed_mbias_plot_bytes = (get_mbias_plot_path(plot_config)
-#                                          ['ylim-(0.5, 1)']
-#                                          .with_suffix('.png').read_bytes())
-#
-#             agg_mbias_stats_df.index.name = 'statistic'
-#             agg_mbias_stats_df = (agg_mbias_stats_df
-#                                   .stack()
-#                                   .to_frame('value'))
-#
-#             pp = plot_config.plot_params
-#
-#             g = (gg.ggplot(data=agg_mbias_stats_df.reset_index(),
-#                            mapping=plot_config.aes.get_plot_aes_dict())
-#                  + gg.geom_line()
-#                  + gg.facet_wrap('statistic', ncol=None)
-#                  + PLOTNINE_THEMES[plot_config.plot_params.theme]
-#                  + gg.scale_x_continuous(breaks=np.arange(0, 101, 10))
-#                  + gg.scale_y_continuous(breaks=np.arange(0, 1.01, 0.2), limits=[0.5, 1])
-#                  + gg.labs(x=MBIAS_STATS_DIMENSION_PLOT_LABEL_MAPPING['pos'],
-#                            y=MBIAS_STATS_DIMENSION_PLOT_LABEL_MAPPING['value'],
-#                            title=plot_config.datasets,
-#                            )
-#                  )
-#             expected_png_path = Path('expected_mbias_plot.png')
-#             g.save(filename=str(expected_png_path),
-#                    width=pp.panel_width, height=pp.panel_height)
-#
-#             expected_mbias_plot_bytes = expected_png_path.read_bytes()
-#
-#             assert computed_mbias_plot_bytes == expected_mbias_plot_bytes
-#
-#         os.chdir(previous_working_dir)
 
 
 class TestAggregatedMbiasStats:
@@ -1678,68 +1533,6 @@ def test_mbias_plot_config_file() -> str:
     """
     return str(Path(__file__).parent / 'test_files' / 'test_mbias_plot_config.py')
 
-# TODO: remove
-# @pytest.fixture()
-# def test_mbias_plot_config_file() -> str:
-#     """ Provide filepath to temp JSON M-bias plots config file"""
-#
-#     with tempfile.TemporaryDirectory() as tmpdir:
-#         json_fp = os.path.join(tmpdir, 'mbias_plot_config.json')
-#
-#         mbias_plot_config = {
-#             "defaults": {
-#                 'plot_params': {
-#                     "panel_height_cm": 6,
-#                     "panel_width_cm": 6,
-#                     "theme": "paper",
-#                     'y_axis': {'breaks': 5,
-#                                'limits': {
-#                                    'beta_value': [(0, 1), (0.5, 1), 'auto'],
-#                                    'n_meth': 'auto',
-#                                    'n_unmeth': 'auto', },
-#                                'share': True
-#                                },
-#                     'x_axis': {'breaks': [0, 30, 60, 90, 120, 150],
-#                                'share': True,
-#                                'rotate_labels': True},
-#                     'plot': ['line'],
-#                 },
-#                 "pre_plot_filters": {
-#                     'flen': [60, 75, 90, 100, 120, 150, 190, 290, 490],
-#                     'phred': [0, 5, 10, 15, 20, 25, 30, 35, 40],
-#                 },
-#             },
-#             "group1": {
-#                 "datasets": [["full", "trimmed"]],
-#                 # necessary because currently only trimming for CG
-#                 "pre_agg_filters": {
-#                     'motif': ['CG']
-#                 },
-#                 "aes_mappings": [
-#                     {'x': 'pos', 'y': 'beta_value',
-#                      "row": "dataset", "column": "bs_strand", "color": None},
-#                     {'x': 'pos', 'y': 'beta_value',
-#                      "row": "dataset", "column": "bs_strand", "color": "flen"},
-#                     {'x': 'pos', 'y': 'beta_value',
-#                      "row": "dataset", "column": "bs_strand", "color": None},
-#                 ],
-#             },
-#             "group2": {
-#                 "datasets": ["full", "trimmed"],
-#                 # necessary because currently only trimming for CG
-#                 "aes_mappings": [
-#                      {'x': 'pos', 'y': 'beta_value',
-#                       "row": "motif", "column": "bs_strand", "color": None},
-#                 ],
-#             },
-#         }
-#
-#         with open(json_fp, 'wt') as fout:
-#             json.dump(mbias_plot_config, fout)
-#
-#         yield json_fp
-#
-#     return None
 
 @pytest.fixture()
 def full_mbias_stats_fp():
@@ -1787,8 +1580,6 @@ def run_mbias_stats_plots(
 
     command_list = ['mqc', 'mbias_plots',
                     '--output_dir', output_dir,
-                    '--sample_name', SAMPLE_NAME,
-                    '--sample_meta', 'population=hsc,rep=1',
                     '--datasets',
                     f'full={full_mbias_stats_fp},trimmed={trimmed_mbias_stats_fp}',
                     ]
@@ -1846,8 +1637,6 @@ class TestMbiasPlots:
         # This must raise a ValueError
         command_list = ['mqc', 'mbias_plots',
                         '--output_dir', tmpdir,
-                        '--sample_name', SAMPLE_NAME,
-                        '--sample_meta', 'population=hsc,rep=1',
                         '--datasets',
                         f'full={full_mbias_stats_fp},trimmed={trimmed_mbias_stats_fp}',
                         ]
