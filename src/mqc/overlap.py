@@ -27,27 +27,34 @@ class OverlapHandler(Visitor):
 
         for unused_query_name, reads in read_hash.items():
             if len(reads) == 2:
-                _process_overlap(reads[0], reads[1])
+                self._process_overlap(reads[0], reads[1])
 
 
-def _process_overlap(read1: BSSeqPileupRead, read2: BSSeqPileupRead) -> None:
+    @staticmethod
+    def _process_overlap(read1: BSSeqPileupRead, read2: BSSeqPileupRead) -> None:
+        """Decide what to do with overlapping reads
 
-    if read1.meth_status_flag == read2.meth_status_flag:
-        # typically, mapq filtering will be applied before overlap handling
-        # so if we get to here, both reads pass mapq filtering
-        # by choosing the read with the better phred score, we make sure
-        # that the 'higher confidence' event is handed to the phred score
-        # filter, which will typically be applied next
-        # if this step is neglected and a read is selected at random, it may
-        # be that the selected read is discarded as phred score failure
-        # even though its mate would have passed the phred score filter
-        if read1.baseq_at_pos >= read2.baseq_at_pos:
-            read2.overlap_flag = 1
+        If meth. calls from both reads match, choose the better read (mate1
+        if equal phred). Otherwise, discard both reads. Discards are
+        implemented via overlap_fail bit of qc_fail_flag.
+        """
+
+        if read1.meth_status_flag == read2.meth_status_flag:
+            # typically, mapq filtering will be applied before overlap handling
+            # so if we get to here, both reads pass mapq filtering
+            # by choosing the read with the better phred score, we make sure
+            # that the 'higher confidence' event is handed to the phred score
+            # filter, which will typically be applied next
+            # if this step is neglected and a read is selected at random, it may
+            # be that the selected read is discarded as phred score failure
+            # even though its mate would have passed the phred score filter
+            if read1.baseq_at_pos >= read2.baseq_at_pos:
+                read2.overlap_flag = 1
+            else:
+                read1.overlap_flag = 1
         else:
-            read1.overlap_flag = 1
-    else:
-        # Better safe than sorry. Statistically valid usage of phred
-        # scores to select high confidence calls from disagreeing overlaps
-        # will be implemented in the future
-        read1.qc_fail_flag |= qflags.overlap_fail
-        read2.qc_fail_flag |= qflags.overlap_fail
+            # Better safe than sorry. Statistically valid usage of phred
+            # scores to select high confidence calls from disagreeing overlaps
+            # will be implemented in the future
+            read1.qc_fail_flag |= qflags.overlap_fail
+            read2.qc_fail_flag |= qflags.overlap_fail
