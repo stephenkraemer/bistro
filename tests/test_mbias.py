@@ -90,9 +90,10 @@ BINNED_SEQ_CONTEXT_TO_IDX_MAPPING = {
 
 class BSSeqPileupReadStub:
     """Stub for BSSeqPileupRead with AlignmentStub"""
-    def __init__(self, strand_idx, flen, pos, mflag,
-                 fail, phred, expected_flen_bin, expected_phred_bin):
-        self.qc_fail_flag = fail
+    def __init__(self, strand_idx, flen, pos, mflag, qc_fail_flag, phred,
+                 expected_flen_bin, expected_phred_bin, phred_fail_flag):
+        self.qc_fail_flag = qc_fail_flag
+        self.phred_fail_flag = phred_fail_flag
         self.bsseq_strand_ind = strand_idx
         self.meth_status_flag = mflag
         self.alignment = AlignmentStub(template_length=flen)
@@ -127,7 +128,8 @@ def bstub_with(**kwargs):
                        expected_flen_bin=153,
                        pos=10,
                        mflag=m_flags.is_methylated,
-                       fail=0,
+                       qc_fail_flag=0,
+                       phred_fail_flag=0,
                        phred=30,
                        expected_phred_bin=6)
     event_class.update(kwargs)
@@ -283,17 +285,19 @@ class TestMbiasCounterMotifPileupProcessing:
                        expected_flen_bin=100,
                        pos=10,
                        mflag=m_flags.is_methylated,
-                       fail=0,
+                       qc_fail_flag=0,
                        phred=20,
-                       expected_phred_bin=4),
+                       expected_phred_bin=4,
+                       phred_fail_flag=0),
                  bstub(strand_idx=b_inds.c_bc,
                        flen=180,
                        expected_flen_bin=153,
                        pos=10,
                        mflag=m_flags.is_methylated,
-                       fail=0,
+                       qc_fail_flag=0,
                        phred=30,
-                       expected_phred_bin=6), ]
+                       expected_phred_bin=6,
+                       phred_fail_flag=0), ]
 
         map_fn = mocker.patch('mqc.mbias.'
                               'get_sequence_context_to_array_index_table')
@@ -330,10 +334,14 @@ class TestMbiasCounterMotifPileupProcessing:
         assert (mbias_counter.counter_array == 0).all()
 
     def test_unusable_reads_are_discarded(self, mocker) -> None:
-        """ Reads are discarded if
+        """Test that unreliable reads are discarded
 
+        Reads are discarded if
             - they have a qc_fail_flag
             - they have no methylation calling status: NA, SNP or Ref
+
+        Reads are not discared if they have a phred_fail_flag, because
+        the phred score is recorded as dimension of the M-bias stats
         """
 
         map_fn = mocker.patch('mqc.mbias.'
@@ -342,13 +350,13 @@ class TestMbiasCounterMotifPileupProcessing:
             SEQ_CONTEXT_TO_IDX_MAPPING, BINNED_SEQ_CONTEXT_TO_IDX_MAPPING)
 
         reads = [bstub_with(),
+                 bstub_with(phred_fail_flag=1),
                  bstub_with(mflag=m_flags.is_ref),
                  bstub_with(mflag=m_flags.is_snp),
                  bstub_with(mflag=m_flags.is_na),
-                 bstub_with(fail=qc_flags.overlap_fail),
-                 bstub_with(fail=qc_flags.sam_flag_fail),
-                 bstub_with(fail=qc_flags.phred_score_fail),
-                 bstub_with(fail=qc_flags.mapq_fail),
+                 bstub_with(qc_fail_flag=qc_flags.overlap_fail),
+                 bstub_with(qc_fail_flag=qc_flags.sam_flag_fail),
+                 bstub_with(qc_fail_flag=qc_flags.mapq_fail),
                  ]
 
         motif_pileup = MotifPileupStub(seq_context='CCCCC',
@@ -360,7 +368,7 @@ class TestMbiasCounterMotifPileupProcessing:
 
         base_event_class = ((SEQ_CONTEXT_TO_IDX_MAPPING['CCCCC'],)
                             + bstub_with().get_idx_tuple())
-        assert mbias_counter.counter_array[base_event_class] == 1
+        assert mbias_counter.counter_array[base_event_class] == 2
         mbias_counter.counter_array[base_event_class] = 0
         assert (mbias_counter.counter_array == 0).all()
 

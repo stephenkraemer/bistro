@@ -39,7 +39,7 @@ class PhredFilter(Visitor):
         """
         for curr_read in motif_pileup.reads:
             if curr_read.baseq_at_pos < self.min_phred_score:
-                curr_read.qc_fail_flag |= qflag.phred_score_fail
+                curr_read.phred_fail_flag = 1
 
 class MapqFilter(Visitor):
     """Tag BSSeqPileupRead with mapq fail flag

@@ -27,7 +27,7 @@ cdef class BSSeqPileupRead(PileupRead):
     cdef uint8_t _overlap_flag
     cdef uint8_t _trimm_flag
     cdef uint8_t _qc_fail_flag
-    cdef uint8_t _bad_phred_flag
+    cdef uint8_t _phred_fail_flag
     cdef int32_t _pos_in_read
     cdef uint8_t _bad_mapq_flag
     cdef uint16_t _meth_status_flag

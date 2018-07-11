@@ -20,7 +20,9 @@ class MotifPileupStub:
 
 class PileupreadStub:
     def __init__(self, meth_status_flag, bsseq_strand_ind,
-                 read=1, trimm_flag=0, overlap_flag=0, qc_fail_flag=0):
+                 read=1, trimm_flag=0, overlap_flag=0, qc_fail_flag=0,
+                 phred_fail_flag=0):
+        self.phred_fail_flag = phred_fail_flag
         self.trimm_flag = trimm_flag
         self.overlap_flag = overlap_flag
         self.meth_status_flag = meth_status_flag
@@ -54,7 +56,7 @@ class TestMethCaller:
         assert BASE_MOTIF_PILEUP.n_meth == 2
         assert BASE_MOTIF_PILEUP.n_total == 4
 
-    def test_discards_qc_fail_flag(self):
+    def test_discards_qc_fail_flag_and_phred_fail_flag(self):
 
         additional_read_properties = [
             {'meth_status_flag'   : m_flags.is_methylated,
@@ -64,10 +66,16 @@ class TestMethCaller:
              'qc_fail_flag'       : qflags.mapq_fail},
             {'meth_status_flag'   : m_flags.is_unmethylated,
              'bsseq_strand_ind'   : b_inds.c_bc_rv,
-             'qc_fail_flag'       : qflags.phred_score_fail},
+             'qc_fail_flag'       : qflags.sam_flag_fail},
             {'meth_status_flag'   : m_flags.is_unmethylated,
              'bsseq_strand_ind'   : b_inds.c_bc_rv,
-             'qc_fail_flag'       : qflags.sam_flag_fail},
+             'qc_fail_flag'       : qflags.sam_flag_fail,
+             'phred_fail_flag'    : 1,
+             },
+            {'meth_status_flag'   : m_flags.is_unmethylated,
+             'bsseq_strand_ind'   : b_inds.c_bc_rv,
+             'phred_fail_flag'    : 1,
+             },
         ]
         additional_reads = [PileupreadStub(**property_dict)
                             for property_dict in additional_read_properties]
@@ -168,12 +176,11 @@ class TestMethCaller:
 
 
 # noinspection PyUnresolvedReferences
-class TestStratifiedMethCaller:
-    def test_creates_strat_mcalls_array_discarding_bad_reads(self):
-        meth_caller = StratifiedMethCaller()
 
-        read_properties = [
-            # bad
+class TestStratifiedMethCaller:
+
+    qc_issue_read_list = [
+            # bad: trimm + qc
             {'meth_status_flag' : m_flags.is_methylated,
              'bsseq_strand_ind' : b_inds.w_bc_rv,
              'read'             : 2,
@@ -187,7 +194,7 @@ class TestStratifiedMethCaller:
              'bsseq_strand_ind' : b_inds.c_bc_rv,
              'read'          : 1},
 
-            # bad
+            # bad: qc
             {'meth_status_flag' : m_flags.is_methylated,
              'bsseq_strand_ind' : b_inds.c_bc,
              'read'             : 2,
@@ -200,12 +207,53 @@ class TestStratifiedMethCaller:
              'bsseq_strand_ind' : b_inds.w_bc_rv,
              'read'          : 2},
 
-            # bad
+            # bad: trimm
             {'meth_status_flag' : m_flags.is_unmethylated,
              'bsseq_strand_ind' : b_inds.w_bc,
              'read'             : 1,
              'trimm_flag'       : 1},
+
+            # bad: phred fail
+            {'meth_status_flag' : m_flags.is_unmethylated,
+             'bsseq_strand_ind' : b_inds.w_bc,
+             'read'             : 1,
+             'phred_fail_flag'       : 1},
+
+
+            # bad: phred fail, qc fail
+            {'meth_status_flag' : m_flags.is_unmethylated,
+             'bsseq_strand_ind' : b_inds.w_bc,
+             'read'             : 1,
+             'phred_fail_flag'  : 1,
+             'qc_fail_flag'     : 1,
+             },
+
+            # bad: meth status
+            {'meth_status_flag' : m_flags.is_snp,
+             'bsseq_strand_ind' : b_inds.w_bc,
+             'read'             : 1},
+            {'meth_status_flag' : m_flags.is_ref,
+             'bsseq_strand_ind' : b_inds.w_bc,
+             'read'             : 1},
+            {'meth_status_flag' : m_flags.is_na,
+             'bsseq_strand_ind' : b_inds.w_bc,
+             'read'             : 1},
+
         ]
+
+    def test_creates_strat_mcalls_array_discarding_bad_reads(self):
+        """Only counts reliable meth. calls
+
+        Events are discard if
+        - they are NA, Ref, SNP
+        - they have a qc_fail_flag, phred_fail_flag, trimm_flag
+
+        The overlap flag is treated specially due to the stratification
+        of the calls, and has a dedicated test below
+        """
+        meth_caller = StratifiedMethCaller()
+
+        read_properties = self.qc_issue_read_list
 
         reads = [PileupreadStub(**property_dict) for property_dict in read_properties]
         motif_pileup = MotifPileupStub(reads)
@@ -281,42 +329,7 @@ class TestStratifiedMethCaller:
 
         meth_caller = StratifiedMethCaller()
 
-        read_properties = [
-
-            # bad
-            {'meth_status_flag' : m_flags.is_methylated,
-             'bsseq_strand_ind' : b_inds.w_bc_rv,
-             'read'             : 2,
-             'trimm_flag'       : 1,
-             'qc_fail_flag'     : 1},
-
-            {'meth_status_flag' : m_flags.is_unmethylated,
-             'bsseq_strand_ind' : b_inds.c_bc,
-             'read'          : 1},
-            {'meth_status_flag' : m_flags.is_methylated,
-             'bsseq_strand_ind' : b_inds.c_bc,
-             'read'          : 1},
-
-            # bad
-            {'meth_status_flag' : m_flags.is_methylated,
-             'bsseq_strand_ind' : b_inds.c_bc,
-             'read'             : 2,
-             'qc_fail_flag'     : 1},
-
-            {'meth_status_flag' : m_flags.is_methylated,
-             'bsseq_strand_ind' : b_inds.w_bc,
-             'read'          : 1},
-            {'meth_status_flag' : m_flags.is_unmethylated,
-             'bsseq_strand_ind' : b_inds.w_bc_rv,
-             'read'          : 2},
-
-            # bad
-            {'meth_status_flag' : m_flags.is_unmethylated,
-             'bsseq_strand_ind' : b_inds.w_bc,
-             'read'             : 1,
-             'trimm_flag'       : 1},
-
-        ]
+        read_properties = self.qc_issue_read_list
 
         reads = [PileupreadStub(**property_dict) for property_dict in read_properties]
         motif_pileup = MotifPileupStub(reads)

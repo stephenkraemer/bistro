@@ -35,6 +35,7 @@ class MethCaller(Visitor):
         n_total = 0
         for curr_read in motif_pileup.reads:
             if (curr_read.qc_fail_flag
+                    or curr_read.phred_fail_flag
                     or curr_read.trimm_flag
                     or curr_read.overlap_flag):
                 continue
@@ -78,6 +79,7 @@ class StratifiedMethCaller(Visitor):
 
         for curr_read in motif_pileup.reads:
             if (curr_read.qc_fail_flag
+                    or curr_read.phred_fail_flag
                     or curr_read.trimm_flag):
                 continue
 

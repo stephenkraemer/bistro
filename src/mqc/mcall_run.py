@@ -129,43 +129,41 @@ class PileupRun(metaclass=ABCMeta):
     Every run is associated with a set of configuration variables, most notably
     there can only be one definition of the CuttingSites for every run.
 
-    Attributes
-    ----------
-    summed_up_counters: dict
-        Stores the results for all Counters used in the PileupRun, defaults
-        to {} if no Counters were applied
-    n_cores: int
-        number of cores available for parallelization (from config)
+    Attributes:
+        summed_up_counters: dict
+            Stores the results for all Counters used in the PileupRun, defaults
+            to {} if no Counters were applied
+        n_cores: int
+            number of cores available for parallelization (from config)
 
-    Notes
-    -----
-    *Parallelization:* The Runs may be parallelized over separate index
-    files, commonly one index file per chromosome. One index file may
-    contain different sequence contexts (currently [CHH, CHG, CG] - may
-    become unrestricted in the future).
+    Notes:
+        *Parallelization:* The Runs may be parallelized over separate index
+        files, commonly one index file per chromosome. One index file may
+        contain different sequence contexts (currently [CHH, CHG, CG] - may
+        become unrestricted in the future).
 
-    *How it works:* Runs are realized using an Iterator-Visitor-like
-    pattern. For simple cases, the following algorithm is used to perform
-    the run: ::
+        *How it works:* Runs are realized using an Iterator-Visitor-like
+        pattern. For simple cases, the following algorithm is used to perform
+        the run: ::
 
-        For all index positions:
-            create a MotifPileup
-            for curr_visitor in PileupRun.visitors:
-                curr_visitor.process(MotifPileup)
+            For all index positions:
+                create a MotifPileup
+                for curr_visitor in PileupRun.visitors:
+                    curr_visitor.process(MotifPileup)
 
-    The algorithm described above is implemented in
-     :func:`~mqc.PileupRun._run_over_index_file`.
-    For simple tasks such as methylation calling, this is sufficient. To
-    implement complex tasks, one may have to overwrite the basic
-    implementation of :func:`~mqc.PileupRun._run_over_index_file`.
+        The algorithm described above is implemented in
+        :func:`~mqc.PileupRun._run_over_index_file`. For simple
+        tasks such as methylation calling, this is sufficient. To
+        implement complex tasks, one may have to overwrite the basic
+        implementation of :func:`~mqc.PileupRun._run_over_index_file`.
 
-    *Notes on implementing PileupRun subclasses:* There is only one abstract
-    method, which is used to set up the visitors (PileupRun._get_visitors).
-    Often, this function will simply
+        *Notes on implementing PileupRun subclasses:* There is only one abstract
+        method, which is used to set up the visitors (PileupRun._get_visitors).
+        Often, this function will simply
 
-    1. initialize visitors by calling their respective constructors with
-       the config dict and potentially a CuttingSites instance as arguments
-    2. return a list of visitors
+        1. initialize visitors by calling their respective constructors with
+           the config dict and potentially a CuttingSites instance as arguments
+        2. return a list of visitors
 
     """
 
@@ -288,18 +286,23 @@ class PileupRun(metaclass=ABCMeta):
 class MbiasDeterminationRun(PileupRun):
     """Go over all index positions and collect M-bias stats
 
-    *Implementation notes*
+    Implementation notes:
 
-    - overlap handling is not required because M-bias stats are stratified
-    by sequencing strand. Overlapping read pairs represent two events on two
-    different strands which should both be counted.
-    - trimming is not required because we want to collect stats even in regions
-    where we know that bias exists (for verification, if nothing else)
+        This run does only very limited QC filtering. All
+        BSSeqPileupReads have basic qc_fail_flag bits automatically set
+        (SAM flags such as PCR duplicates, softclipped position, missing
+        CIGAR string...). No additional QC filtering is currently
+        applied. The MbiasCounter will discard reads based on their
+        qc_fail_flag.
 
-    Possible improvements
-    ---------------------
-    In the future, this class may be able sample the index positions to reduce
-    the number of computations. (or this may be built into PileupRun...)
+        In particular, the following aspects are not considered by desing:
+        - overlap handling is not required because M-bias stats are stratified
+        by sequencing strand. Overlapping read pairs represent two events on two
+        different strands which should both be counted.
+        - trimming is not required because we want to collect stats even in regions
+        where we know that bias exists (for verification, if nothing else)
+        - phred score filtering is not applied because we record the phred score as
+        one dimension of the M-bias stats
     """
 
     def _get_visitors(self, chrom: str) -> Dict[str, Visitor]:

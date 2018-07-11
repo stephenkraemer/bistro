@@ -9,6 +9,7 @@ Contents:
    intro
    mcall_qc
    developers
+   design_decisions
    api
 
 

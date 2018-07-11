@@ -53,16 +53,24 @@ and qc filtering in general, as well as better fragment length determination
 or some kinds of epipolymorphism analysis
 """
 import numpy as np
-
 import pysam
 from itertools import chain, repeat
 from typing import Iterator, List, NamedTuple
-
 from mqc.index import IndexPosition
 from mqc.pileup.bsseq_pileup_read import pileups, BSSeqPileupRead
 
 
 class MotifPileup:
+    """Data structure containing global and read-level data for a pileup
+
+    Currently, one MotifPileup per cytosine is created. However, this
+    class could also handle multiple pileup positions at once, e.g.
+    for both cytosines in a CG motif.
+
+    Only the idx_pos and reads attributes are set during class
+    instantiation. Other attributes may be added dynamically, as
+    documented in the instance variable type annotations.
+    """
 
     meth_counts_arr: np.ndarray
     strat_beta_arr: np.ndarray

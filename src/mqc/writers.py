@@ -171,6 +171,7 @@ class BismarkWriter(McallWriterABC):
         curr_symbol_table = self.symbol_table[motif_pileup.idx_pos.motif]
         for read in motif_pileup.reads:
             if (read.qc_fail_flag
+                    or read.phred_fail_flag
                     or read.trimm_flag
                     or read.overlap_flag):
                 continue

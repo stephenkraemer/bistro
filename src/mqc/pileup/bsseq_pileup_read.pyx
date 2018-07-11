@@ -117,6 +117,14 @@ cdef class BSSeqPileupRead(PileupRead):
         self._qc_fail_flag = value
 
     @property
+    def phred_fail_flag(self):
+        return self._phred_fail_flag
+
+    @phred_fail_flag.setter
+    def phred_fail_flag(self, value):
+        self._phred_fail_flag = value
+
+    @property
     def pos_in_read(self):
         """Zero-based position in read
 
@@ -174,6 +182,7 @@ cdef inline make_bsseq_pileup_read(bam_pileup1_t * src,
     dest._overlap_flag = 0
     dest._trimm_flag = 0
     dest._qc_fail_flag = 0
+    dest._phred_fail_flag = 0
     dest._qpos = src.qpos
     dest._expected_watson_base = expected_watson_base
 
@@ -294,7 +303,6 @@ cdef inline make_bsseq_pileup_read(bam_pileup1_t * src,
 
 cdef inline get_bsseq_strand_index(int32_t flag):
     # TODO: are these flag fields always defined, or can they have arbitrary values in some situations?
-    # TODO: smarter way of doing these tests
     if flag & C_BC_FLAG == C_BC_FLAG:
         return C_BC_IND
     elif flag & C_BC_RV_FLAG == C_BC_RV_FLAG:

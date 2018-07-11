@@ -143,7 +143,13 @@ def test_bismark_writer_writes_bismark_format_to_motif_files(tmpdir):
     """BismarkWriter has to correctly handle QC issues itself
 
     Other writers use precalculated and precorrected meth. calling stats
-    Test output in presence of qc flags, overlap flags, different motifs
+
+    Test that BismarkWriter discards itself:
+    - qc_fail_flag
+    - phred_fail_flag
+    - overlap_flag
+
+    Test with different motifs from one PileupGenerator
     """
 
     MotifPileupStub = namedtuple('MotifPileupStub', 'idx_pos reads')
@@ -156,8 +162,10 @@ def test_bismark_writer_writes_bismark_format_to_motif_files(tmpdir):
         alignment: AlignedSegmentStub
         overlap_flag: int = 0
         qc_fail_flag: int = 0
+        phred_fail_flag: int = 0
         trimm_flag: int = 0
 
+    # Test that undefined meth. calls are discarded
     motif_pileup_cg_1 = MotifPileupStub(
             idx_pos=IndexPositionStub(chrom='1', start=10, motif='CG'),
             reads=[
@@ -172,6 +180,7 @@ def test_bismark_writer_writes_bismark_format_to_motif_files(tmpdir):
             ]
     )
 
+    # Test that QC issue and overlap cases are discarded
     motif_pileup_cg_2 = MotifPileupStub(
             idx_pos=IndexPositionStub(chrom='1', start=11, motif='CG'),
             reads=[
@@ -190,7 +199,13 @@ def test_bismark_writer_writes_bismark_format_to_motif_files(tmpdir):
                                     alignment=AlignedSegmentStub(query_name='readname_qcfail')),
                 BSSeqPileupReadStub(meth_status_flag=mflags.is_methylated,
                                     qc_fail_flag=1, trimm_flag=1,
-                                    alignment=AlignedSegmentStub(query_name='readname_multiple')),
+                                    alignment=AlignedSegmentStub(query_name='readname_multiple1')),
+                BSSeqPileupReadStub(meth_status_flag=mflags.is_methylated,
+                                    phred_fail_flag=1,
+                                    alignment=AlignedSegmentStub(query_name='readname_multiple2')),
+                BSSeqPileupReadStub(meth_status_flag=mflags.is_methylated,
+                                    phred_fail_flag=1, trimm_flag=1,
+                                    alignment=AlignedSegmentStub(query_name='readname_multiple3')),
             ]
     )
 

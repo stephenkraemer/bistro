@@ -62,31 +62,30 @@ ConfigDict = Dict[str, Any]
 class MbiasCounter(Counter):
     """Counter for multidimensional M-bias stats
 
-    Implementation notes
-    --------------------
+    Implementation notes:
 
-    This counter is pretty close to the maximal object size for serialization
-    with older pickle protocols. If you deviate too much from the datasets
-    this was tested on (unusually high read lengths or fragment lengths etc.)
-    it may become too big. You would then need to switch to a suitable
-    serialization protocol. This will likely also be the case if you want
-    to add another dimension, or if you want to add 'snp' and 'reference'
-    levels to the methylation status dimension.
+        This counter is pretty close to the maximal object size for serialization
+        with older pickle protocols. If you deviate too much from the datasets
+        this was tested on (unusually high read lengths or fragment lengths etc.)
+        it may become too big. You would then need to switch to a suitable
+        serialization protocol. This will likely also be the case if you want
+        to add another dimension, or if you want to add 'snp' and 'reference'
+        levels to the methylation status dimension.
 
-    *counter_array indexing*
-    - the fragment length dimension includes the length 0, so that length N has index N.
-    - the read position indexes are zero-based, for better interaction with the C/cython parts of the program.
+        *counter_array indexing*
+        - the fragment length dimension includes the length 0, so that length N has index N.
+        - the read position indexes are zero-based, for better interaction with the C/cython parts of the program.
 
-    *counter dataframe index levels*
-    - seq context: 3 letter motifs, e.g. CWCGW (size is parameter) [categorical]
-    - bs strands are labelled in lowercase, e.g. c_bc [categorical]
-    - single fragment lengths are labelled with the flen as int
-    - binned fragment lengths are labelled with the rightmost flen in the bin
-    - the last fragment length bin is guaranteed to end with the max_flen
-    - the last bin may therefore be smaller than the specified bin size
-    - phred scores are always binned, and are also labelled with the rightmost phred score in the bin
-    - pos labels: 1-based (note that array indexing is 0-based)
-    - meth. status labels: n_meth, n_unmeth [categorical]
+        *counter dataframe index levels*
+        - seq context: 3 letter motifs, e.g. CWCGW (size is parameter) [categorical]
+        - bs strands are labelled in lowercase, e.g. c_bc [categorical]
+        - single fragment lengths are labelled with the flen as int
+        - binned fragment lengths are labelled with the rightmost flen in the bin
+        - the last fragment length bin is guaranteed to end with the max_flen
+        - the last bin may therefore be smaller than the specified bin size
+        - phred scores are always binned, and are also labelled with the rightmost phred score in the bin
+        - pos labels: 1-based (note that array indexing is 0-based)
+        - meth. status labels: n_meth, n_unmeth [categorical]
      """
 
     def __init__(self, config: ConfigDict) -> None:
@@ -155,15 +154,25 @@ class MbiasCounter(Counter):
     def process(self, motif_pileup: MotifPileup) -> None:
         """Extract M-bias stats from MotifPileup
 
+        The entire MotifPileup is skipped if it has an undefined
+        sequence context (e.g. containing N)
+
         Reads are discarded if
 
         - they have a qc_fail_flag
         - their bsseq strand could not be determined
-        - they have methylation calling status: NA, SNP or Ref
+        - they have methylation calling status NA, SNP or Ref
 
-        Stratified by:
+        Reads are not discarded if they are phred score fails. The phred
+        score information is recorded as part of the M-bias stats. In
+        the standard MbiasDeterminationRun, the PhredFilter is therefore
+        not applied at all. You could however apply it if you use this
+        Counter as part of a larger workflow, because the
+        phred_fail_flag is not checked here.
 
+        M-bias stat dimensions recorded:
         - motif
+        - sequence context
         - BSSeq-strand
         - fragment length
         - position in read
@@ -180,8 +189,9 @@ class MbiasCounter(Counter):
         # noinspection PyUnusedLocal
         curr_read: BSSeqPileupRead
         for curr_read in motif_pileup.reads:
-            # TODO-important: currently this sorts out any qc_fail, including phred
-            # score fails, phred score fails should be kept here
+            # note: this does explicitely not discard phred_score_fail
+            # we stratify the M-bias stats by phred score and do
+            # pseudo-filtering as appropriate for the different M-bias plots
             if (curr_read.qc_fail_flag
                 or curr_read.bsseq_strand_ind == b_na_ind):
                 continue
@@ -1493,9 +1503,7 @@ def convert_phred_bins_to_thresholds(mbias_stats_df: pd.DataFrame) -> pd.DataFra
 
     Takes approx. 2 min
 
-    Important
-    ---------
-    This function assumes that mbias_stats_df is sorted
+    **Important:** This function assumes that mbias_stats_df is sorted
     """
 
 

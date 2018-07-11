@@ -1,3 +1,5 @@
+"""Overlap handling"""
+
 import random
 from typing import DefaultDict, List
 
@@ -14,11 +16,22 @@ mflags = methylation_status_flags
 
 
 class OverlapHandler(Visitor):
+    """Find overlapping reads, evaluate, pick one event or discard both"""
 
     def process(self, motif_pileup: MotifPileup) -> None:
+        """Iterate over reads in MotifPileup to find and handle overlaps
+
+        An overlap event is not called when one of the reads
+        - is trimmed at the position
+        - has a qc_fail_flag
+        - has methylation status NA
+
+        Reads with a phred_fail_flag are considered. Also below-threshold
+        phred scores contain information and may be used to adjust the
+        phred score of the better read.
+        """
         read_hash: DefaultDict[str, List[BSSeqPileupRead]] = defaultdict(list)
         for curr_read in motif_pileup.reads:
-            # TODO: add check whether read has a usable meth status
             if (curr_read.trimm_flag
                 or curr_read.qc_fail_flag
                 or curr_read.meth_status_flag == mflags.is_na):

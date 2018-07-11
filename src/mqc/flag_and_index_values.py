@@ -77,13 +77,14 @@ class MethylationStatusFlags(NamedTuple):
     is_ref: int = 1
 methylation_status_flags = MethylationStatusFlags()
 
-
+# The overlap fail flag is used for overlapping reads with unmatched
+# methylation calls. The OverlapHandler may then decide to discard both
+# reads. This would be marked by setting the overlap_fail bit
 class QcFailFlags(NamedTuple):
     sam_flag_fail: int = 1
-    phred_score_fail: int = 2
-    mapq_fail: int = 4
-    missing_info_fail: int = 8
-    softclipped: int = 16
-    pos_in_read_exceeds_tlen: int = 32
-    overlap_fail: int = 64
+    mapq_fail: int = 2
+    missing_info_fail: int = 4
+    softclipped: int = 8
+    pos_in_read_exceeds_tlen: int = 16
+    overlap_fail: int = 32
 qc_fail_flags = QcFailFlags()
