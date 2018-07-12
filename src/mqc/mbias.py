@@ -555,31 +555,6 @@ def mask_mbias_stats_df(mbias_stats_df: pd.DataFrame, cutting_sites_df: pd.DataF
             )
 
 
-# For testing compute_mbias_stats:
-#
-# from mqc.config import assemble_config_vars
-# from mqc.utils import get_resource_abspath
-# cli_params = {'motifs_str': 'CG',
-#               'sample_name': 'sample1',
-#               'sample_meta': None,
-#               'output_dir': (
-#                   "/icgc/dkfzlsdf/analysis/B080/kraemers/projects/mbias"
-#                   "/results_per_sample/prostate/wgbs/"
-#                   "BPH203_st-normal-luminal_se-x_me-wgbs_sw-34038/bseqtools"),
-#               'no_cache': False}
-# default_config_file = get_resource_abspath('config.default.toml')
-# config = assemble_config_vars(cli_params,
-#                               default_config_file_path=default_config_file)
-# config['plots']['mbias_flens_to_display'] = [60, 75, 90, 100, 125, 150, 171, 191, 251, 311, 411]
-# # config['paths']['mbias_counts'] = (
-# #    "/icgc/dkfzlsdf/analysis/B080/kraemers/projects/mbias"
-# #    "/results_per_sample/prostate/wgbs/"
-# #    "BPH171_st-normal-basal_se-x_me-wgbs_sw-34038/bseqtools/"
-# #    "qc_stats/BPH171_st-normal-basal_se-x_me-wgbs_sw-34038_mbias-counts_CG")
-# config['paths']['mbias_counts'] = (
-#     "/icgc/dkfzlsdf/analysis/B080/kraemers/projects/mbias/results_per_sample/"
-#     "prostate/wgbs/BPH203_st-normal-luminal_se-x_me-wgbs_sw-34038/bseqtools/"
-#    "qc_stats/BPH203_st-normal-luminal_se-x_me-wgbs_sw-34038_mbias-counts_CG")
 
 
 def compute_mbias_stats(config: ConfigDict) -> None:
@@ -600,10 +575,6 @@ def compute_mbias_stats(config: ConfigDict) -> None:
         mbias_stats_df = add_mate_info(mbias_stats_df)
         mbias_stats_df = mbias_stats_df.sort_index()
 
-        # TODO-important: fix hardcoding
-        mbias_stats_df = mbias_stats_df.loc[idxs[:, :, :, :, :, :, 1:150], :]
-
-        # discard phreds which are not present in bins
         print('Discarding unused phred scores')
         n_total = mbias_stats_df["n_meth"] + mbias_stats_df["n_unmeth"]
         phred_group_sizes = n_total.groupby("phred").sum()
@@ -611,12 +582,6 @@ def compute_mbias_stats(config: ConfigDict) -> None:
         existing_phred_scores = phred_group_sizes.index.values[phred_bin_has_counts]
         mbias_stats_df = mbias_stats_df.loc[idxs[:, :, :, :, :, existing_phred_scores], :]
         mbias_stats_df.index = mbias_stats_df.index.remove_unused_levels()
-
-        # # interactive testing
-        # mbias_stats_df = pd.read_pickle(fps["mbias_stats_p"])
-        # flen_sel = config['plots']['mbias_flens_to_display']
-        # # careful with slice, depends on whether mate is already present
-        # mbias_stats_df = mbias_stats_df.loc[idxs[["CG"], :, :, :, flen_sel], :].copy()
 
         save_df_to_trunk_path(mbias_stats_df, fps["mbias_stats_trunk"])
 
