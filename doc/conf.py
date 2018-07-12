@@ -30,6 +30,11 @@
 # Add any Sphinx extension module names here, as strings. They can be
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
 # ones.
+
+authors = ('Stephen Kraemer, Pavlo Lutsik, Alex Matthausch, Thore Buergel,'
+          'Daniel Lipka, Matthias Schlesner')
+package_name = 'callme'
+
 extensions = [
     'sphinx.ext.autodoc',
     'sphinx.ext.doctest',
@@ -40,7 +45,10 @@ extensions = [
     'sphinx.ext.viewcode',
     'sphinx.ext.githubpages',
     'sphinx.ext.napoleon',
+    'sphinx_click.ext'
 ]
+
+autodoc_default_flags = ['members', 'inherited-members', 'show-inheritance']
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
@@ -59,9 +67,9 @@ source_suffix = '.rst'
 master_doc = 'index'
 
 # General information about the project.
-project = 'mqc'
-copyright = '2017, Stephen Kraemer, Pavlo Lutsik, Thore Buergel, Daniel Lipka, Matthias Schlesner'
-author = 'Stephen Kraemer, Pavlo Lutsik, Thore Buergel, Daniel Lipka, Matthias Schlesner'
+project = 'callme'
+copyright = '2018, Stephen Kraemer'
+author = authors
 
 # The version info for the project you're documenting, acts as replacement for
 # |version| and |release|, also used in various other places throughout the
@@ -244,7 +252,7 @@ html_static_path = ['_static']
 # html_search_scorer = 'scorer.js'
 
 # Output file base name for HTML help builder.
-htmlhelp_basename = 'mqcdoc'
+htmlhelp_basename = 'callmedoc'
 
 # -- Options for LaTeX output ---------------------------------------------
 
@@ -270,8 +278,8 @@ latex_elements = {
 # (source start file, target name, title,
 #  author, documentclass [howto, manual, or own class]).
 latex_documents = [
-    (master_doc, 'mqc.tex', 'mqc Documentation',
-     'Stephen Kraemer, Thore Buergel, Daniel Lipka, Matthias Schlesner', 'manual'),
+    (master_doc, 'callme.tex', 'callme Documentation',
+     authors, 'manual'),
 ]
 
 # The name of an image file (relative to this directory) to place at the top of
@@ -312,7 +320,7 @@ latex_documents = [
 # One entry per manual page. List of tuples
 # (source start file, name, description, authors, manual section).
 man_pages = [
-    (master_doc, 'mqc', 'mqc Documentation',
+    (master_doc, package_name, f'{package_name} docs',
      [author], 1)
 ]
 
@@ -327,8 +335,8 @@ man_pages = [
 # (source start file, target name, title, author,
 #  dir menu entry, description, category)
 texinfo_documents = [
-    (master_doc, 'mqc', 'mqc Documentation',
-     author, 'mqc', 'One line description of project.',
+    (master_doc, package_name, f'{package_name} docs',
+     author, package_name, 'Precision methylation calling, easy to use, simple to extend for developers',
      'Miscellaneous'),
 ]
 

@@ -8,6 +8,7 @@ Based on click package
 # pylint: disable=unused-argument
 
 import copy
+import json
 import sys
 from collections import OrderedDict
 from typing import Dict
@@ -93,18 +94,32 @@ def stats(ctx, bam, index_files,
               help="Pass additional metadata as"
                    " 'key=value,key2=value2' [optional]")
 @click.option('--use_cached_mbias_stats', is_flag=True)
+@click.option('--plateau_detection', required=True,
+              help=('Plateau detection parameters. Expects JSON dict containing the name'
+                    'of the algorithm as well as parameters for the algorithm. See documentation'
+                    'for details'))
 @click.pass_context
 def evaluate_mbias(ctx, config_file, motifs, output_dir,
-                   sample_name, sample_meta, use_cached_mbias_stats) -> None:
+                   sample_name, sample_meta, use_cached_mbias_stats, plateau_detection) -> None:
     """Process M-bias stats"""
     default_config_file = get_resource_abspath('config.default.toml')
     user_config_file = config_file if config_file else ''
+
     cli_params = copy.deepcopy(ctx.params)
+
     cli_params['motifs'] = motifs.split(',')
     cli_params['motifs_str'] = '-'.join(cli_params['motifs'])
+
+    cli_params['plateau_detection'] = json.loads(cli_params['plateau_detection'])
+    try:
+        assert isinstance(cli_params['plateau_detection']['algorithm'], str)
+    except (TypeError, KeyError, AssertionError) as e:
+        raise ValueError('Can not parse the plateau_detection JSON dict correctly') from e
+
     config = assemble_config_vars(cli_params,
                                   default_config_file_path=default_config_file,
                                   user_config_file_path=user_config_file)
+
     compute_mbias_stats(config)
 
 

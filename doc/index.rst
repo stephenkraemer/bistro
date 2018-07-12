@@ -7,9 +7,10 @@ Contents:
    :maxdepth: 2
 
    intro
-   mcall_qc
+   callme
    developers
    design_decisions
+   plateau_detection
    api
 
 

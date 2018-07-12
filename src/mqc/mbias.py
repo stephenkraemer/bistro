@@ -583,7 +583,7 @@ def mask_mbias_stats_df(mbias_stats_df: pd.DataFrame, cutting_sites_df: pd.DataF
 
 
 def compute_mbias_stats(config: ConfigDict) -> None:
-    """ Run standard analysis on Mbias-Stats"""
+    """ Run standard analysis on M-bias stats"""
 
     fps = config['paths']
 
@@ -620,7 +620,6 @@ def compute_mbias_stats(config: ConfigDict) -> None:
 
         save_df_to_trunk_path(mbias_stats_df, fps["mbias_stats_trunk"])
 
-    # Could be parallelized
     print('Computing derived stats')
     compute_derived_mbias_stats(mbias_stats_df, config)
 
@@ -664,18 +663,21 @@ def add_mate_info(mbias_stats_df: pd.DataFrame) -> pd.DataFrame:
 
 
 def compute_derived_mbias_stats(mbias_stats_df: pd.DataFrame, config: ConfigDict) -> None:
-    """Compute different M-bias stats
+    """Compute various objects derived from the M-bias stats dataframe
 
-    Computes and saves
-    - Extended Mbias-Stats DataFrame
-    - Minimal Mbias-Stats DataFrame
-    - bs_strand and flen adjusted cutting sites
-    - various QC plots
+    All objects are stored on disc, downstream evaluation is done in
+    separate steps, e.g. by using the mbias_plots command.
 
-    Returns
-    -------
-
+    Notes:
+        - the plateau detection is performed only based on CG context
+          calls, also if information for CHG and CHH context is present.
+          The cutting sites determined in this way will then be applied
+          across all sequence contexts
     """
+
+    plateau_detection_params = config['run']['plateau_detection']
+    # Will be used when more algorithms are implemented
+    unused_plateau_detection_algorithm = plateau_detection_params.pop('algorithm')
 
     print("Computing cutting sites")
     classic_mbias_stats_df = compute_classic_mbias_stats_df(mbias_stats_df)
@@ -683,19 +685,13 @@ def compute_derived_mbias_stats(mbias_stats_df: pd.DataFrame, config: ConfigDict
     classic_mbias_stats_df_with_n_total = classic_mbias_stats_df.assign(
         n_total = lambda df: df['n_meth'] + df['n_unmeth']
     )
-    # TODO-important: use config instead of hard coding
-    cutting_sites_replacement = CuttingSites.from_mbias_stats(
-        mbias_stats_df=classic_mbias_stats_df_with_n_total.loc['CG', :],
-        max_read_length=101,
-        allow_slope=True,
-        min_plateau_length=30, max_slope=0.0006,
-        plateau_flen=210,
-        plateau_bs_strands=['w_bc', 'c_bc']
-    )
+    cutting_sites = CuttingSites.from_mbias_stats(
+            mbias_stats_df=classic_mbias_stats_df_with_n_total.loc['CG', :],
+            **plateau_detection_params)
 
     print("Computing masked M-bias stats DF")
     masked_mbias_stats_df = mask_mbias_stats_df(
-        mbias_stats_df, cutting_sites_replacement.df)
+        mbias_stats_df, cutting_sites.df)
 
     print("Adding phred filtering info")
     phred_threshold_df = convert_phred_bins_to_thresholds(mbias_stats_df)
@@ -712,7 +708,7 @@ def compute_derived_mbias_stats(mbias_stats_df: pd.DataFrame, config: ConfigDict
     fps["mbias_stats_masked_trunk"] = fps['mbias_stats_masked_p'].replace('.p', '')
     fps["adjusted_cutting_sites_df_trunk"] = fps["adjusted_cutting_sites_df_p"].replace('.p', '')
 
-    save_df_to_trunk_path(cutting_sites_replacement.df,
+    save_df_to_trunk_path(cutting_sites.df,
                           fps["adjusted_cutting_sites_df_trunk"])
     save_df_to_trunk_path(classic_mbias_stats_df,
                           fps["mbias_stats_classic_trunk"])
@@ -1583,12 +1579,30 @@ class CuttingSites:
         self.max_read_length = max_read_length
 
     @staticmethod
-    def from_mbias_stats(mbias_stats_df: pd.DataFrame, max_read_length: int, **kwargs) \
-            -> 'CuttingSites':
-        cutting_sites_df = BinomPvalueBasedCuttingSiteDetermination(
-            mbias_stats_df=mbias_stats_df,
-            max_read_length=max_read_length,
-            **kwargs).compute_cutting_site_df()
+    def from_mbias_stats(mbias_stats_df: pd.DataFrame, **kwargs) -> 'CuttingSites':
+        """Detect CuttingSites in M-bias stats
+
+        Args:
+            **kwargs: passed on to the plateau detection algorithm.
+                The choice of algorithm is not yet implemented. At the
+                moment, this is directly passed on to the default choice
+                (:class:`.BinomPvalueBasedCuttingSiteDetermination`)
+
+
+        """
+
+        try:
+            cutting_sites_df = BinomPvalueBasedCuttingSiteDetermination(
+                mbias_stats_df=mbias_stats_df, **kwargs).compute_cutting_site_df()
+        except TypeError:
+            print(f'The plateau detection parameters {kwargs} do not match the'
+                  f'signature of the selected plateau detection algorithm')
+            raise
+
+
+        # this line is duplicated in BinomPvalueBasedCuttingSiteDetermination
+        # should be moved to - yet to be done - MbiasStats class
+        max_read_length = mbias_stats_df.index.get_level_values('pos').max()
         return CuttingSites(
             cutting_sites_df=cutting_sites_df,
             max_read_length=max_read_length)
@@ -1686,15 +1700,38 @@ class CuttingSites:
 
 
 class BinomPvalueBasedCuttingSiteDetermination:
+    """Detect unlikely deviations from estimated global methylation level
 
-    def __init__(self, mbias_stats_df: pd.DataFrame, max_read_length: int,
-                 allow_slope: bool = False,
+    Often, even if M-bias is present, it mainly affects certain
+    BS-Seq strands, and certain fragment lengths. This algorithm
+    first estimates the unbiased global methylation level based on the
+    set of fragment lengths and BS-Seq strands defined as 'unbiased'
+    by **plateau_flen** and *plateau_bs_strands**. Then it detects
+    significant deviations from this plateau and translates them
+    into BS-Seq strand and fragment length-specific cutting sites.
+
+    Args:
+        min_plateau_length: Minimum number of bp unaffected of M-bias
+            required to include a stratum into the methylation calls.
+        allow_slope: Whether the M-bias curve is allowed to have a slope.
+        max_slope: Maximum allowed slope of
+            the M-bias curve, if slope is allowed.
+        plateau_flen: Fragment lengths >= plateau_flen are
+            used to estimate the correct global methylation level
+        plateau_bs_strands: one or more of [w_bc c_bc
+            w_bc_rv c_bc_rv] Only these BS-Seq strands are used
+            to estimate the correct global methylation level
+    """
+
+    def __init__(self, mbias_stats_df: pd.DataFrame, allow_slope: bool = True,
                  min_plateau_length: int = 30, max_slope: float = 0.0006,
-                 plateau_flen: int = 210, plateau_bs_strands: Tuple[str, ...] =('c_bc', 'w_bc'),
-                 ) -> None:
+                 plateau_flen: int = 210,
+                 plateau_bs_strands: Tuple[str, ...] = ('c_bc', 'w_bc')) -> None:
         self.plateau_flen = plateau_flen
         self.max_slope = max_slope
-        self.max_read_length = max_read_length
+        # this line is duplicated in CuttingSites.from_mbias_stats
+        # should be moved to - yet to be done - MbiasStats class
+        self.max_read_length = mbias_stats_df.index.get_level_values('pos').max()
         self.plateau_bs_strands = plateau_bs_strands
         self.min_plateau_length = min_plateau_length
         self.allow_slope = allow_slope

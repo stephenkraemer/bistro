@@ -814,9 +814,6 @@ def user_config_file():
                 max_phred = 40
                 phred_bin_size = 20
                 seq_context_size = 5
-                
-            [plots]
-                mbias_flens_to_display = [100, 150, 190]
             """))
     yield str(user_config_file_path)
     shutil.rmtree(tmpdir)
@@ -863,6 +860,9 @@ def run_evaluate_mbias_then_return_config(
                            '--config_file', user_config_file,
                            '--motifs', request.param,
                            '--sample_name', SAMPLE_NAME,
+                           '--plateau_detection', '{"algorithm": "binomp", "min_plateau_length": 30, "max_slope": '
+                                                  '0.0006,'
+                                                  '"plateau_flen": 210, "plateau_bs_strands": ["w_bc", "c_bc"]}',
                            '--output_dir', output_dir])
 
     default_config_file = get_resource_abspath('config.default.toml')
@@ -1884,10 +1884,9 @@ class TestBinomPvalueBasedCuttingSiteDetermination:
                                                       plateau_height_factor,
                                                       seed,
                                                       adjust_small_flens=adjust_for_small_flens)
-        cutting_sites = BinomPvalueBasedCuttingSiteDetermination(
-            mbias_stats_df=mbias_stats_stub.df,
-            max_read_length=100,
-            allow_slope=allow_slope, plateau_flen=170).compute_cutting_site_df()
+        cutting_sites = BinomPvalueBasedCuttingSiteDetermination(mbias_stats_df=mbias_stats_stub.df,
+                                                                 allow_slope=allow_slope,
+                                                                 plateau_flen=170).compute_cutting_site_df()
 
         return cutting_sites, mbias_stats_stub
 

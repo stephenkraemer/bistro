@@ -16,15 +16,6 @@
   phred_bin_size = 5
   seq_context_size = 5
 
-# TODO: clean up
-[plots]
-  mbias_flens_to_display = [60, 75, 90, 100, 120, 150, 190, 290, 490]
-  mbias_phreds_to_display = [0, 5, 10, 15, 20, 25, 30, 35, 40]
-
-
-[conversion_error_calling]
-  max_number_of_unconv_cytosines = 2
-
 [basic_quality_filtering]
   min_mapq = 25
   min_phred_score = 25
@@ -43,17 +34,8 @@
     c_bc_rv = [9, 0]
 
 
-[beta_value_dist_stats]
-  min_cov = 10
-  kde_sigma = 4
-
 [data_properties]
   max_read_length_bp = 150
-  min_flen_considered_for_methylation_calling = 30
-
-[parallelization]
-  pos_per_process = 1000
-
 
 [coverage_analysis]
   max_per_motif_cov = 80
