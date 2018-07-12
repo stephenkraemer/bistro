@@ -53,10 +53,11 @@ input_click_path = click.Path(exists=True, readable=True,
 @click.option('--motifs', required=True,
               help=("Comma separated list of the motifs in the index files."
                     "For example: CG,CHG"))
+@click.option('--read_length', type=int)
 @click.pass_context
 def stats(ctx, bam, index_files,
           output_dir, config_file,
-          sample_name, sample_meta, cores, motifs) -> None:
+          sample_name, sample_meta, cores, motifs, read_length) -> None:
     """Gather Mbias stats"""
 
     default_config_file = get_resource_abspath('config.default.toml')

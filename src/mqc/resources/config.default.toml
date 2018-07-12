@@ -33,10 +33,6 @@
     w_bc_rv = [9, 0]
     c_bc_rv = [9, 0]
 
-
-[data_properties]
-  max_read_length_bp = 150
-
 [coverage_analysis]
   max_per_motif_cov = 80
 

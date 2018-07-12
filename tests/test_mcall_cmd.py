@@ -92,8 +92,6 @@ def config_file_path(request):
               min_mapq = {MIN_MAPQ}
               min_phred_score = {MIN_PHRED}
             
-            [data_properties]
-              max_read_length_bp = 101
             """)
 
     if request.param == 'correct_fixed_cut_sites':

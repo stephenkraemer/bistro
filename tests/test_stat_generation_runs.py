@@ -1,21 +1,16 @@
 import os.path as op
-
 import pickle
-import pytest
-import toml
 import shutil
 import subprocess
 import tempfile
-import warnings
-
 from textwrap import dedent
 
-import pandas as pd
+import pytest
 
 import mqc.flag_and_index_values as mfl
 from mqc.config import assemble_config_vars
-from mqc.utils import get_resource_abspath
 from mqc.mbias import MbiasCounter
+from mqc.utils import get_resource_abspath
 
 b_inds = mfl.bsseq_strand_indices
 
@@ -55,7 +50,7 @@ def user_config_file(request):
 
 
 @pytest.fixture(scope='module')
-def mbias_counter(user_config_file):
+def mbias_counter(user_config_file: str) -> None:
     """Runs mqc stats and provides path to results dir"""
 
     tmpdir = tempfile.mkdtemp()
@@ -67,6 +62,7 @@ def mbias_counter(user_config_file):
         '--sample_meta', SAMPLE_META,
         '--cores', '1',
         '--motifs', 'CG,CHG',
+        '--read_length', '150',
         op.join(TESTS_DIR, 'test_files', 'test_index_mbias_chr11.bed.gz'),
         op.join(TESTS_DIR, 'test_files', 'test_index_mbias_chr11.bed.gz'),
     ]

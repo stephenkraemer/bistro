@@ -60,7 +60,7 @@ qc_flags = mfl.qc_fail_flags
 
 CONFIG: DefaultDict[str, Dict[str, Any]] = defaultdict(dict)
 CONFIG['paths']['mbias_counts'] = None
-CONFIG['data_properties']['max_read_length_bp'] = 101
+CONFIG['run']['read_length'] = 101
 CONFIG['stats']['max_flen'] = 500
 CONFIG['stats']['max_flen_with_single_flen_resolution'] = 150
 CONFIG['stats']['flen_bin_size'] = 10
@@ -224,7 +224,7 @@ def test_mbias_counter_get_dataframe(mocker):
     and get_dataframe, since they are closely coupled"""
 
     config = defaultdict(dict)
-    config["data_properties"]["max_read_length_bp"] = 10
+    config["run"]["read_length"] = 10
     config["paths"]["mbias_counts"] = None
     config["stats"]["max_flen"] = 10
     config["stats"]["max_flen_with_single_flen_resolution"] = 5
@@ -800,8 +800,6 @@ def user_config_file():
     user_config_file_path.write_text(dedent(f"""\
             [paths]
                 mbias_counts = "{tmpdir}/mbias-counter"
-            [data_properties]
-                max_read_length_bp = 101
             [trimming]
                 max_flen_considered_for_trimming = 60
                 min_plateau_perc = 0.8
@@ -823,6 +821,8 @@ def user_config_file():
 def test_mbias_counter(user_config_file):
     with open(user_config_file, 'rt') as fin:
         config = toml.load(fin)
+
+    config['run'] = {'read_length': 101}
 
     with patch('mqc.mbias.' 'get_sequence_context_to_array_index_table') as map_fn:
         map_fn.return_value = (SEQ_CONTEXT_TO_IDX_MAPPING,

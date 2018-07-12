@@ -91,7 +91,7 @@ class MbiasCounter(Counter):
     def __init__(self, config: ConfigDict) -> None:
 
         self.save_stem = config["paths"]["mbias_counts"]
-        self.max_read_length = config["data_properties"]["max_read_length_bp"]
+        self.max_read_length = config["run"]["read_length"]
         sts = config["stats"]
         self.max_flen = sts["max_flen"]
         self.max_single_flen = sts["max_flen_with_single_flen_resolution"]
@@ -1744,10 +1744,7 @@ class BinomPvalueBasedCuttingSiteDetermination:
 
     def compute_cutting_site_df(self) -> pd.DataFrame:
 
-        # TODO-important: setting the plateau length by hard coding is not robust
-
-        # TODO-important: fix hardcoded bug solution
-        fn_mbias_stats_df = self.mbias_stats_df.query('pos < 102')
+        fn_mbias_stats_df = self.mbias_stats_df.copy()
         fn_mbias_stats_df = fn_mbias_stats_df.fillna(0)
         n_meth_wide = fn_mbias_stats_df['n_meth'].unstack(level='pos', fill_value=0)
         n_total_wide = fn_mbias_stats_df['n_total'].unstack(level='pos', fill_value=0)
@@ -1755,6 +1752,7 @@ class BinomPvalueBasedCuttingSiteDetermination:
 
         estimated_plateau_height, estimated_plateau_height_with_slope, slope = (
             self._estimate_plateau_height(fn_mbias_stats_df))
+        # TODO-important: make strip boundaries a parameter
         strip_low_bound = estimated_plateau_height - 0.02
         strip_high_bound = estimated_plateau_height + 0.02
         estimated_plateau_heights = (
