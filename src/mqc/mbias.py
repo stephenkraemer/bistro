@@ -1680,7 +1680,18 @@ class CuttingSites:
         return arr
 
     def plot(self, path: str) -> None:
-        # TODO-important: account for motif or assume this will always be CG?
+        """Create CuttingSites line plot
+
+        Plot start and end values for all fragment lengths, with
+        BS-Seq strands facetted across the columns.
+
+        The CuttingSites may optionally be stratified by motif, i.e.
+        a motif index may be present or absent, and it may have arbitrary
+        levels. If a motif index is present, the motifs will be displayed
+        via row facetting.
+        """
+        # TODO-minor: adjust the start and end values to account for
+        # their definition as slice boundaries
         if 'motif' in self.df.index.names:
             row_facetting_dict = {'row': 'motif'}
         else:
@@ -1693,7 +1704,6 @@ class CuttingSites:
          .mark_line()
          .encode(x='flen:Q', y='cut_pos:Q', color='cut_end:N')
          .facet(column='bs_strand:N',
-                # row='cut_end:N'
                 **row_facetting_dict
                 )
          ).interactive().save(path, webdriver='firefox')
@@ -1721,12 +1731,16 @@ class BinomPvalueBasedCuttingSiteDetermination:
         plateau_bs_strands: one or more of [w_bc c_bc
             w_bc_rv c_bc_rv] Only these BS-Seq strands are used
             to estimate the correct global methylation level
+        always_accept_distance_from_plateau: beta values within
+           estimated global methylation level +- always_accept_distance_from_plateau
+           are never rejected
     """
 
     def __init__(self, mbias_stats_df: pd.DataFrame, allow_slope: bool = True,
                  min_plateau_length: int = 30, max_slope: float = 0.0006,
                  plateau_flen: int = 210,
-                 plateau_bs_strands: Tuple[str, ...] = ('c_bc', 'w_bc')) -> None:
+                 plateau_bs_strands: Tuple[str, ...] = ('c_bc', 'w_bc'),
+                 always_accept_distance_from_plateau: float = 0.02) -> None:
         self.plateau_flen = plateau_flen
         self.max_slope = max_slope
         # this line is duplicated in CuttingSites.from_mbias_stats
@@ -1736,10 +1750,7 @@ class BinomPvalueBasedCuttingSiteDetermination:
         self.min_plateau_length = min_plateau_length
         self.allow_slope = allow_slope
         self.mbias_stats_df = mbias_stats_df
-
-        # TODO-imporant: activate
-        # assert self.mbias_stats_df.index.get_level_values('pos').max() <= self.max_read_length, \
-        #     'M-bias stats dataframe contains positions beyond the maximal read length'
+        self.always_accept_distance_from_plateau = always_accept_distance_from_plateau
 
 
     def compute_cutting_site_df(self) -> pd.DataFrame:
@@ -1752,9 +1763,8 @@ class BinomPvalueBasedCuttingSiteDetermination:
 
         estimated_plateau_height, estimated_plateau_height_with_slope, slope = (
             self._estimate_plateau_height(fn_mbias_stats_df))
-        # TODO-important: make strip boundaries a parameter
-        strip_low_bound = estimated_plateau_height - 0.02
-        strip_high_bound = estimated_plateau_height + 0.02
+        strip_low_bound = estimated_plateau_height - self.always_accept_distance_from_plateau
+        strip_high_bound = estimated_plateau_height + self.always_accept_distance_from_plateau
         estimated_plateau_heights = (
                 estimated_plateau_height_with_slope + np.arange(
             n_meth_wide.shape[1]) * slope)
@@ -1890,7 +1900,6 @@ class BinomPvalueBasedCuttingSiteDetermination:
     def _get_p_values(k, n, p):
         binom_prob = scipy.stats.binom.cdf(k=k, n=n, p=p)
         binom_prob[binom_prob > 0.5] = 1 - binom_prob[binom_prob > 0.5]
-        # TODO-important: times 2 correct?
         return binom_prob * 2
 
     @staticmethod
@@ -2071,8 +2080,8 @@ class BinomPvalueBasedCuttingSiteDetermination:
         else:
             last_pos_idx = -1
 
-        # TODO-important: coverage of zero -> p value of 1
-        # TODO-important: skip nan inwards
+        # TODO-plateau_detection: coverage of zero -> p value of 1
+        # TODO-plateau_detection: skip nan inwards
         if neighbors.iloc[last_pos_idx] < p_value_threshold:
             right_bkp = go_from_seed_to_plateau(last_pos_idx, 'backward')
             if right_bkp == -1:
@@ -2112,10 +2121,10 @@ class BinomPvalueBasedCuttingSiteDetermination:
                                             n=coverage_arr[np.newaxis, :],
                                             p=plateau_heights[:, np.newaxis])
         p_value_mat[p_value_mat > 0.5] = 1 - p_value_mat[p_value_mat > 0.5]
-        # TODO-important: only take elements times 2 where it makes sense
+        # TODO-plateau_detection: only take elements times 2 where it makes sense
         p_value_mat *= 2
         log_p_value_mat = np.log10(p_value_mat + 10**-30)
-        # TODO-important: discarding rows if more than half of the row is bad may be too harsh
+        # TODO-plateau_detection: discarding rows if more than half of the row is bad may be too harsh
         row_is_ok = np.sum(log_p_value_mat < -4, axis=1) < n_meth.shape[0] / 2
         log_p_value_mat = log_p_value_mat[row_is_ok, :]
         remaining_indices = np.arange(0, 1000)[row_is_ok]

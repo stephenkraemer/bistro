@@ -50,7 +50,7 @@ def user_config_file(request):
 
 
 @pytest.fixture(scope='module')
-def mbias_counter(user_config_file: str) -> None:
+def mbias_counter(user_config_file: str):
     """Runs mqc stats and provides path to results dir"""
 
     tmpdir = tempfile.mkdtemp()

@@ -37,7 +37,8 @@ plateau_flen: int
     Fragment lengths >= plateau_flen are used to estimate the correct global methylation level
 plateau_bs_strands: one or more of [w_bc c_bc w_bc_rv c_bc_rv]
    Only these BS-Seq strands are used to estimate the correct global methylation level
-
+always_accept_distance_from_plateau: float (default: 0.02)
+beta values within estimated global methylation level +- always_accept_distance_from_plateau are never rejected
 
 
 Providing your own algorithms
