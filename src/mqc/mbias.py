@@ -365,6 +365,8 @@ def fit_normalvariate_plateau(group_df: pd.DataFrame, config: ConfigDict) -> pd.
 
 def fit_percentiles(group_df: pd.DataFrame) -> pd.Series:
 
+    raise NotImplementedError
+    # remove hardcoding before using this
     min_perc = 0.5  # min_plateau_length = effective_read_length * min_perc
     percentiles = (0.02, 0.98)
     min_percentile_delta = 0.1
