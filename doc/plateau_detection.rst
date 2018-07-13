@@ -39,6 +39,9 @@ plateau_bs_strands: one or more of [w_bc c_bc w_bc_rv c_bc_rv]
    Only these BS-Seq strands are used to estimate the correct global methylation level
 always_accept_distance_from_plateau: float (default: 0.02)
 beta values within estimated global methylation level +- always_accept_distance_from_plateau are never rejected
+plateau_detection_step_size: int
+    The higher the value, the better the plateau height estimation. Recommendation: use default unless the plateau detection fails. In this case, you may rerun with increased step_size. Note that the runtime increases
+    cubic with higher step size, so increment the parameter carefully. Step sizes above 2000 will increase the walltime substantially.
 
 
 Providing your own algorithms

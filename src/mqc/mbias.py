@@ -363,6 +363,7 @@ def fit_normalvariate_plateau(group_df: pd.DataFrame, config: ConfigDict) -> pd.
                      index=['left_cut_end', 'right_cut_end'])
 
 
+# noinspection PyUnreachableCode
 def fit_percentiles(group_df: pd.DataFrame) -> pd.Series:
 
     raise NotImplementedError
@@ -648,7 +649,6 @@ def compute_derived_mbias_stats(mbias_stats_df: pd.DataFrame, config: ConfigDict
 
     print("Computing cutting sites")
     classic_mbias_stats_df = compute_classic_mbias_stats_df(mbias_stats_df)
-
     classic_mbias_stats_df_with_n_total = classic_mbias_stats_df.assign(
         n_total = lambda df: df['n_meth'] + df['n_unmeth']
     )
@@ -1498,6 +1498,7 @@ def convert_phred_bins_to_thresholds(mbias_stats_df: pd.DataFrame) -> pd.DataFra
 
     # Discard the highest phred bin - it has no events left after filtering
     # noinspection PyUnusedLocal
+    # pylint: disable=unused-variable
     phred_idx = res.index.get_level_values("phred").unique()[:-2]  # pylint: disable=unused-variable
     res = res.query("phred in @phred_idx")
 
@@ -1666,7 +1667,6 @@ class CuttingSites:
         plot_df = self.df.copy()
         plot_df.columns.name = 'cut_end'
         plot_df = plot_df.stack().to_frame('cut_pos').reset_index()
-        print(plot_df.head())
         (alt.Chart(plot_df)
          .mark_line()
          .encode(x='flen:Q', y='cut_pos:Q', color='cut_end:N')
@@ -1701,13 +1701,17 @@ class BinomPvalueBasedCuttingSiteDetermination:
         always_accept_distance_from_plateau: beta values within
            estimated global methylation level +- always_accept_distance_from_plateau
            are never rejected
+        plateau_detection_step_size: increase to improve the
+            estimate of the true global methylation level and slope of
+            the M-bias curve. Computation time increases with O(n^3).
     """
 
     def __init__(self, mbias_stats_df: pd.DataFrame, allow_slope: bool = True,
                  min_plateau_length: int = 30, max_slope: float = 0.0006,
                  plateau_flen: int = 210,
                  plateau_bs_strands: Tuple[str, ...] = ('c_bc', 'w_bc'),
-                 always_accept_distance_from_plateau: float = 0.02) -> None:
+                 always_accept_distance_from_plateau: float = 0.02,
+                 plateau_detection_step_size: int = 1000) -> None:
         self.plateau_flen = plateau_flen
         self.max_slope = max_slope
         # this line is duplicated in CuttingSites.from_mbias_stats
@@ -1718,6 +1722,7 @@ class BinomPvalueBasedCuttingSiteDetermination:
         self.allow_slope = allow_slope
         self.mbias_stats_df = mbias_stats_df
         self.always_accept_distance_from_plateau = always_accept_distance_from_plateau
+        self.plateau_detection_step_size = plateau_detection_step_size
 
 
     def compute_cutting_site_df(self) -> pd.DataFrame:
@@ -1728,51 +1733,31 @@ class BinomPvalueBasedCuttingSiteDetermination:
         n_total_wide = fn_mbias_stats_df['n_total'].unstack(level='pos', fill_value=0)
         beta_values_wide = fn_mbias_stats_df['beta_value'].unstack('pos', fill_value=0)
 
-        estimated_plateau_height, estimated_plateau_height_with_slope, slope = (
-            self._estimate_plateau_height(fn_mbias_stats_df))
-        strip_low_bound = estimated_plateau_height - self.always_accept_distance_from_plateau
-        strip_high_bound = estimated_plateau_height + self.always_accept_distance_from_plateau
-        estimated_plateau_heights = (
-                estimated_plateau_height_with_slope + np.arange(
-            n_meth_wide.shape[1]) * slope)
 
-        if estimated_plateau_height == -1 or slope > self.max_slope:
-            df = pd.DataFrame(
-                index=fn_mbias_stats_df.unstack('pos').index,
-            )
-            df['start'] = 0
-            df['end'] = 0
-            return df
+        intercept_, slope_ = self._estimate_plateau_height(
+                fn_mbias_stats_df, allow_slope=self.allow_slope)
+        plateau_heights_ = (intercept_ + np.arange(n_meth_wide.shape[1]) * slope_)
+        strip_low_bound = plateau_heights_ - self.always_accept_distance_from_plateau
+        strip_high_bound = plateau_heights_ + self.always_accept_distance_from_plateau
 
-        windowed_counts = self._compute_pre_and_successor_counts(
-            n_meth_wide, n_total_wide)
-
-        windowed_p_values = self._get_windowed_p_values(
-            estimated_plateau_heights, n_meth_wide, strip_high_bound,
-            strip_low_bound, windowed_counts)
-
-        # noinspection PyUnusedLocal
-        # pylint: disable=unused-variable
-        predecessor_p_values_integrated = self.integrate_p_values(
-            beta_values=windowed_counts['beta_value', 'predecessors'],
-            high_p_values=windowed_p_values['predecessors', 'high'],
-            low_p_values=windowed_p_values['predecessors', 'low'],
-            strip_low_bound=strip_low_bound,
-            strip_high_bound=strip_high_bound)
-
+        # Currently impossible because we only search up until the max. slope
+        # but search may go beyond max slope in the future, so let's be defensive here
+        if slope_ > self.max_slope:
+            print('The estimated M-bias slope of this sample exceeds the threshold set '
+                  'by you. This sample can\'t be processed further with the current '
+                  'algorithm and parameters.')
+            raise ValueError
 
         p_values_wide_low = pd.DataFrame(self._get_p_values(k=n_meth_wide,
                                                             n=n_total_wide,
                                                             p=strip_low_bound),
                                          index=n_meth_wide.index,
                                          columns=n_meth_wide.columns)
-
         p_values_wide_high = pd.DataFrame(self._get_p_values(k=n_meth_wide,
                                                              n=n_total_wide,
                                                              p=strip_high_bound),
                                           index=n_meth_wide.index,
                                           columns=n_meth_wide.columns)
-
         p_values_wide_integrated = self.integrate_p_values(
             beta_values=beta_values_wide,
             high_p_values=p_values_wide_high,
@@ -1797,7 +1782,6 @@ class BinomPvalueBasedCuttingSiteDetermination:
                 row=p_values_wide_integrated.iloc[i, :], flen=flen))
         df = pd.DataFrame(cutting_sites_list, index=n_meth_wide.index)
 
-
         group_levels = list(df.index.names)
         group_levels.remove('flen')
         # bug in groupby in pandas 0.23, need to take elaborate construct
@@ -1809,96 +1793,38 @@ class BinomPvalueBasedCuttingSiteDetermination:
                     .apply(self._smooth_cutting_sites, raw=False,
                            kwargs=dict(window_size=window_size,
                                        min_flen=min_flen)))
-        df = (df
-                   .groupby(group_levels, group_keys=False)
-                   .apply(fn)
-                   )
+        df = (df.groupby(group_levels, group_keys=False)
+              .apply(fn))
 
-        df.loc[
-        df['end'] - df['start'] < self.min_plateau_length, :] = 0
-
+        df.loc[df['end'] - df['start'] < self.min_plateau_length, :] = 0
         df = df.astype('i8')
-
         df.columns.name = 'cutting_site'
 
         return df
 
 
     @staticmethod
-    def integrate_p_values(beta_values, high_p_values, low_p_values, strip_low_bound,
-                           strip_high_bound):
+    def integrate_p_values(beta_values: pd.DataFrame, high_p_values: pd.DataFrame,
+                           low_p_values: pd.DataFrame, strip_low_bound: pd.DataFrame,
+                           strip_high_bound: pd.DataFrame) -> pd.DataFrame:
         res = high_p_values.copy()
         max_mask = low_p_values > high_p_values
         res[max_mask] = low_p_values[max_mask]
         in_window_mask = beta_values.apply(
             lambda ser: ser.between(strip_low_bound, strip_high_bound),
-            axis=0
+            axis=1
         )
         res[in_window_mask] = 1
         return res
 
-    def _get_windowed_p_values(self, estimated_plateau_heights, n_meth_wide,
-                               strip_high_bound, strip_low_bound,
-                               windowed_counts):
-        windowed_p_values = {}
-        windowed_p_values['predecessors'] = pd.DataFrame(
-            self._get_p_values(k=windowed_counts['n_meth', 'predecessors'],
-                               n=windowed_counts['n_total', 'predecessors'],
-                               p=estimated_plateau_heights),
-            index=n_meth_wide.index, columns=n_meth_wide.columns)
-        windowed_p_values['predecessors', 'low'] = pd.DataFrame(
-            self._get_p_values(k=windowed_counts['n_meth', 'predecessors'],
-                               n=windowed_counts['n_total', 'predecessors'],
-                               p=strip_low_bound, ), index=n_meth_wide.index,
-            columns=n_meth_wide.columns)
-        windowed_p_values['predecessors', 'high'] = pd.DataFrame(
-            self._get_p_values(k=windowed_counts['n_meth', 'predecessors'],
-                               n=windowed_counts['n_total', 'predecessors'],
-                               p=strip_high_bound, ), index=n_meth_wide.index,
-            columns=n_meth_wide.columns)
-        windowed_p_values['successors'] = pd.DataFrame(
-            self._get_p_values(k=windowed_counts['n_meth', 'successors'],
-                               n=windowed_counts['n_total', 'successors'],
-                               p=estimated_plateau_heights),
-            index=n_meth_wide.index, columns=n_meth_wide.columns)
-        return windowed_p_values
-
     @staticmethod
-    def _get_p_values(k, n, p):
+    def _get_p_values(k: np.ndarray, n: np.ndarray, p: np.ndarray) -> np.ndarray:
         binom_prob = scipy.stats.binom.cdf(k=k, n=n, p=p)
         binom_prob[binom_prob > 0.5] = 1 - binom_prob[binom_prob > 0.5]
         return binom_prob * 2
 
-    @staticmethod
-    def _compute_pre_and_successor_counts(n_meth_wide, n_total_wide):
-        successor_filter = np.concatenate([np.tile(1, 10), np.tile(0, 11)])
-        predecessor_filter = successor_filter[::-1]
-        windowed_counts = {}
-        windowed_counts['n_meth', 'predecessors'] = (n_meth_wide.apply(
-            lambda ser: np.convolve(ser.values, predecessor_filter,
-                                    mode='same'), axis=0))
-        windowed_counts['n_meth', 'successors'] = (n_meth_wide.apply(
-            lambda ser: np.convolve(ser.values, successor_filter, mode='same'),
-            axis=0))
-        windowed_counts['n_total', 'predecessors'] = (n_total_wide.apply(
-            lambda ser: np.convolve(ser.values, predecessor_filter,
-                                    mode='same'), axis=0))
-        windowed_counts['n_total', 'successors'] = (n_total_wide.apply(
-            lambda ser: np.convolve(ser.values, successor_filter, mode='same'),
-            axis=0))
-        windowed_counts['beta_value', 'successors'] = (
-                windowed_counts['n_meth', 'successors'] / windowed_counts[
-            'n_total', 'successors']
-
-        )
-        windowed_counts['beta_value', 'predecessors'] = (
-                windowed_counts['n_meth', 'predecessors'] / windowed_counts[
-            'n_total', 'predecessors']
-
-        )
-        return windowed_counts
-
-    def _estimate_plateau_height(self, mbias_stats_df):
+    def _estimate_plateau_height(self, mbias_stats_df: pd.DataFrame, allow_slope: bool) \
+            -> Tuple[float, float]:
 
         mbias_curve_for_plateau_detection = (mbias_stats_df
                                              .loc[nidxs(bs_strand=self.plateau_bs_strands), :]
@@ -1908,20 +1834,19 @@ class BinomPvalueBasedCuttingSiteDetermination:
             mbias_curve_for_plateau_detection.assign(
                 beta_value=compute_beta_values))
 
-        estimated_plateau_height_with_slope, slope = self._estimate_plateau_with_slope(
-            n_meth=mbias_curve_for_plateau_detection['n_meth'],
-            coverage_arr=mbias_curve_for_plateau_detection['n_total'], )
-        # estimated_plateau_height, slope = self._estimate_most_plausible_linear_model_with_slope(
-        #     n_meth_arr=global_mbias_curve['n_meth'],
-        #     coverage_arr=global_mbias_curve['n_total'],
-        #     beta_value_arr=global_mbias_curve['beta_value']
-        # )
-        estimated_plateau_height, _tmp = self._estimate_plateau(
-            n_meth=mbias_curve_for_plateau_detection['n_meth'],
-            coverage_arr=mbias_curve_for_plateau_detection['n_total'], )
-        return estimated_plateau_height, estimated_plateau_height_with_slope, slope
+        if allow_slope:
+            intercept_, slope_ = self._estimate_plateau_with_slope(
+                n_meth=mbias_curve_for_plateau_detection['n_meth'],
+                coverage_arr=mbias_curve_for_plateau_detection['n_total'],
+                step_size=self.plateau_detection_step_size)
+        else:
+            intercept_, slope_ = self._estimate_plateau(
+                n_meth=mbias_curve_for_plateau_detection['n_meth'],
+                coverage_arr=mbias_curve_for_plateau_detection['n_total'])
 
-    def _smooth_cutting_sites(self, ser, window_size, min_flen):
+        return intercept_, slope_
+
+    def _smooth_cutting_sites(self, ser: pd.Series, window_size: int, min_flen: int) -> float:
 
         # rolling windows don't prepend/append nan at the edges of the df
         # have to prepend ourselves, makes following logic easier
@@ -1945,7 +1870,7 @@ class BinomPvalueBasedCuttingSiteDetermination:
         return arr[window_half_size]
 
     @staticmethod
-    def get_representative_value(arr):
+    def get_representative_value(arr: np.ndarray) -> Tuple[float, int]:
         arr = arr[~np.isnan(arr)].astype(int)
         repr_value = np.nan
         repr_value_counts = np.nan
@@ -1958,62 +1883,17 @@ class BinomPvalueBasedCuttingSiteDetermination:
                 repr_value_counts = max_counts
         return repr_value, repr_value_counts
 
-    @staticmethod
-    def _compute_window_based_p_value(p_value_arr):
-        return np.min(p_value_arr)
-
-    # @staticmethod
-    # def _find_breakpoints(row, p_value_threshold=10**-6,
-    #                       n_consecutive_plateau_points=5):
-    #
-    #     def go_from_seed_to_plateau(seed_idx, direction):
-    #         if direction == 'forward':
-    #             step = 1
-    #         else:
-    #             step = -1
-    #         n_good_points = 0
-    #         for i in count(seed_idx + step, step):
-    #             try:
-    #                 if row.iloc[i] > p_value_threshold:
-    #                     n_good_points += 1
-    #                     if n_good_points > n_consecutive_plateau_points:
-    #                         if direction == 'forward':
-    #                             return i - n_consecutive_plateau_points
-    #                         return row.shape[0] + (i + n_consecutive_plateau_points) + 1
-    #                 else:
-    #                     n_good_points = 0
-    #             except IndexError:
-    #                 return -1
-    #
-    #     if row.iloc[0] < p_value_threshold:
-    #         left_bkp = go_from_seed_to_plateau(0, 'forward')
-    #         if left_bkp == -1:
-    #             return pd.Series(dict(start=0, end=0))
-    #     else:
-    #         left_bkp = 0
-    #
-    #     if row.iloc[-1] < p_value_threshold:
-    #         right_bkp = go_from_seed_to_plateau(-1, 'backward')
-    #         if right_bkp == -1:
-    #             return pd.Series(dict(start=0, end=0))
-    #     else:
-    #         right_bkp = row.shape[0] - 1
-    #
-    #     return pd.Series((dict(start=left_bkp, end=right_bkp)))
-
     # noinspection PyUnusedLocal
     # pylint: disable=unused-argument
     @staticmethod
-    def _find_breakpoints2(neighbors, row, p_value_threshold=10**-6,
-                           n_consecutive_plateau_points=5, flen=None):
+    def _find_breakpoints2(neighbors: pd.Series, row: pd.Series,
+                           p_value_threshold: float = 10**-6,
+                           n_consecutive_plateau_points: int = 5,
+                           flen: Optional[int] = None) -> pd.Series:
 
 
-        # pylint does not understand that the count loop must end in
-        # an IndexError. Therefore, this cannot return None
-        # Independent of that: This should be refactored to use a
-        # more explicit looping construct
-        # pylint: disable=inconsistent-return-statements
-        def go_from_seed_to_plateau(seed_idx, direction, p_value_threshold=0.1):
+        def go_from_seed_to_plateau(seed_idx: int, direction: str,
+                                    p_value_threshold: float = 0.1) -> int:
             if direction == 'forward':
                 step = 1
             else:
@@ -2032,6 +1912,10 @@ class BinomPvalueBasedCuttingSiteDetermination:
                         n_good_points = 0
                 except IndexError:
                     return -1
+
+            # TODO-minor: improve by using more explicit loop
+            # this return is just to make linters happy, it cannot be reached
+            return -1
 
         if neighbors.iloc[0] < p_value_threshold:
             left_bkp = go_from_seed_to_plateau(0, 'forward')
@@ -2058,31 +1942,8 @@ class BinomPvalueBasedCuttingSiteDetermination:
 
         return pd.Series((dict(start=left_bkp, end=right_bkp)))
 
-
-    def _estimate_most_plausible_linear_model_assuming_no_slope(
-            self, n_meth, coverage_arr):
-        """Determine the line (with no slope) which explains the most of the observed points
-
-        If several plateau heights explain the same number of points, take the median
-        plateau height.
-        """
-
-        n_linspace = 1000
-        explained_points = []
-        for curr_plateau_height in np.linspace(0,1,n_linspace):
-            explained_points.append(
-                sum(self._convert_mbias_curve_to_pvalues(
-                    n_meth=n_meth, coverage_arr=coverage_arr,
-                    plateau_heights_=curr_plateau_height)
-                    > 0.01))
-        explained_points_arr = np.array(explained_points)
-        plateau_guess = np.median(
-            np.nonzero(explained_points_arr == max(explained_points_arr))) / n_linspace
-        # also return slope
-        return plateau_guess, 0
-
     @staticmethod
-    def _estimate_plateau(n_meth, coverage_arr):
+    def _estimate_plateau(n_meth: np.ndarray, coverage_arr: np.ndarray) -> Tuple[float, float]:
         plateau_heights = np.linspace(0, 1, 1000)
         p_value_mat = scipy.stats.binom.cdf(k=n_meth[np.newaxis, :],
                                             n=coverage_arr[np.newaxis, :],
@@ -2096,95 +1957,69 @@ class BinomPvalueBasedCuttingSiteDetermination:
         log_p_value_mat = log_p_value_mat[row_is_ok, :]
         remaining_indices = np.arange(0, 1000)[row_is_ok]
         log_p_value_mat[log_p_value_mat < -8] = 0
+
         try:
             plateau_height_ = remaining_indices[np.argmax(np.sum(log_p_value_mat, axis=1))] / 1000
         except ValueError:
             # if log_p_value_mat is empty due to filtering above
-            plateau_height_ = -1
+            print('Cannot identify a plateau with binomp algorithm. Change parameters'
+                  'or use another plateau detection algorithm. One place to start would'
+                  'be allowing a slope.')
+            raise
+
         return plateau_height_, 0
 
-    @staticmethod
-    def _estimate_plateau_with_slope(n_meth, coverage_arr):
+    def _estimate_plateau_with_slope(self, n_meth: np.ndarray, coverage_arr: np.ndarray,
+                                     step_size: int = 1000) \
+            -> Tuple[float, float]:
+
+        inclusion_log_p_threshold = -8
+
         # n_meth = np.concatenate([np.tile(0, 9), np.tile(70, 92)])
         # coverage_arr = np.tile(100, 101)
-        plateau_heights = np.linspace(0, 1, 200)
-        slopes = np.linspace(0, 0.002, 100)
+        median_beta = np.median(n_meth / coverage_arr)
+        plateau_heights = np.linspace(median_beta - 0.1, median_beta + 0.1, step_size)
+        slopes = np.linspace(0, self.max_slope, step_size)
         pos = np.arange(n_meth.shape[0])
         ms = slopes[:, np.newaxis] * pos[np.newaxis, :]
         mat = ms[np.newaxis, :, :] + plateau_heights[:, np.newaxis, np.newaxis]
         mat[mat > 1] = 1
         mat[mat < 0] = 0
+
         p_value_mat = scipy.stats.binom.cdf(k=n_meth[np.newaxis, np.newaxis, :],
                                             n=coverage_arr[np.newaxis, np.newaxis, :],
                                             p=mat)
         p_value_mat[p_value_mat > 0.5] = 1 - p_value_mat[p_value_mat > 0.5]
         p_value_mat *= 2
         log_p_value_mat = np.log10(p_value_mat + 10**-30)
-        row_is_ok = np.sum(log_p_value_mat < -4, axis=2) < n_meth.shape[0] / 2
-        log_p_value_mat[log_p_value_mat < -4] = np.nan
+
+        row_is_ok = np.sum(log_p_value_mat < inclusion_log_p_threshold, axis=2) < n_meth.shape[0] / 2
+        log_p_value_mat[log_p_value_mat < inclusion_log_p_threshold] = np.nan
+        # get probability of observations by adding up the log probabilities
         sums = np.nansum(log_p_value_mat, axis=2)
         idx = np.nonzero(row_is_ok)
         ok_events = sums[row_is_ok]
-        plateau_height = plateau_heights[idx[0][np.argmax(ok_events)]]
-        slope = slopes[idx[1][np.argmax(ok_events)]]
+
+        try:
+            plateau_height = plateau_heights[idx[0][np.argmax(ok_events)]]
+            slope = slopes[idx[1][np.argmax(ok_events)]]
+        except ValueError:
+            # argmax of empty sequence -> no plateau found
+            print('Cannot identify a plateau with binomp algorithm. Change parameters'
+                  'or use another plateau detection algorithm.')
+            raise
+
         return plateau_height, slope
         # remaining_indices = np.arange(0, 1000)[row_is_ok]
         # log_p_value_mat[log_p_value_mat < -8] = 0
         # plateau_height_ = remaining_indices[np.argmax(np.sum(log_p_value_mat, axis=1))] / 1000
 
     @staticmethod
-    def _convert_mbias_curve_to_pvalues(n_meth, coverage_arr,
-                                        plateau_heights_: Union[int, np.ndarray]):
+    def _convert_mbias_curve_to_pvalues(n_meth: np.ndarray, coverage_arr: np.ndarray,
+                                        plateau_heights_: Union[int, np.ndarray]) -> np.ndarray:
 
         p_values = scipy.stats.binom.cdf(n=coverage_arr,
                                          p=plateau_heights_, k=n_meth)
         p_values[p_values > 0.5] = 1 - p_values[p_values > 0.5]
         p_values *= 2
         return p_values
-
-    def _estimate_most_plausible_linear_model_with_slope(
-            self, n_meth_arr, beta_value_arr, coverage_arr):
-        """Brute force estimation"""
-
-        n_unexplained = []
-        intercepts = []
-        slopes = []
-
-        # A very naive first attempt to guess a good range for where to look for the
-        # intercept. This is function is fast enough that this would not even be necessary
-        # but it was helpful to get additional speedup for interactive work
-        hist = np.histogram(np.round(beta_value_arr, 2))
-        intercept_guess = hist[1][np.argmax(hist[0])]  # suboptimal for slopes
-
-        for intercept, slope in product(
-                np.linspace(intercept_guess - 0.15, intercept_guess + 0.15, 50),
-                np.linspace(0, 0.002, 100)):
-            n_unexplained.append(
-                self._get_n_unexplained_points(
-                    n_meth=n_meth_arr,
-                    coverage_arr=coverage_arr,
-                    intercept=intercept,
-                    slope=slope))
-            intercepts.append(intercept)
-            slopes.append(slope)
-
-        n_unexplained_arr = np.array(n_unexplained)
-        intercepts = np.array(intercepts)
-        slopes = np.array(slopes)
-        idx = np.nonzero(n_unexplained_arr == n_unexplained_arr.min())
-        return np.median(intercepts[idx]), np.median(slopes[idx])
-
-
-    @staticmethod
-    def _get_n_unexplained_points(
-            n_meth, coverage_arr, intercept, slope, p_threshold=0.01):
-        pos_arr = np.arange(0, n_meth.shape[0])
-        line_heights = intercept + pos_arr * slope
-        line_heights[line_heights > 1] = 1
-        line_heights[line_heights < 0] = 0
-        p_values = scipy.stats.binom.cdf(n=coverage_arr, p=line_heights, k=n_meth)
-        p_values[p_values > 0.5] = 1 - p_values[p_values > 0.5]
-        p_values *= 2
-        n_unexplained = sum(p_values < p_threshold)
-        return n_unexplained
-

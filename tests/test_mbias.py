@@ -1886,7 +1886,8 @@ class TestBinomPvalueBasedCuttingSiteDetermination:
                                                       adjust_small_flens=adjust_for_small_flens)
         cutting_sites = BinomPvalueBasedCuttingSiteDetermination(mbias_stats_df=mbias_stats_stub.df,
                                                                  allow_slope=allow_slope,
-                                                                 plateau_flen=170).compute_cutting_site_df()
+                                                                 plateau_flen=170,
+                                                                 plateau_detection_step_size=200).compute_cutting_site_df()
 
         return cutting_sites, mbias_stats_stub
 
