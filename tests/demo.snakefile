@@ -13,8 +13,7 @@ pids_csv=$(echo mpp?_? hsc_? | tr ' ' ,)
 echo $pids_csv
 cd
 
-pids_csv='mpp1_1,mpp1_2,mpp1_3'
-pids_csv='hsc_2'
+pids_csv='monos_3,pdc_3,mep_3'
 
 snakemake \
 --snakefile ~/projects/mqc/tests/demo.snakefile \
@@ -22,11 +21,11 @@ snakemake \
 --jobs 1000 \
 --jobscript /home/kraemers/projects/mqc/tests/jobscript_lsf.sh \
 --cluster "bsub -R rusage[mem={params.mem}G] -M {params.mem}G -n {params.cores} -J {params.name} -W {params.walltime} -o /home/kraemers/temp/logs/" \
---forcerun get_stats \
 --keep-going \
 --dryrun
 
 
+--forcerun get_stats \
 --cluster "qsub -S /bin/bash -l walltime={params.walltime},mem={params.mem}g,nodes=1:ppn={params.cores} -N {params.name}" \
 
 """
@@ -69,7 +68,7 @@ full_mbias_stats_pattern_by_pid = f"{output_rpp_dir}/{{pid}}/meth/qc_stats/{{pid
 trimmed_mbias_stats_pattern_by_pid = f"{output_rpp_dir}/{{pid}}/meth/qc_stats/{{pid}}_mbias-stats_masked_{motifs_msv_str}.p"
 full_phredfiltered_mbias_stats_by_pid = f"{output_rpp_dir}/{{pid}}/meth/qc_stats/{{pid}}_mbias-stats_phred-threshold_{motifs_msv_str}.p.p"
 trimmed_phredfiltered_mbias_stats_by_pid = f"{output_rpp_dir}/{{pid}}/meth/qc_stats/{{pid}}_mbias-stats_masked_phred-threshold_{motifs_msv_str}.p.p"
-all_evaluate_stats_files = expand(full_mbias_stats_pattern_by_pid, pid=config['pids']),
+all_evaluate_stats_files = expand(trimmed_mbias_stats_pattern_by_pid, pid=config['pids']),
 
 ## plot mbias
 test_mbias_plot_config_json = os.path.expanduser('~/projects/mqc/src/mqc/resources/mbias_plots_config.json')
@@ -193,7 +192,7 @@ rule evaluate_mbias:
     input:
         mbias_counter = mbias_counter_pattern_by_pid
     output:
-        full_mbias_stats_pattern_by_pid,
+        # full_mbias_stats_pattern_by_pid,
         trimmed_mbias_stats_pattern_by_pid,
         full_phredfiltered_mbias_stats_by_pid,
         trimmed_phredfiltered_mbias_stats_by_pid,
@@ -208,11 +207,11 @@ rule evaluate_mbias:
         plateau_detection_params = json.dumps(
             {"algorithm": "binomp",
              "allow_slope": True,
-             "min_plateau_length": 30,
-             "max_slope": 0.001,
-             "plateau_flen": 130,
-             "plateau_bs_strands": ["w_bc", "c_bc"],
-             "always_accept_distance_from_plateau": 0.02,
+             # "min_plateau_length": 30,
+             # "max_slope": 0.001,
+             # "plateau_flen": 130,
+             # "plateau_bs_strands": ["w_bc", "c_bc"],
+             # "always_accept_distance_from_plateau": 0.02,
             })
     shell:
         """
@@ -222,12 +221,13 @@ rule evaluate_mbias:
         --sample_name {wildcards.pid} \
         --sample_meta {params.sample_meta} \
         --output_dir {params.output_dir} \
-        --plateau_detection '{params.plateau_detection_params}'
+        --plateau_detection '{params.plateau_detection_params}' \
+        --use_cached_mbias_stats
         """
-        # --use_cached_mbias_stats
 
 def get_datasets_str(wildcards, input):
-    res =(f'full={input.full_mbias_stats},trimmed={input.trimmed_mbias_stats},'
+    full_mbias_stats = full_mbias_stats_pattern_by_pid.format(pid=wildcards.pid)
+    res =(f'full={full_mbias_stats},trimmed={input.trimmed_mbias_stats},'
           f'full_phred-threshold={input.full_phredfiltered_mbias_stats},'
           f'trimmed_phred-threshold={input.trimmed_phredfiltered_mbias_stats}')
     return res
@@ -235,7 +235,7 @@ def get_datasets_str(wildcards, input):
 # Use default mbias plot config
 rule plot_mbias:
     input:
-        full_mbias_stats=full_mbias_stats_pattern_by_pid,
+        # full_mbias_stats=full_mbias_stats_pattern_by_pid,
         trimmed_mbias_stats=trimmed_mbias_stats_pattern_by_pid,
         full_phredfiltered_mbias_stats=full_phredfiltered_mbias_stats_by_pid,
         trimmed_phredfiltered_mbias_stats=trimmed_phredfiltered_mbias_stats_by_pid,
