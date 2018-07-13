@@ -21,8 +21,8 @@ snakemake \
 --config pids=$pids_csv motifs=CG \
 --jobs 1000 \
 --jobscript /home/kraemers/projects/mqc/tests/jobscript_lsf.sh \
---cluster "bsub -R rusage[mem={params.mem}G] -M {params.mem}G -n {params.cores} -J {params.name} -W {params.walltime}" \
---forcerun evaluate_mbias \
+--cluster "bsub -R rusage[mem={params.mem}G] -M {params.mem}G -n {params.cores} -J {params.name} -W {params.walltime} -o /home/kraemers/temp/logs/" \
+--forcerun get_stats \
 --keep-going \
 --dryrun
 
@@ -32,6 +32,9 @@ snakemake \
 """
 
 import os.path as op
+import json
+import pickle
+from collections import defaultdict
 from pathlib import Path
 import sys
 import re
@@ -79,10 +82,17 @@ mcall_bed_patterns_by_pid = expand("{output_rpp_dir}/{{pid}}/meth/meth_calls/"
                                    chrom=all_chroms)
 
 mcall_bismark_patterns_by_pid = expand("{output_rpp_dir}/{{pid}}/meth/meth_calls/"
-                                       "bismark_{{pid}}_{single_motif}_chr-{chrom}.bed.gz",
+                                       "{{pid}}_{single_motif}_chr-{chrom}.bismark.gz",
                                        output_rpp_dir=output_rpp_dir,
                                        single_motif=single_motifs,
                                        chrom=all_chroms)
+
+mcall_stratifiedbed_patterns_by_pid = expand("{output_rpp_dir}/{{pid}}/meth/meth_calls/"
+                                             "{{pid}}_{single_motif}_chr-{chrom}_stratified.bed.gz",
+                                             output_rpp_dir=output_rpp_dir,
+                                             single_motif=single_motifs,
+                                             chrom=all_chroms)
+
 
 coverage_count_patterns_by_pid = [f"{output_rpp_dir}/{{pid}}/meth/qc_stats/{{pid}}_coverage-counts_{motifs_msv_str}.tsv",
                                   f"{output_rpp_dir}/{{pid}}/meth/qc_stats/{{pid}}_coverage-counts_{motifs_msv_str}.p"]
@@ -114,6 +124,9 @@ def get_sample_metadata(wildcards) -> str:
         raise ValueError(f"Can't extract sample metadata from pid {wildcards.pid}")
     return (f"population={population},"
             f"rep={rep}")
+
+with open('/home/kraemers/projects/mqc/tests/test_files/hs_data_read_length_mapping.p', 'rb') as fin:
+  pid_to_read_length_mapping = pickle.load(fin)
 
 rule all:
     input:
@@ -155,9 +168,10 @@ rule get_stats:
         output_dir = output_dir_by_pid,
         walltime = '01:30' if motifs_csv_str == 'CG' else '08:00',
         mem = '12',
-        cores = '12',
+        cores = '8',
         name = f'get_stats_{{pid}}_{motifs_msv_str}',
-        sample_meta = get_sample_metadata
+        sample_meta = get_sample_metadata,
+        read_length = lambda wildcards: pid_to_read_length_mapping[wildcards.pid],
     output:
         mbias_counter = mbias_counter_pattern_by_pid,
     shell:
@@ -170,14 +184,16 @@ rule get_stats:
             --sample_meta {params.sample_meta} \
             --cores {params.cores} \
             --motifs {config[motifs_csv]} \
+            --read_length {params.read_length} \
             {input.index_files}
         """
+
 
 rule evaluate_mbias:
     input:
         mbias_counter = mbias_counter_pattern_by_pid
     output:
-        # full_mbias_stats_pattern_by_pid,
+        full_mbias_stats_pattern_by_pid,
         trimmed_mbias_stats_pattern_by_pid,
         full_phredfiltered_mbias_stats_by_pid,
         trimmed_phredfiltered_mbias_stats_by_pid,
@@ -188,7 +204,16 @@ rule evaluate_mbias:
         mem = '40',
         cores = '8',
         name = f'evalute_mbias_{{pid}}_{motifs_msv_str}',
-        sample_meta = get_sample_metadata
+        sample_meta = get_sample_metadata,
+        plateau_detection_params = json.dumps(
+            {"algorithm": "binomp",
+             "allow_slope": True,
+             "min_plateau_length": 30,
+             "max_slope": 0.001,
+             "plateau_flen": 130,
+             "plateau_bs_strands": ["w_bc", "c_bc"],
+             "always_accept_distance_from_plateau": 0.02,
+            })
     shell:
         """
         mqc evaluate_mbias \
@@ -197,8 +222,9 @@ rule evaluate_mbias:
         --sample_name {wildcards.pid} \
         --sample_meta {params.sample_meta} \
         --output_dir {params.output_dir} \
-        --use_cached_mbias_stats
+        --plateau_detection '{params.plateau_detection_params}'
         """
+        # --use_cached_mbias_stats
 
 def get_datasets_str(wildcards, input):
     res =(f'full={input.full_mbias_stats},trimmed={input.trimmed_mbias_stats},'
@@ -227,8 +253,6 @@ rule plot_mbias:
     shell:
         """
         mqc mbias_plots \
-        --sample_name {wildcards.pid} \
-        --sample_meta {params.sample_meta} \
         --output_dir {params.output_dir} \
         --datasets {params.datasets} \
         """
@@ -242,12 +266,11 @@ mcall_command = (
     ' --sample_name {wildcards.pid}'
     ' --sample_meta {params.sample_meta}'
     ' --cores {params.cores}'
-    ' --output_formats bed,bismark'
+    ' --output_formats bed,bismark,stratified_bed'
     ' --trimming cutting_sites::{input.cutting_sites_df}'
-    ' --max_read_length 101'
+    ' --max_read_length {params.read_length}'
     ' {input.index_files}'
 )
-# ' --use_mbias_fit'
 rule call:
     input:
         bam=bam_pattern_by_pid,
@@ -259,10 +282,12 @@ rule call:
         output_dir = output_dir_by_pid,
         walltime = '8:00',
         name = f'mcall_{motifs_msv_str}_{{pid}}',
-        sample_meta = get_sample_metadata
+        sample_meta = get_sample_metadata,
+        read_length = lambda wildcards: pid_to_read_length_mapping[wildcards.pid],
     output:
         mcall_bed_patterns_by_pid,
         mcall_bismark_patterns_by_pid,
+        mcall_stratifiedbed_patterns_by_pid,
         # coverage_files = coverage_count_patterns_by_pid,
     shell: mcall_command
 

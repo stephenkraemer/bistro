@@ -39,6 +39,7 @@ input_click_path = click.Path(exists=True, readable=True,
 @click.option('--bam', required=True,
               type=input_click_path)
 @click.argument('index_files', nargs=-1,
+                required=True,
                 type=click.Path(resolve_path=True, exists=True, dir_okay=False))
 # TODO: which checks are necessary
 @click.option('--output_dir', required=True,
@@ -53,7 +54,7 @@ input_click_path = click.Path(exists=True, readable=True,
 @click.option('--motifs', required=True,
               help=("Comma separated list of the motifs in the index files."
                     "For example: CG,CHG"))
-@click.option('--read_length', type=int)
+@click.option('--read_length', type=int, required=True)
 @click.pass_context
 def stats(ctx, bam, index_files,
           output_dir, config_file,

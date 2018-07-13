@@ -10,7 +10,7 @@ in_rpp_dir = "/icgc/dkfzlsdf/project/mouse_hematopoiesis/sequencing/whole_genome
 # bam_pattern_by_pid = f"{in_rpp_dir}/{{pid}}/alignment/blood_{{pid}}_merged.mdup.bam"
 bam_pattern_by_pid = f"{in_rpp_dir}/{{pid}}/blood/paired/merged-alignment/blood_{{pid}}_merged.mdup.bam"
 
-autosomes = [str(i) for i in range(14,20)]
+autosomes = [str(i) for i in range(1, 20)]
 other_chroms = []  #['X', 'Y', 'MT', 'phix', 'L']
 
 single_motifs = ['CG']
