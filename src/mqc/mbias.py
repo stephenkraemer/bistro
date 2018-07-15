@@ -1837,7 +1837,7 @@ class BinomPvalueBasedCuttingSiteDetermination:
         if allow_slope:
             intercept_, slope_ = self._estimate_plateau_with_slope(
                 n_meth=mbias_curve_for_plateau_detection['n_meth'],
-                coverage_arr=mbias_curve_for_plateau_detection['n_total'],
+                n_total=mbias_curve_for_plateau_detection['n_total'],
                 step_size=self.plateau_detection_step_size)
         else:
             intercept_, slope_ = self._estimate_plateau(
@@ -1969,47 +1969,72 @@ class BinomPvalueBasedCuttingSiteDetermination:
 
         return plateau_height_, 0
 
-    def _estimate_plateau_with_slope(self, n_meth: np.ndarray, coverage_arr: np.ndarray,
-                                     step_size: int = 1000) \
+    def _estimate_plateau_with_slope(self, n_meth: np.ndarray, n_total: np.ndarray,
+                                     step_size: int = 1000, inclusion_log_p_threshold = -8)\
             -> Tuple[float, float]:
 
-        inclusion_log_p_threshold = -8
-
-        # n_meth = np.concatenate([np.tile(0, 9), np.tile(70, 92)])
-        # coverage_arr = np.tile(100, 101)
-        median_beta = np.median(n_meth / coverage_arr)
-        plateau_heights = np.linspace(median_beta - 0.1, median_beta + 0.1, step_size)
-        slopes = np.linspace(0, self.max_slope, step_size)
+        # TODO-plateau_detection: this will raise warning on zero divide and then
+        # fail at np.median. problematic when in read and when there are zero
+        # coverage positions at the end of the read
+        beta_values = n_meth / n_total
+        initial_intercept_ = np.median(n_meth / n_total)
+        intercept_search_window = np.linspace(initial_intercept_ - 0.1, initial_intercept_ + 0.1, step_size)
+        slope_search_window = np.linspace(0, self.max_slope, step_size)
         pos = np.arange(n_meth.shape[0])
-        ms = slopes[:, np.newaxis] * pos[np.newaxis, :]
-        mat = ms[np.newaxis, :, :] + plateau_heights[:, np.newaxis, np.newaxis]
-        mat[mat > 1] = 1
-        mat[mat < 0] = 0
+        added_by_slope = slope_search_window[:, np.newaxis] * pos[np.newaxis, :]
+        model_beta_value_arr = intercept_search_window[:, np.newaxis, np.newaxis] + added_by_slope[np.newaxis, :, :]
+        model_beta_value_arr[model_beta_value_arr > 1] = 1
+        model_beta_value_arr[model_beta_value_arr < 0] = 0
 
         p_value_mat = scipy.stats.binom.cdf(k=n_meth[np.newaxis, np.newaxis, :],
-                                            n=coverage_arr[np.newaxis, np.newaxis, :],
-                                            p=mat)
+                                            n=n_total[np.newaxis, np.newaxis, :],
+                                            p=model_beta_value_arr)
         p_value_mat[p_value_mat > 0.5] = 1 - p_value_mat[p_value_mat > 0.5]
         p_value_mat *= 2
         log_p_value_mat = np.log10(p_value_mat + 10**-30)
 
-        row_is_ok = np.sum(log_p_value_mat < inclusion_log_p_threshold, axis=2) < n_meth.shape[0] / 2
+        beta_value_arr = n_meth[np.newaxis, np.newaxis, :] / n_total[np.newaxis, np.newaxis, :]
+        is_within_strip = np.abs(beta_value_arr - model_beta_value_arr) < self.always_accept_distance_from_plateau
+        log_p_value_mat[is_within_strip] = 0
         log_p_value_mat[log_p_value_mat < inclusion_log_p_threshold] = np.nan
-        # get probability of observations by adding up the log probabilities
-        sums = np.nansum(log_p_value_mat, axis=2)
-        idx = np.nonzero(row_is_ok)
-        ok_events = sums[row_is_ok]
 
+        # TODO: don't use point in strip, use point above inclusion p threshold
         try:
-            plateau_height = plateau_heights[idx[0][np.argmax(ok_events)]]
-            slope = slopes[idx[1][np.argmax(ok_events)]]
+            n_ok_pos_arr = np.nansum(log_p_value_mat > inclusion_log_p_threshold, axis=2)
+            if np.max(n_ok_pos_arr) < n_meth.shape[0] / 2:
+                raise  ValueError
+            ph_idx, slope_idx = np.unravel_index(np.argmax(n_ok_pos_arr), n_ok_pos_arr.shape)
+            temp_intercept_ = intercept_search_window[ph_idx]
+            slope_ = slope_search_window[slope_idx]
+            model_beta_values = temp_intercept_ + np.arange(0, n_meth.shape[0]) * slope_
+            beta_is_ok = np.abs(beta_values - model_beta_values) < self.always_accept_distance_from_plateau
+            final_intercept_ = np.median(beta_values[beta_is_ok])
         except ValueError:
             # argmax of empty sequence -> no plateau found
             print('Cannot identify a plateau with binomp algorithm. Change parameters'
                   'or use another plateau detection algorithm.')
             raise
 
-        return plateau_height, slope
+        print(final_intercept_, slope_)
+        return final_intercept_, slope_
+
+        # row_is_ok = np.sum(log_p_value_mat < inclusion_log_p_threshold, axis=2) < n_meth.shape[0] / 2
+        # log_p_value_mat[log_p_value_mat < inclusion_log_p_threshold] = np.nan
+        # # get probability of observations by adding up the log probabilities
+        # sums = np.nansum(log_p_value_mat, axis=2)
+        # idx = np.nonzero(row_is_ok)
+        # ok_events = sums[row_is_ok]
+        # #
+        # try:
+        #     plateau_height = intercept_search_window[idx[0][np.argmax(ok_events)]]
+        #     slope = slope_search_window[idx[1][np.argmax(ok_events)]]
+        # except ValueError:
+        #     # argmax of empty sequence -> no plateau found
+        #     print('Cannot identify a plateau with binomp algorithm. Change parameters'
+        #           'or use another plateau detection algorithm.')
+        #     raise
+        # return plateau_height, slope
+
         # remaining_indices = np.arange(0, 1000)[row_is_ok]
         # log_p_value_mat[log_p_value_mat < -8] = 0
         # plateau_height_ = remaining_indices[np.argmax(np.sum(log_p_value_mat, axis=1))] / 1000

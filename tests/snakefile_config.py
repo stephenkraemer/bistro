@@ -1,7 +1,7 @@
 # Mouse samples
 # sandbox_dir = "/icgc/dkfzlsdf/analysis/B080/kraemers/projects/mcall_qc/sandbox"
 sandbox_dir = "/icgc/dkfzlsdf/analysis/B080/kraemers/projects/mbias/sandbox"
-output_rpp_dir = f"{sandbox_dir}/results_per_pid"
+output_rpp_dir = f"{sandbox_dir}/results_per_pid_july15"
 index_dir = f"{sandbox_dir}/genomes/GRCm38mm10_PhiX_Lambda"
 reference_genome = f"{index_dir}/GRCm38mm10_PhiX_Lambda.fa"
 mqc_config_file = f"{sandbox_dir}/user_config.toml"
