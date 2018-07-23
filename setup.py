@@ -1,72 +1,9 @@
-"""An extensible and flexible WGBS data parser built upon pysam and htslib"""
-
-"""
-fix develop install
--------------------
-
-- if cython and/or pysam are missing, and the C files are not there (i.e. we are in the distribution): abort and say: for develop install. pysam and cython must be installed before calling setup.py
-- i would not make cython and pysam build requirements. rather, by default, the 'recommended pysam version' should be used on the already cythonized ext. modules
-- if cython and pysam are already present, we compile against them, because the user obviously wants to use them
-- if only cython is present, I would just use the precompiled files, because the user does not enforce a pysam version - so can just take ours, and then we can take the C extension modules from us
-- common case: download repo, develop. Dev. wants to user 'working' pysam and cython versions.
-  - requirements.txt is associated with 'deployment config'. This is what we need here: record the config of the deployment done with this tagged version. An extern dev checking out the repo can then use the deployment config we used when testing or deploying a commit
-
-ToDo
-####
-
-- implement these cases
-	case1: pysam only installed, not cython
-	if pysam version == requirements.txt version:
-	    log message
-            from precompiled_ext_modules
-	else:
-	    raise: cython needed to comply with pysam version
-
-	case2: pysam and cython installed:    
-	   re-cythonize
-	   log message
-
-	case3: no pysam version given
-	   use precompiled extension modules
-	   log message
-
-- implement these cases
-   case 1: pysam installed, not cython
-	if pysam version == requirements.txt version:
-	    log message
-            from precompiled_ext_modules
-	else:
-	    raise
-   case 2: pysam not installed
-	   use precompiled extension modules
-	   log message
-   case 3: pysam and cython
-       # need to distinguish this case from pysam presence only to allow for recythonizing code during development when cython version changes, but not pysam version
-       force recythonize
-
-- function use precompiled extension modules
-  - raise if extension modules are not there.  write warning message when installing from repo: pysam and cython need to be installed before. To get versions of last release, use requirements.txt or use new versions.
-- recythonize function:
-  - raise if no cython available
-- check logic
-- commit
-- test local
-- test on cluster
-- push to github
-- push to phabricator
-
-Done
-####
-- transfer cython and pysam versions to requirements.txt
-- re-establish reading pysam version from requirements.txt
-"""
+"""Install mqc"""
 
 import sys
 import os.path as op
 
-import os
 from pathlib import Path
-
 from setuptools import setup, find_packages
 from setuptools.extension import Extension
 from setuptools.command.build_ext import build_ext
@@ -165,7 +102,7 @@ setup(name='mqc',
           'dataclasses',
           # 'dpcontracts',  (github)
           'feather-format',
-          'ipywidgets',
+          'figure_report',
           'joblib',
           'matplotlib',
           'more_itertools',

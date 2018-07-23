@@ -1,0 +1,49 @@
+package:
+  name: mqc
+  version: "0.2"
+
+source:
+  path: ../
+
+requirements:
+  build:
+    - python
+    - setuptools
+    - cython=0.26
+    - pysam=0.11.2.2
+
+  run:
+    - python
+    - setuptools
+    - altair
+    - click
+    - dataclasses
+    - feather-format
+    - figure_report
+    - joblib
+    - matplotlib
+    - more-itertools
+    - numpy
+    - pandas
+    - plotnine
+    - python-magic>=0.4.13
+    - scikit-learn
+    - scipy
+    - seaborn
+    - statsmodels
+    - toml
+    - toolz
+    - cython=0.26
+    - pysam=0.11.2.2
+    - pytest
+    - pytest-mock
+    - pytest-xdist
+#    - mypy==0.610
+#    - numpy-stubs
+
+test:
+  imports:
+    - mqc
+
+about:
+  home: 'http://github.com/sjkv/mqc'

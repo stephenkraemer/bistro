@@ -134,7 +134,7 @@ rule all:
         all_stats_files,
         all_evaluate_stats_files,
         expand(mbias_plot_done_by_pid, pid=config['pids']),
-        # all_mcall_files,
+        all_mcall_files,
         # all_coverage_counter_files,
         # all_evaluate_calls_files,
 
