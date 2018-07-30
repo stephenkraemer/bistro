@@ -9,6 +9,14 @@ from joblib import Parallel, delayed
 
 from mqc.utils import open_gzip_or_plain_file
 
+# List of all allowed index field names
+# Used to validate index files and to distinguish index columns from
+# data columns. Used e.g. in merge_strands to find the data columns
+# (which need to be summed up)
+possible_index_field_names = [
+    '#chrom', 'start', 'end', 'motif', 'score', 'strand',
+    'triplet_seq', 'seq_context'
+]
 
 class IndexFile:
     def __init__(self, bed_abspath: str) -> None:

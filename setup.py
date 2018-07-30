@@ -92,7 +92,7 @@ setup(name='mqc',
       zip_safe=False,
 
       entry_points = {
-          'console_scripts': ['mqc=mqc.cli:mqc'],
+          'console_scripts': ['mqc=mqc.cli:mqc', 'bistro=mqc.cli:bistro'],
       },
 
       install_requires=[

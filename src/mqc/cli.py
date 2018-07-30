@@ -6,11 +6,12 @@ Based on click package
 """
 
 # pylint: disable=unused-argument
-
+import argparse
 import copy
 import json
 import sys
 from collections import OrderedDict
+from textwrap import dedent
 from typing import Dict
 
 import click
@@ -18,6 +19,7 @@ import click
 from mqc.config import assemble_config_vars
 from mqc.index import start_parallel_index_generation
 from mqc.mcall_run import collect_mbias_stats, run_mcalling
+from mqc.merge_strands import BedMethCallsMerger
 from mqc.utils import get_resource_abspath
 from mqc.mbias import compute_mbias_stats, mbias_stat_plots
 from mqc.coverage import analyze_coverage
@@ -315,3 +317,112 @@ def evaluate_calls(ctx, config_file, motifs, output_dir, sample_name, sample_met
 # ==============================================================================
 def dict_from_kwarg_cli_option(value: str) -> Dict[str, str]:
     return {s.split('=')[0]: s.split('=')[1] for s in value.split(',')}
+
+
+# new argparse-based interface
+# ============================
+
+tools_short_help = {
+    'meth_calls create': 'Methylation calling workhorse, various output formats and processing options',
+    'meth_calls merge': 'Merge strand-resolved calls',
+    'meth_calls qc': 'Create QC plots from (optionally stratified) methylation calls for one or more samples',
+    'index create': 'Create index, optionally including sequence context and other annotations',
+    'index merge': 'Merge strand-resolved index positions'
+}
+
+def bistro_parser_help_message(unused_args):
+    print(dedent(f'''\
+    
+    Welcome to bistro - methylation calls a la carte
+    
+    usage: bistro <subcommand> <args>
+    
+    [ Methylation calling ]
+        meth_calls create        {tools_short_help["meth_calls create"]}
+        meth_calls qc            {tools_short_help["meth_calls qc"]}
+    
+    [ Index ]
+        index create             {tools_short_help["index create"]}
+        index merge              {tools_short_help["index merge"]}
+    
+    [ General help ]
+        --help, -h               Print this help menu
+        --version
+    '''))
+    sys.exit(1)
+
+def meth_calls_parser_help_message(unused_args):
+    print(dedent(f'''\
+    usage: bistro meth_calls <command> <args>
+    
+    Creation and processing of methylation calls.
+    
+    [ commands ]
+        meth_calls create        {tools_short_help["meth_calls create"]}
+        meth_calls merge         {tools_short_help["meth_calls merge"]}
+        meth_calls qc            {tools_short_help["meth_calls qc"]}
+    
+    '''))
+    sys.exit(1)
+
+def get_parser() -> argparse.ArgumentParser:
+    """Create ArgumentParser for bistro command line tool
+
+    This function can be used to create automatic documentation
+    with the sphinx argparse extension.
+    """
+
+    bistro = argparse.ArgumentParser('bistro', add_help=False)
+    bistro.add_argument('-h', '--help', action='store_true')
+    bistro.set_defaults(func=bistro_parser_help_message)
+    bistro_subparsers = bistro.add_subparsers(title='commands')
+
+    add_meth_calls_tool(bistro_subparsers)
+
+    return bistro
+
+def add_meth_calls_tool(bistro_subparsers: argparse._SubParsersAction) -> None:
+    meth_calls = bistro_subparsers.add_parser('meth_calls', add_help=False)
+    meth_calls.add_argument('-h', '--help', action='store_true')
+    meth_calls.set_defaults(func=meth_calls_parser_help_message)
+    meth_calls_subparser = meth_calls.add_subparsers(title='commands')
+
+    meth_calls_merge = meth_calls_subparser.add_parser(
+            'merge',
+            usage='bistro meth_calls merge [<options>] <strand_resolved> <merged>',
+            description=dedent(f'''\
+            {tools_short_help["meth_calls merge"]}
+            
+            Merge strand-resolved calls for symmetric motifs. Currently, only merging
+            of CG motifs is implemented. Merging of CHG motifs will be added in the future.
+            If you need CHG motif merging, please get in contact via github.
+            
+            Filepaths must be given as absolute paths.
+            '''),
+            help=tools_short_help['meth_calls merge'],
+            formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    meth_calls_merge.set_defaults(func=meth_calls_merge_runner)
+    meth_calls_merge_required = meth_calls_merge.add_argument_group('Required')
+    meth_calls_merge_required.add_argument(
+            '--strand_resolved',
+            help='Path to strand-resolved BED or stratified-BED file',
+            required=True)
+    meth_calls_merge_required.add_argument(
+            '--merged',
+            help='Path for the created merged methylation calls',
+            required=True)
+    meth_calls_merge_optional = meth_calls_merge.add_argument_group('Optional')
+    meth_calls_merge_optional.add_argument('--verbose', '-v',
+                                           action='store_true', default=False)
+
+
+def meth_calls_merge_runner(args):
+    merger = BedMethCallsMerger(strand_resolved_meth_calls=args.strand_resolved,
+                                merged_meth_calls=args.merged, verbose=args.verbose)
+    merger.run()
+
+def bistro():
+    args = get_parser().parse_args()
+    args.func(args)
+    print('Done - thanks for using bistro.')

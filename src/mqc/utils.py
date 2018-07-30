@@ -1,11 +1,10 @@
 import itertools
 import json
-from collections import Hashable
+from collections import Hashable, OrderedDict
 from copy import deepcopy
 from pathlib import Path
 
 import magic
-import os
 import gzip
 
 import numpy as np
@@ -13,9 +12,7 @@ import pandas as pd
 from pkg_resources import resource_filename
 
 from typing import (
-    List, Iterable,
-    Set, Union, Sequence, Any,
-)
+    List, Set, Union, Sequence, Any, Dict, Optional, IO)
 
 
 def convert_array_to_df(arr: np.ndarray,
@@ -341,3 +338,32 @@ class TmpChdir:
 
     def __exit__(self, *args):
         os.chdir(self.old_dir)
+
+
+def csv_file_gen(file_obj: IO[Any], fieldnames: List[str],
+                 field_type_dict=Optional[Dict[str, type]], sep: str ='\t') \
+        -> Dict[str, Union[float, int, str]]:
+    """Return field dict per line in file
+
+    Args:
+        field_type_dict: All field types are string by default.
+            Optionally, types for one or more fields may be
+            defined in the field_type_dict.
+
+    Returns:
+        Dict mapping field names to their values, with appropriate
+        types. The items are ordered according to the field order.
+        This relies on python 3.7+ dicts, and does not use OrderedDict.
+
+    The input lines are stripped before processing.
+    """
+
+    for line in file_obj:
+        fields_dict_ordered = dict(zip(fieldnames, line.strip().split(sep)))
+
+        if field_type_dict is not None:
+            for field_name, field_type_obj in field_type_dict.items():
+                fields_dict_ordered[field_name] = field_type_obj(
+                        fields_dict_ordered[field_name])
+
+        yield fields_dict_ordered

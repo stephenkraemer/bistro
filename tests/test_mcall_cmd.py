@@ -421,3 +421,20 @@ EXPECTED_RESULTS_DICT2 = {
         HWI-ST1153:88:D1E30ACXX:1:1114:17740:51566      -       2       3281434 h
         """)),
 }
+
+EXPECTED_RESULTS_MERGED = {
+
+    ('CG', 'bed', '1'): dedent(f"""\
+        #chrom	start	end	motif	score	strand	beta_value	n_meth	n_total
+        1	11298399	11298401	CG	.	+	{1:.8f}	5	5
+        1	11299330	11299332	CG	.	+	{1:.8f}	7	7
+        """),
+
+    # verified manually
+    ('CG', 'stratified_bed', '1'): space_to_tab(dedent(f"""\
+        #chrom	start	end	motif	score	strand	beta_value	n_meth	n_total	c_bc_beta_value	c_bc_n_meth	c_bc_n_total	c_bc_rv_beta_value	c_bc_rv_n_meth	c_bc_rv_n_total	w_bc_beta_value	w_bc_n_meth	w_bc_n_total	w_bc_rv_beta_value	w_bc_rv_n_meth	w_bc_rv_n_total	mate1_beta_value	mate1_n_meth	mate1_n_total	mate2_beta_value	mate2_n_meth	mate2_n_total
+        1	11298399	11298401	CG	.	+	1.00000000	5	5	nan	0	0	nan	0	0	1.00000000	3	3	1.00000000	2	2	1.00000000	3	3	1.00000000	2	2
+        1	11299330	11299332	CG	.	+	1.00000000	7	7	1.00000000	4	4	nan	0	0	1.00000000	2	2	1.00000000	2	2	1.00000000	6	6	1.00000000	2	2
+        """)),
+
+}
