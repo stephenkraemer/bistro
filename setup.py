@@ -79,7 +79,7 @@ extensions = [
 
 
 setup(name='mqc',
-      version='0.2',
+      version='0.2.0',
       description='WGBS parser with highly configurable QC functions',
       long_description=__doc__,
       url='http://github.com/sjkv/mqc',
@@ -124,8 +124,8 @@ setup(name='mqc',
               'pytest-mock',
               'pytest-xdist',
               # 'cython (>=0.25)',
-              'mypy==0.610',
-              'numpy-stubs',
+              # 'mypy==0.610',
+              # 'numpy-stubs',
           ],
       },
 

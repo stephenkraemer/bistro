@@ -17,22 +17,34 @@ Contents:
 Installation
 ============
 
-First, create or activate a virtual environment (python>=3.6), where cython and pysam are
-installed. Conda or virtualenv is both ok, with conda you would create an
-environment as follows: ::
+Install release
+---------------
 
-    conda create -n mqc python=3.6
-    source activate mqc
-    conda install cython pysam
+    custom_conda_channel=/icgc/dkfzlsdf/analysis/B080/kraemers/projects/bistro/channel
+    conda create -n bistro_release python=3.6
+    source activate bistro_release
+    conda install -c file:///$custom_conda_channel mqc=0.2
 
-Then retrieve the code and install with develop install mode: ::
+Develop install
+---------------
+
+    conda create -n bistro_dev python=3.6
+    source activate bistro_dev
+    conda install pysam cython
 
     cd $where_you_want
+
+    git clone $figure_report_repo_TODO
+    cd figure_report
+    pip install -e .
+
     git clone https://eilslabs-phabricator.dkfz.de/diffusion/177/mqc.git
     cd mqc
     git checkout develop
-    pip install -e .
+    pip install -e .[dev]
 
+Run tests
+---------
 To run the tests, you may want to separate unit tests and acceptance tests
 (which could take a couple of minutes): ::
 
