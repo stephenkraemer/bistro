@@ -126,7 +126,18 @@ def get_sample_metadata(wildcards) -> str:
             f"rep={rep}")
 
 with open('/home/kraemers/projects/mqc/tests/test_files/hs_data_read_length_mapping.p', 'rb') as fin:
-  pid_to_read_length_mapping = pickle.load(fin)
+  pid_to_read_length_mapping = pickle.load(fin)  # Dict[str, int], e.g. {'t-cells_1': 101}
+# originally created with:
+# /home/stephen/projects/mouse_hematopoiesis/my_docs/labbook/attachments/sample_id_to_read_length_mapping.ipynb
+# Add samples which came later
+new_read_lengths = {
+    'hsc-aged_10': 125,
+    'hsc-aged_11': 125,
+    'megas_4': 125,
+    'megas_5': 125,
+    'megas_6': 125,
+}
+pid_to_read_length_mapping.update(new_read_lengths)
 
 rule all:
     input:
