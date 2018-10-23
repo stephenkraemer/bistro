@@ -7,14 +7,18 @@ source:
 
 requirements:
   build:
-    - python
+    - python>=3.6
     - setuptools
     - cython=0.26
     - pysam=0.11.2.2
 
   run:
-    - python
+    # mirroring build and run dependencies seems to help with a build
+    # issue in conda 4.5
+    - python>=3.6
     - setuptools
+    - cython=0.26
+    - pysam=0.11.2.2
     - altair
     - click
     - dataclasses
@@ -33,13 +37,19 @@ requirements:
     - statsmodels
     - toml
     - toolz
-    - cython=0.26
-    - pysam=0.11.2.2
-    - pytest
-    - pytest-mock
-    - pytest-xdist
-#    - mypy==0.610
-#    - numpy-stubs
+
+  # optional dependencies
+  # --------------------------------------------------------------------------------------
+  # as of now (conda 4.5) there is nothing similar to extras_require in setuptools afaik
+  # therefore, when installing via conda, all optional dependencies are also installed
+  # marking them in this extra section for when conda has more ways to deal with it
+  # note that the run_constrained feature is not what we need here afaik
+
+  # development dependencies
+  - mypy
+  - pytest
+  - pytest-mock
+  - pytest-xdist
 
 test:
   imports:
