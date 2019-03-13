@@ -1672,8 +1672,9 @@ class TestCuttingSitesPlots:
         cutting_sites.plot(path)
         # subprocess.run(['firefox', path])
 
-        path = str(tmpdir.join('test.svg'))
-        cutting_sites.plot(path)
+        # svg requires geckodriver, this is an unnecessary dependency to require
+        # path = str(tmpdir.join('test.svg'))
+        # cutting_sites.plot(path)
         # subprocess.run(['firefox', path])
 
 class TestCuttingSites:
