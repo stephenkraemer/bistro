@@ -98,7 +98,8 @@ setup(name='mqc',
       install_requires=[
           # 'rpy2',  only for mbias plots if plotting with R ggplot2
           'altair',
-          'click',
+          # click >=7.0 has a problem with the underscores in the commands
+          'click<7.0',
           'dataclasses',
           # 'dpcontracts',  (github)
           'feather-format',

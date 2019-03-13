@@ -1,7 +1,3 @@
-# TODO: remove these lines and test again
-# shell.executable("/bin/bash")
-# shell.prefix("module load python/3.6.0; source /home/kraemers/programs/python_virtualenvs/mqc_test/bin/activate; echo loaded mqc_test; ")
-
 """ Demo workflow using mqc
 
 How do I run this?
@@ -17,13 +13,14 @@ pids_csv='monos_3,pdc_3,mep_3'
 
 snakemake \
 --snakefile ~/projects/mqc/tests/demo.snakefile \
+--configfile /home/kraemers/projects/mqc/tests/snakefile_config.json \
 --config pids=$pids_csv motifs=CG \
 --jobs 1000 \
 --jobscript /home/kraemers/projects/mqc/tests/jobscript_lsf.sh \
---cluster "bsub -R rusage[mem={params.mem}G] -M {params.mem}G -n {params.cores} -J {params.name} -W {params.walltime} -o /home/kraemers/temp/logs/" \
---keep-going \
+--cluster "bsub -R rusage[mem={params.mem}] -M {params.mem} -n {params.cores} -J {params.name} -W {params.walltime} -o /home/kraemers/temp/logs/" \
 --dryrun
 
+--keep-going \
 --forcerun get_stats \
 
 --forcerun get_stats \
@@ -39,10 +36,21 @@ from pathlib import Path
 import sys
 import re
 
-script_dir = op.dirname(__file__)
-sys.path.append(script_dir)
-from snakefile_config import *
-sys.path.remove(script_dir)
+# with open('/home/kraemers/projects/mqc/tests/snakefile_config.json') as fin:
+#     config = json.load(fin)
+
+output_rpp_dir = config['output_rpp_dir']
+index_dir = config['index_dir']
+reference_genome = config['reference_genome']
+mqc_config_file = config['mqc_config_file']
+in_rpp_dir = config['in_rpp_dir']
+bam_pattern_by_pid = config['bam_pattern_by_pid']
+autosomes = config['autosomes']
+other_chroms = config['other_chroms']
+single_motifs = config['single_motifs']
+motifs_msv_str = config['motifs_msv_str']
+motifs_csv_str = config['motifs_csv_str']
+chr_prefix = config['chr_prefix']
 
 # assemble config vars
 config['pids'] = config['pids'].split(',')
@@ -60,7 +68,7 @@ all_index_files = expand(index_file_pattern_by_chrom, chrom = all_chroms),
 
 ## stats
 mbias_counter_pattern_by_pid = f"{output_rpp_dir}/{{pid}}/meth/qc_stats/{{pid}}_mbias-counts_{motifs_msv_str}.p",
-all_stats_files = expand(mbias_counter_pattern_by_pid, pid=config['pids']),
+all_stats_files = expand(mbias_counter_pattern_by_pid, pid=config['pids'])
 
 ## evaluate_mbias
 adj_cut_sites_obj_by_pid = f"{output_rpp_dir}/{{pid}}/meth/qc_stats/{{pid}}_adjusted_cutting_sites_obj_{motifs_msv_str}.p"
@@ -69,10 +77,10 @@ full_mbias_stats_pattern_by_pid = f"{output_rpp_dir}/{{pid}}/meth/qc_stats/{{pid
 trimmed_mbias_stats_pattern_by_pid = f"{output_rpp_dir}/{{pid}}/meth/qc_stats/{{pid}}_mbias-stats_masked_{motifs_msv_str}.p"
 full_phredfiltered_mbias_stats_by_pid = f"{output_rpp_dir}/{{pid}}/meth/qc_stats/{{pid}}_mbias-stats_phred-threshold_{motifs_msv_str}.p.p"
 trimmed_phredfiltered_mbias_stats_by_pid = f"{output_rpp_dir}/{{pid}}/meth/qc_stats/{{pid}}_mbias-stats_masked_phred-threshold_{motifs_msv_str}.p.p"
-all_evaluate_stats_files = expand(trimmed_mbias_stats_pattern_by_pid, pid=config['pids']),
+all_evaluate_stats_files = expand(trimmed_mbias_stats_pattern_by_pid, pid=config['pids'])
 
 ## plot mbias
-test_mbias_plot_config_json = os.path.expanduser('~/projects/mqc/src/mqc/resources/mbias_plots_config.json')
+test_mbias_plot_config_json = op.expanduser('~/projects/mqc/src/mqc/resources/mbias_plots_config.json')
 mbias_plot_done_by_pid = f"{output_rpp_dir}/{{pid}}/meth/qc_stats/mbias_stats/plots.done"
 ## call
 mcall_bed_patterns_by_pid = expand("{output_rpp_dir}/{{pid}}/meth/meth_calls/"
@@ -136,6 +144,38 @@ new_read_lengths = {
     'megas_4': 125,
     'megas_5': 125,
     'megas_6': 125,
+    'hsc_tr-pbs_5': 125,
+    'lsk_mu-d3a-r882h_tr-aza_4': 125,
+    'lsk_mu-d3a-r882h_tr-aza_5': 125,
+    'lsk_mu-d3a-r882h_tr-aza_7': 125,
+    'lsk_mu-d3a-r882h_tr-none_5': 125,
+    'lsk_mu-d3a-r882h_tr-none_6': 125,
+    'lsk_mu-d3a-r882h_tr-none_7': 125,
+    'lsk_mu-d3a-r882h_tr-none_8': 125,
+    'lsk_mu-d3a-wt_tr-aza_4': 125,
+    'lsk_mu-d3a-wt_tr-aza_5': 125,
+    'lsk_mu-d3a-wt_tr-aza_6': 125,
+    'lsk_mu-d3a-wt_tr-aza_7': 125,
+    'lsk_mu-d3a-wt_tr-none_4': 125,
+    'lsk_mu-d3a-wt_tr-none_5': 125,
+    'lsk_mu-d3a-wt_tr-none_6': 125,
+    'lsk_mu-d3a-wt_tr-none_7': 125,
+    '5N_pbat': 125,
+    '5N_pbat_reprocessed': 125,
+    '5N_tagmentation': 125,
+    '5N_xten': 150,
+    '5T_pbat': 125,
+    '5T_pbat_reprocessed': 125,
+    '5T_tagmentation': 125,
+    '5T_xten': 150,
+    '6N_pbat': 125,
+    '6N_pbat_reprocessed': 125,
+    '6N_tagmentation': 125,
+    '6N_xten': 150,
+    '6T_pbat': 125,
+    '6T_pbat_reprocessed': 125,
+    '6T_tagmentation': 125,
+    '6T_xten': 150,
 }
 pid_to_read_length_mapping.update(new_read_lengths)
 
@@ -155,8 +195,8 @@ rule make_index:
     params:
         output_dir = index_dir,
         walltime = '08:00',
-        mem = '8',
-        cores = '12',
+        mem = 18000,
+        cores = '25',
         name = f'make_index_{motifs_csv_str}',
         motifs_flags = '--cg' if motifs_csv_str == 'CG' else '--cg --chg --chh',
     output:
@@ -178,7 +218,7 @@ rule get_stats:
     params:
         output_dir = output_dir_by_pid,
         walltime = '01:30' if motifs_csv_str == 'CG' else '08:00',
-        mem = '12',
+        mem = 12000,
         cores = '8',
         name = f'get_stats_{{pid}}_{motifs_msv_str}',
         sample_meta = get_sample_metadata,
@@ -212,7 +252,7 @@ rule evaluate_mbias:
     params:
         output_dir = output_dir_by_pid,
         walltime = '01:00',
-        mem = '40',
+        mem = 40000,
         cores = '8',
         name = f'evalute_mbias_{{pid}}_{motifs_msv_str}',
         sample_meta = get_sample_metadata,
@@ -257,7 +297,7 @@ rule plot_mbias:
     params:
         output_dir = output_dir_by_pid,
         walltime = '00:25',
-        mem = '40',
+        mem = 40000,
         cores = '1',
         name = f'plot_mbias_{{pid}}_{motifs_msv_str}',
         sample_meta = get_sample_metadata,
@@ -289,7 +329,7 @@ rule call:
         index_files = all_index_files,
         cutting_sites_df = adj_cut_sites_df_by_pid,
     params:
-        mem = '26',
+        mem = 26000,
         cores = '12',
         output_dir = output_dir_by_pid,
         walltime = '8:00',
@@ -312,7 +352,7 @@ rule evaluate_calls:
     params:
         output_dir = output_dir_by_pid,
         walltime = '00:30:00',
-        mem = '6g',
+        mem = 6000,
         cores = '2',
         name = f'evaluate_calls_{{pid}}_{motifs_csv_str}',
         sample_meta = get_sample_metadata
